@@ -1,13 +1,17 @@
+// app/(admin)/profile.tsx
 import { useAuth } from "@/contexts/AuthContext";
+import { adminApi } from "@/src/config/adminApi";
 import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
+  ActivityIndicator,
   Alert,
   Image,
   Modal,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Switch,
@@ -22,25 +26,29 @@ import { Colors } from "../../../constants/Colors";
 
 // Define admin-specific interface
 interface AdminProfileData {
+  id: number;
+  fullName: string;
+  email: string;
+  phone: string;
+  profile_image?: string;
+  role: string;
   bio?: string;
-  role?: string;
-  permissions?: string[];
   department?: string;
   employeeId?: string;
   joinDate?: string;
-  managedUsers?: number;
-  totalRevenue?: number;
-  systemAlerts?: number;
-  activeTasks?: number;
+  permissions?: string[];
+  stats?: {
+    managedUsers: number;
+    totalRevenue: number;
+    systemAlerts: number;
+    activeTasks: number;
+  };
 }
-
-const defaultProfileImage =
-  "https://images.unsplash.com/photo-1560250097-0b93528c311a?ixlib=rb-4.0.3&auto=format&fit=crop&w=400&q=80";
 
 const adminPermissions = [
   "مدیریت کاربران",
   "مدیریت دوره‌ها",
-  "مدیریت مالی",
+  // "مدیریت مالی",
   "مدیریت محتوا",
   "تنظیمات سیستم",
   "گزارش‌گیری",
@@ -61,40 +69,33 @@ const adminDepartments = [
 
 export default function AdminProfile() {
   const router = useRouter();
-  const { user, updateProfile, logout } = useAuth();
-  const [profileImage, setProfileImage] = useState(
-    user?.profile_image || defaultProfileImage,
+  const { user, updateProfile, logout, token } = useAuth();
+  const [loading, setLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [profileImage, setProfileImage] = useState<string | null>(
+    user?.profile_image || null,
   );
   const [isEditing, setIsEditing] = useState(false);
-  const [loading, setLoading] = useState(false);
   const [showPermissionsModal, setShowPermissionsModal] = useState(false);
   const [showDepartmentModal, setShowDepartmentModal] = useState(false);
-
-  // Admin-specific data
-  const adminData: AdminProfileData = {
-    bio:
-      (user as any)?.bio ||
-      "مدیر سیستم با ۸ سال سابقه در مدیریت پلتفرم‌های آموزشی. متخصص در تحلیل داده و بهبود تجربه کاربری.",
-    role: (user as any)?.role || "مدیر ارشد",
-    permissions: (user as any)?.permissions || [
-      "مدیریت کاربران",
-      "مدیریت دوره‌ها",
-      "تنظیمات سیستم",
-    ],
-    department: (user as any)?.department || "مدیریت",
-    employeeId: (user as any)?.employeeId || "ADM-2023-001",
-    joinDate: (user as any)?.joinDate || "1402/01/15",
-    managedUsers: (user as any)?.managedUsers || 1250,
-    totalRevenue: (user as any)?.totalRevenue || 85000000,
-    systemAlerts: (user as any)?.systemAlerts || 12,
-    activeTasks: (user as any)?.activeTasks || 8,
-  };
+  const [adminProfile, setAdminProfile] = useState<AdminProfileData | null>(
+    null,
+  );
 
   const [formData, setFormData] = useState({
-    name: user?.name || "دکتر محمد حسینی",
-    email: user?.email || "admin@eduhub.com",
-    phone: user?.phone || "09121234567",
-    ...adminData,
+    fullName: user?.fullName || "",
+    email: user?.email || "",
+    phone: user?.phone || "",
+    bio: "",
+    role: "مدیر سیستم",
+    department: "",
+    employeeId: "",
+    joinDate: "",
+    permissions: [] as string[],
+    managedUsers: 0,
+    totalRevenue: 0,
+    systemAlerts: 0,
+    activeTasks: 0,
   });
 
   const [notifications, setNotifications] = useState({
@@ -107,6 +108,49 @@ export default function AdminProfile() {
     securityAlerts: true,
     performanceReports: false,
   });
+
+  useEffect(() => {
+    loadAdminProfile();
+  }, []);
+
+  const loadAdminProfile = async () => {
+    try {
+      setLoading(true);
+      const response = await adminApi.getProfile();
+
+      if (response.success && response.data) {
+        const data = response.data;
+        setAdminProfile(data);
+        setProfileImage(data.profile_image || null);
+
+        setFormData({
+          fullName: data.fullName || "",
+          email: data.email || "",
+          phone: data.phone || "",
+          bio: data.bio || "",
+          role: data.role || "مدیر سیستم",
+          department: data.department || "",
+          employeeId: data.employeeId || "",
+          joinDate: data.joinDate || new Date().toLocaleDateString("fa-IR"),
+          permissions: data.permissions || ["مدیریت کاربران", "مدیریت دوره‌ها"],
+          managedUsers: data.stats?.managedUsers || 0,
+          totalRevenue: data.stats?.totalRevenue || 0,
+          systemAlerts: data.stats?.systemAlerts || 0,
+          activeTasks: data.stats?.activeTasks || 0,
+        });
+      }
+    } catch (error) {
+      console.error("Error loading admin profile:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    await loadAdminProfile();
+    setRefreshing(false);
+  };
 
   const pickImage = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -125,28 +169,64 @@ export default function AdminProfile() {
 
     if (!result.canceled) {
       setProfileImage(result.assets[0].uri);
+      // Upload image to server
+      await uploadProfileImage(result.assets[0].uri);
+    }
+  };
+
+  const uploadProfileImage = async (imageUri: string) => {
+    try {
+      const formData = new FormData();
+      const filename = imageUri.split("/").pop() || "profile.jpg";
+      const match = /\.(\w+)$/.exec(filename);
+      const type = match ? `image/${match[1]}` : "image/jpeg";
+
+      formData.append("profile_image", {
+        uri: imageUri,
+        type: type,
+        name: filename,
+      } as any);
+
+      const response = await adminApi.uploadProfileImage(formData);
+
+      if (response.success) {
+        Alert.alert("موفقیت", "عکس پروفایل با موفقیت به‌روزرسانی شد.");
+        loadAdminProfile();
+      } else {
+        Alert.alert("خطا", response.message || "آپلود عکس با مشکل مواجه شد");
+      }
+    } catch (error) {
+      console.error("Error uploading image:", error);
+      Alert.alert("خطا", "در آپلود عکس خطایی رخ داد.");
     }
   };
 
   const handleSave = async () => {
     setLoading(true);
     try {
-      const updateData: any = {
-        name: formData.name,
+      const updateData = {
+        fullName: formData.fullName,
         email: formData.email,
         phone: formData.phone,
-        profile_image: profileImage,
         bio: formData.bio,
         role: formData.role,
-        permissions: formData.permissions?.join(" | ") || "",
         department: formData.department,
         employeeId: formData.employeeId,
-        joinDate: formData.joinDate,
+        permissions: formData.permissions,
       };
 
-      await updateProfile(updateData);
-      Alert.alert("موفقیت", "پروفایل با موفقیت به‌روزرسانی شد.");
-      setIsEditing(false);
+      const response = await adminApi.updateProfile(updateData);
+
+      if (response.success) {
+        Alert.alert("موفقیت", "پروفایل با موفقیت به‌روزرسانی شد.");
+        setIsEditing(false);
+        loadAdminProfile();
+      } else {
+        Alert.alert(
+          "خطا",
+          response.message || "در به‌روزرسانی پروفایل خطایی رخ داد.",
+        );
+      }
     } catch (error: any) {
       console.error("Profile update error:", error);
       Alert.alert("خطا", "در به‌روزرسانی پروفایل خطایی رخ داد.");
@@ -203,7 +283,7 @@ export default function AdminProfile() {
       color: Colors.primary,
     },
     {
-      label: "درآمد کل ()",
+      label: "درآمد کل",
       value: formData.totalRevenue?.toLocaleString(),
       icon: "cash" as const,
       color: Colors.success,
@@ -269,7 +349,7 @@ export default function AdminProfile() {
     {
       title: "گزارش مالی",
       icon: "bar-chart" as const,
-      action: () => router.push("/(public)/info"),
+      action: () => router.push("/(admin)/analytics"),
     },
     {
       title: "پیام‌ها",
@@ -277,6 +357,18 @@ export default function AdminProfile() {
       action: () => router.push("/(public)/info"),
     },
   ];
+
+  if (loading && !adminProfile) {
+    return (
+      <SafeAreaView style={styles.container} edges={["top"]}>
+        <Header title="پروفایل ادمین" showBack />
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={Colors.primary} />
+          <Text style={styles.loadingText}>در حال بارگذاری...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
@@ -292,12 +384,21 @@ export default function AdminProfile() {
                 color={Colors.text}
               />
             </TouchableOpacity>
-            
           </View>
         }
       />
 
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        style={styles.content}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            colors={[Colors.primary]}
+          />
+        }
+      >
         {/* Profile Header */}
         <LinearGradient
           colors={["#0f766e", "#14b8a6"]}
@@ -307,10 +408,16 @@ export default function AdminProfile() {
         >
           <TouchableOpacity onPress={isEditing ? pickImage : undefined}>
             <View style={styles.profileImageContainer}>
-              <Image
-                source={{ uri: profileImage }}
-                style={styles.profileImage}
-              />
+              {profileImage ? (
+                <Image
+                  source={{ uri: profileImage }}
+                  style={styles.profileImage}
+                />
+              ) : (
+                <View style={[styles.profileImage, styles.placeholderImage]}>
+                  <Ionicons name="person" size={40} color="#fff" />
+                </View>
+              )}
               {isEditing && (
                 <View style={styles.editImageBadge}>
                   <Ionicons name="camera" size={16} color="#fff" />
@@ -321,7 +428,7 @@ export default function AdminProfile() {
 
           <View style={styles.profileInfo}>
             <View style={styles.profileTitle}>
-              <Text style={styles.profileName}>{formData.name}</Text>
+              <Text style={styles.profileName}>{formData.fullName}</Text>
               <View style={styles.adminBadge}>
                 <Ionicons name="shield-checkmark" size={16} color="#fff" />
                 <Text style={styles.adminText}>ادمین</Text>
@@ -329,12 +436,16 @@ export default function AdminProfile() {
             </View>
 
             <Text style={styles.profileTagline}>
-              {formData.role} • {formData.department}
+              {formData.role} • {formData.department || "مدیریت"}
             </Text>
 
             <View style={styles.employeeInfo}>
-              <Text style={styles.employeeId}>کد پرسنلی: {formData.employeeId}</Text>
-              <Text style={styles.joinDate}>عضویت از: {formData.joinDate}</Text>
+              <Text style={styles.employeeId}>
+                کد پرسنلی: {formData.employeeId || "نامشخص"}
+              </Text>
+              <Text style={styles.joinDate}>
+                عضویت از: {formData.joinDate || "نامشخص"}
+              </Text>
             </View>
           </View>
         </LinearGradient>
@@ -343,10 +454,15 @@ export default function AdminProfile() {
         <View style={styles.statsGrid}>
           {stats.map((stat, index) => (
             <View key={index} style={styles.statItem}>
-              <View style={[styles.statIconContainer, { backgroundColor: `${stat.color}20` }]}>
+              <View
+                style={[
+                  styles.statIconContainer,
+                  { backgroundColor: `${stat.color}20` },
+                ]}
+              >
                 <Ionicons name={stat.icon} size={20} color={stat.color} />
               </View>
-              <Text style={styles.statValue}>{stat.value}</Text>
+              <Text style={styles.statValue}>{stat.value || 0}</Text>
               <Text style={styles.statLabel}>{stat.label}</Text>
             </View>
           ))}
@@ -363,7 +479,11 @@ export default function AdminProfile() {
                 onPress={action.action}
               >
                 <View style={styles.actionIcon}>
-                  <Ionicons name={action.icon} size={20} color={Colors.primary} />
+                  <Ionicons
+                    name={action.icon}
+                    size={20}
+                    color={Colors.primary}
+                  />
                 </View>
                 <Text style={styles.actionText}>{action.title}</Text>
               </TouchableOpacity>
@@ -380,11 +500,12 @@ export default function AdminProfile() {
               <Text style={styles.label}>نام و نام خانوادگی</Text>
               <TextInput
                 style={styles.input}
-                value={formData.name}
+                value={formData.fullName}
                 onChangeText={(text) =>
-                  setFormData({ ...formData, name: text })
+                  setFormData({ ...formData, fullName: text })
                 }
                 placeholder="نام و نام خانوادگی"
+                textAlign="right"
               />
             </View>
 
@@ -397,6 +518,7 @@ export default function AdminProfile() {
                   setFormData({ ...formData, role: text })
                 }
                 placeholder="مثال: مدیر ارشد"
+                textAlign="right"
               />
             </View>
 
@@ -409,7 +531,11 @@ export default function AdminProfile() {
                 <Text style={styles.selectInputText}>
                   {formData.department || "انتخاب دپارتمان"}
                 </Text>
-                <Ionicons name="chevron-down" size={20} color={Colors.textSecondary} />
+                <Ionicons
+                  name="chevron-down"
+                  size={20}
+                  color={Colors.textSecondary}
+                />
               </TouchableOpacity>
             </View>
 
@@ -422,6 +548,7 @@ export default function AdminProfile() {
                   setFormData({ ...formData, employeeId: text })
                 }
                 placeholder="مثال: ADM-2023-001"
+                textAlign="right"
               />
             </View>
 
@@ -434,6 +561,7 @@ export default function AdminProfile() {
                 placeholder="درباره خود و مسئولیت‌ها بنویسید..."
                 multiline
                 numberOfLines={4}
+                textAlign="right"
               />
             </View>
 
@@ -447,6 +575,7 @@ export default function AdminProfile() {
                 }
                 placeholder="ایمیل"
                 keyboardType="email-address"
+                textAlign="right"
               />
             </View>
 
@@ -460,13 +589,16 @@ export default function AdminProfile() {
                 }
                 placeholder="شماره تلفن"
                 keyboardType="phone-pad"
+                textAlign="right"
               />
             </View>
           </View>
         ) : (
-          <View style={styles.bioSection}>
-            <Text style={styles.bioText}>{formData.bio}</Text>
-          </View>
+          formData.bio && (
+            <View style={styles.bioSection}>
+              <Text style={styles.bioText}>{formData.bio}</Text>
+            </View>
+          )
         )}
 
         {/* Permissions */}
@@ -481,23 +613,33 @@ export default function AdminProfile() {
           </View>
 
           <View style={styles.permissionsGrid}>
-            {(formData.permissions || []).map((permission: string, index: number) => (
-              <View key={index} style={styles.permissionChip}>
-                <Ionicons name="shield-checkmark" size={14} color={Colors.primary} />
-                <Text style={styles.permissionText}>{permission}</Text>
-                {isEditing && (
-                  <TouchableOpacity
-                    onPress={() => handleTogglePermission(permission)}
-                  >
+            {(formData.permissions || []).length > 0 ? (
+              (formData.permissions || []).map(
+                (permission: string, index: number) => (
+                  <View key={index} style={styles.permissionChip}>
                     <Ionicons
-                      name="close"
+                      name="shield-checkmark"
                       size={14}
-                      color={Colors.textSecondary}
+                      color={Colors.primary}
                     />
-                  </TouchableOpacity>
-                )}
-              </View>
-            ))}
+                    <Text style={styles.permissionText}>{permission}</Text>
+                    {isEditing && (
+                      <TouchableOpacity
+                        onPress={() => handleTogglePermission(permission)}
+                      >
+                        <Ionicons
+                          name="close"
+                          size={14}
+                          color={Colors.textSecondary}
+                        />
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                ),
+              )
+            ) : (
+              <Text style={styles.emptyText}>هیچ مجوزی تعریف نشده است</Text>
+            )}
           </View>
         </View>
 
@@ -517,30 +659,6 @@ export default function AdminProfile() {
                 <Text style={styles.menuText}>{item.title}</Text>
               </TouchableOpacity>
             ))}
-          </View>
-        </View>
-
-        {/* System Status */}
-        <View style={styles.section}>
-          <View style={styles.systemStatus}>
-            <View style={styles.systemStatusHeader}>
-              <Ionicons name="server" size={24} color={Colors.primary} />
-              <Text style={styles.systemStatusTitle}>وضعیت سیستم</Text>
-            </View>
-            <View style={styles.systemMetrics}>
-              <View style={styles.metricItem}>
-                <Text style={styles.metricValue}>99.8%</Text>
-                <Text style={styles.metricLabel}>آپتایم</Text>
-              </View>
-              <View style={styles.metricItem}>
-                <Text style={styles.metricValue}>2.1s</Text>
-                <Text style={styles.metricLabel}>میانگین پاسخ</Text>
-              </View>
-              <View style={styles.metricItem}>
-                <Text style={styles.metricValue}>245</Text>
-                <Text style={styles.metricLabel}>کاربران فعال</Text>
-              </View>
-            </View>
           </View>
         </View>
 
@@ -571,9 +689,7 @@ export default function AdminProfile() {
 
             <View style={styles.notificationItem}>
               <View>
-                <Text style={styles.notificationTitle}>
-                  هشدارهای امنیتی
-                </Text>
+                <Text style={styles.notificationTitle}>هشدارهای امنیتی</Text>
                 <Text style={styles.notificationDesc}>
                   اطلاع‌رسانی رویدادهای امنیتی
                 </Text>
@@ -589,9 +705,7 @@ export default function AdminProfile() {
 
             <View style={styles.notificationItem}>
               <View>
-                <Text style={styles.notificationTitle}>
-                  مشکلات پرداخت
-                </Text>
+                <Text style={styles.notificationTitle}>مشکلات پرداخت</Text>
                 <Text style={styles.notificationDesc}>
                   اطلاع‌رسانی خطاهای پرداخت
                 </Text>
@@ -610,9 +724,7 @@ export default function AdminProfile() {
 
             <View style={styles.notificationItem}>
               <View>
-                <Text style={styles.notificationTitle}>
-                  گزارش‌های عملکرد
-                </Text>
+                <Text style={styles.notificationTitle}>گزارش‌های عملکرد</Text>
                 <Text style={styles.notificationDesc}>
                   ارسال گزارش هفتگی عملکرد سیستم
                 </Text>
@@ -660,12 +772,15 @@ export default function AdminProfile() {
           visible={showPermissionsModal}
           animationType="slide"
           transparent={true}
+          onRequestClose={() => setShowPermissionsModal(false)}
         >
           <View style={styles.modalOverlay}>
             <View style={styles.modalContent}>
               <View style={styles.modalHeader}>
                 <Text style={styles.modalTitle}>مدیریت مجوزهای دسترسی</Text>
-                <TouchableOpacity onPress={() => setShowPermissionsModal(false)}>
+                <TouchableOpacity
+                  onPress={() => setShowPermissionsModal(false)}
+                >
                   <Ionicons name="close" size={24} color={Colors.text} />
                 </TouchableOpacity>
               </View>
@@ -685,7 +800,11 @@ export default function AdminProfile() {
                       <Ionicons
                         name="shield-checkmark"
                         size={16}
-                        color={(formData.permissions || []).includes(permission) ? "#fff" : Colors.primary}
+                        color={
+                          (formData.permissions || []).includes(permission)
+                            ? "#fff"
+                            : Colors.primary
+                        }
                       />
                       <Text
                         style={[
@@ -716,6 +835,7 @@ export default function AdminProfile() {
           visible={showDepartmentModal}
           animationType="slide"
           transparent={true}
+          onRequestClose={() => setShowDepartmentModal(false)}
         >
           <View style={styles.modalOverlay}>
             <View style={styles.modalContent}>
@@ -748,7 +868,11 @@ export default function AdminProfile() {
                         {department}
                       </Text>
                       {formData.department === department && (
-                        <Ionicons name="checkmark" size={20} color={Colors.primary} />
+                        <Ionicons
+                          name="checkmark"
+                          size={20}
+                          color={Colors.primary}
+                        />
                       )}
                     </TouchableOpacity>
                   ))}
@@ -770,26 +894,21 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
   },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 20,
+  },
+  loadingText: {
+    marginTop: 16,
+    fontSize: 16,
+    color: Colors.textSecondary,
+  },
   headerActions: {
     flexDirection: "row",
     alignItems: "center",
     gap: 16,
-  },
-  notificationBadge: {
-    position: "absolute",
-    top: -5,
-    right: -5,
-    backgroundColor: Colors.danger,
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  notificationCount: {
-    color: "#fff",
-    fontSize: 10,
-    fontWeight: "bold",
   },
   profileHeader: {
     padding: 20,
@@ -811,6 +930,14 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.2,
     shadowRadius: 4,
     elevation: 4,
+  },
+  placeholderImage: {
+    backgroundColor: "rgba(255,255,255,0.2)",
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 2,
+    borderColor: "rgba(255,255,255,0.3)",
+    borderStyle: "dashed",
   },
   editImageBadge: {
     position: "absolute",
@@ -1026,6 +1153,12 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: Colors.text,
   },
+  emptyText: {
+    fontSize: 14,
+    color: Colors.textSecondary,
+    textAlign: "center",
+    padding: 20,
+  },
   menuGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -1054,41 +1187,6 @@ const styles = StyleSheet.create({
     color: Colors.text,
     fontWeight: "500",
     textAlign: "center",
-  },
-  systemStatus: {
-    backgroundColor: Colors.background,
-    padding: 16,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  systemStatusHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    marginBottom: 16,
-  },
-  systemStatusTitle: {
-    fontSize: 14,
-    fontWeight: "bold",
-    color: Colors.text,
-  },
-  systemMetrics: {
-    flexDirection: "row",
-    justifyContent: "space-around",
-  },
-  metricItem: {
-    alignItems: "center",
-  },
-  metricValue: {
-    fontSize: 16,
-    fontWeight: "bold",
-    color: Colors.primary,
-    marginBottom: 4,
-  },
-  metricLabel: {
-    fontSize: 12,
-    color: Colors.textSecondary,
   },
   notificationsList: {
     gap: 16,

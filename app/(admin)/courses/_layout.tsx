@@ -1,8 +1,7 @@
-import React from 'react';
-import { Stack } from 'expo-router';
-import { Colors } from '../../../constants/Colors';
-import { useAuth } from '../../../contexts/AuthContext';
-import { Redirect } from 'expo-router';
+import { Redirect, Stack } from "expo-router";
+import { Colors } from "../../../constants/Colors";
+import { useAuth } from "../../../contexts/AuthContext";
+
 
 export default function CoursesLayout() {
   const { user, loading } = useAuth();
@@ -12,13 +11,14 @@ export default function CoursesLayout() {
     return null;
   }
 
-  if (!user || user.role !== 'admin') {
+  if (!user || user.role !== "admin") {
     return <Redirect href="/(auth)/login" />;
   }
 
   return (
     <Stack
       screenOptions={{
+        headerShown: false,
         headerStyle: {
           backgroundColor: Colors.card,
         },
@@ -32,20 +32,20 @@ export default function CoursesLayout() {
       <Stack.Screen
         name="index"
         options={{
-          title: 'مدیریت دوره‌ها',
+          title: "مدیریت دوره‌ها",
         }}
       />
       <Stack.Screen
         name="create"
         options={{
-          title: 'ایجاد دوره جدید',
-          presentation: 'modal',
+          title: "ایجاد دوره جدید",
+          presentation: "modal",
         }}
       />
       <Stack.Screen
         name="[id]"
         options={{
-          title: 'جزئیات دوره',
+          title: "جزئیات دوره",
         }}
       />
     </Stack>

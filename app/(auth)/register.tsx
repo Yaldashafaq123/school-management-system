@@ -1,8 +1,9 @@
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react"; // ← ADD useRef
 import {
+  ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
   Platform,
@@ -17,7 +18,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Colors } from "../../constants/Colors";
 import { useAuth } from "../../contexts/AuthContext";
 
-const API_BASE_URL = "http://asraschools.cloud:3000/api";
+const API_BASE_URL = "https://asraschools.cloud/api";
 
 export default function RegisterScreen() {
   const router = useRouter();
@@ -28,9 +29,10 @@ export default function RegisterScreen() {
     email: "",
     password: "",
     confirmPassword: "",
-    role: "student" as "student" | "teacher" | "admin" | "parent",
+    role: "student" as "student" | "parent",
     class_id: undefined as number | undefined,
     phone: "",
+    child_email: "",
   });
 
   const [validationErrors, setValidationErrors] = useState<
@@ -40,50 +42,58 @@ export default function RegisterScreen() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [showRoleOptions, setShowRoleOptions] = useState(false);
   const [showClassOptions, setShowClassOptions] = useState(false);
+  const [isCheckingChild, setIsCheckingChild] = useState(false);
+  const [childFound, setChildFound] = useState<{
+    exists: boolean;
+    name?: string;
+    class?: string;
+  } | null>(null);
+
+  // ✅ Add this ref for debouncing
+  const checkChildTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
 
   const [classes, setClasses] = useState<{ id: number; name: string }[]>([]);
   const [loadingClasses, setLoadingClasses] = useState(false);
 
-  // Fetch classes from backend using fetch API
+  // Fetch classes from backend
   useEffect(() => {
     const fetchClasses = async () => {
       if (formData.role !== "student") return;
 
       setLoadingClasses(true);
       try {
-        const response = await fetch(`${API_BASE_URL}/classes`);
-        
+        const response = await fetch(`${API_BASE_URL}/public/classes`);
+
         if (!response.ok) {
           throw new Error(`HTTP error! status: ${response.status}`);
         }
-        
+
         const data = await response.json();
         console.log("Classes response:", data);
-        
-        // Handle different response formats
+
         if (data.classes && Array.isArray(data.classes)) {
           setClasses(data.classes);
         } else if (Array.isArray(data)) {
           setClasses(data);
         } else {
           console.error("Unexpected response format:", data);
-          // Fallback to mock data
           setClasses([
-            { id: 1, name: "کلاس اول" },
-            { id: 2, name: "کلاس دوم" },
-            { id: 3, name: "کلاس سوم" },
+            { id: 1, name: "صنف اول" },
+            { id: 2, name: "صنف دوم" },
+            { id: 3, name: "صنف سوم" },
           ]);
         }
       } catch (err) {
         console.error("Failed to fetch classes:", err);
-        // Fallback to mock data if API fails
         setClasses([
-          { id: 1, name: "کلاس اول" },
-          { id: 2, name: "کلاس دوم" },
-          { id: 3, name: "کلاس سوم" },
-          { id: 4, name: "کلاس چهارم" },
-          { id: 5, name: "کلاس پنجم" },
-          { id: 6, name: "کلاس ششم" },
+          { id: 1, name: "صنف اول" },
+          { id: 2, name: "صنف دوم" },
+          { id: 3, name: "صنف سوم" },
+          { id: 4, name: "صنف چهارم" },
+          { id: 5, name: "صنف پنجم" },
+          { id: 6, name: "صنف ششم" },
         ]);
       } finally {
         setLoadingClasses(false);
@@ -92,6 +102,43 @@ export default function RegisterScreen() {
 
     fetchClasses();
   }, [formData.role]);
+
+  // Check child email
+  const checkChildEmail = async (email: string) => {
+    if (!email.trim() || formData.role !== "parent") return;
+
+    setIsCheckingChild(true);
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/public/check-student?email=${encodeURIComponent(email)}`,
+      );
+      const data = await response.json();
+
+      if (response.ok && data.exists) {
+        setChildFound({
+          exists: true,
+          name: data.student?.name,
+          class: data.student?.className,
+        });
+      } else {
+        setChildFound({ exists: false });
+      }
+    } catch (error) {
+      console.error("Error checking child email:", error);
+      setChildFound({ exists: false });
+    } finally {
+      setIsCheckingChild(false);
+    }
+  };
+
+  // ✅ Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (checkChildTimeoutRef.current) {
+        clearTimeout(checkChildTimeoutRef.current);
+      }
+    };
+  }, []);
 
   const validateForm = () => {
     const errors: Record<string, string> = {};
@@ -106,7 +153,7 @@ export default function RegisterScreen() {
     if (formData.password !== formData.confirmPassword)
       errors.confirmPassword = "رمز عبور و تکرار آن مطابقت ندارند";
     if (formData.role === "student" && !formData.class_id)
-      errors.class_id = "انتخاب کلاس الزامی است";
+      errors.class_id = "انتخاب صنف الزامی است";
 
     setValidationErrors(errors);
     return Object.keys(errors).length === 0;
@@ -117,7 +164,12 @@ export default function RegisterScreen() {
 
     try {
       await register(formData);
-      router.replace("/(tabs)" as any);
+
+      if (formData.role === "parent") {
+        router.replace("/(parent)/(tabs)" as any);
+      } else {
+        router.replace("/(tabs)" as any);
+      }
     } catch (error) {
       console.error("Registration error:", error);
       Alert.alert(
@@ -136,6 +188,11 @@ export default function RegisterScreen() {
         return newErrors;
       });
     }
+
+    // Reset child found status when child email changes
+    if (field === "child_email") {
+      setChildFound(null);
+    }
   };
 
   const clearFieldError = (field: string) => {
@@ -147,9 +204,9 @@ export default function RegisterScreen() {
   };
 
   const getSelectedClassName = () => {
-    if (!formData.class_id) return "لطفا کلاس خود را انتخاب کنید";
-    const selected = classes.find(c => c.id === formData.class_id);
-    return selected ? selected.name : "لطفا کلاس خود را انتخاب کنید";
+    if (!formData.class_id) return "لطفا صنف خود را انتخاب کنید";
+    const selected = classes.find((c) => c.id === formData.class_id);
+    return selected ? selected.name : "لطفا صنف خود را انتخاب کنید";
   };
 
   return (
@@ -171,9 +228,9 @@ export default function RegisterScreen() {
                 style={styles.backButton}
                 onPress={() => router.back()}
               >
-                <Ionicons name="arrow-forward" size={24} color="#fff" />
+                <Ionicons name="arrow-back" size={24} color="#fff" />
               </TouchableOpacity>
-              <Text style={styles.logoText}>آموزش فارسی</Text>
+              <Text style={styles.logoText}>صفحه ثبت‌ نام</Text>
             </View>
 
             <View style={styles.card}>
@@ -375,7 +432,7 @@ export default function RegisterScreen() {
                   )}
                 </View>
 
-                {/* Role Selection */}
+                {/* Role Selection - Only Student and Parent */}
                 <View style={styles.inputGroup}>
                   <Text style={styles.inputLabel}>نقش کاربری</Text>
                   <TouchableOpacity
@@ -386,13 +443,7 @@ export default function RegisterScreen() {
                     onPress={() => setShowRoleOptions(!showRoleOptions)}
                   >
                     <Text style={[styles.input, { color: Colors.text }]}>
-                      {formData.role === "student"
-                        ? "دانش‌آموز"
-                        : formData.role === "teacher"
-                          ? "معلم"
-                          : formData.role === "admin"
-                            ? "مدیر"
-                            : "والدین"}
+                      {formData.role === "student" ? "دانش‌آموز" : "والدین"}
                     </Text>
                     <Ionicons
                       name="chevron-down"
@@ -402,7 +453,7 @@ export default function RegisterScreen() {
                   </TouchableOpacity>
                   {showRoleOptions && (
                     <View style={styles.optionsContainer}>
-                      {["student", "teacher", "admin", "parent"].map((role) => (
+                      {["student", "parent"].map((role) => (
                         <TouchableOpacity
                           key={role}
                           style={styles.optionItem}
@@ -413,13 +464,7 @@ export default function RegisterScreen() {
                           }}
                         >
                           <Text style={styles.optionText}>
-                            {role === "student"
-                              ? "دانش‌آموز"
-                              : role === "teacher"
-                                ? "معلم"
-                                : role === "admin"
-                                  ? "مدیر"
-                                  : "والدین"}
+                            {role === "student" ? "دانش‌آموز" : "والدین"}
                           </Text>
                         </TouchableOpacity>
                       ))}
@@ -427,10 +472,105 @@ export default function RegisterScreen() {
                   )}
                 </View>
 
-                {/* Class Selection for Students - Custom Dropdown */}
+                {/* Child Email Input for Parents - FIXED */}
+                {formData.role === "parent" && (
+                  <View style={styles.inputGroup}>
+                    <Text style={styles.inputLabel}>
+                      ایمیل دانش‌آموز (اختیاری)
+                    </Text>
+                    <View
+                      style={[
+                        styles.inputContainer,
+                        childFound?.exists === false && styles.inputWarning,
+                        childFound?.exists === true && styles.inputSuccess,
+                      ]}
+                    >
+                      <Ionicons
+                        name="person-outline"
+                        size={20}
+                        color={Colors.textSecondary}
+                        style={styles.inputIcon}
+                      />
+                      <TextInput
+                        style={styles.input}
+                        placeholder="ایمیل دانش‌آموز خود را وارد کنید"
+                        placeholderTextColor={Colors.textSecondary}
+                        value={formData.child_email}
+                        onChangeText={(text) => {
+                          // Update form data immediately
+                          updateFormData("child_email", text);
+
+                          // Clear previous timeout
+                          if (checkChildTimeoutRef.current) {
+                            clearTimeout(checkChildTimeoutRef.current);
+                          }
+
+                          // Reset child found status
+                          setChildFound(null);
+
+                          // Only check if there's text
+                          if (text.trim()) {
+                            // Set new timeout
+                            checkChildTimeoutRef.current = setTimeout(() => {
+                              checkChildEmail(text);
+                            }, 500);
+                          }
+                        }}
+                        keyboardType="email-address"
+                        autoCapitalize="none"
+                        autoCorrect={false}
+                        editable={!loading && !isCheckingChild}
+                        textAlign="right"
+                      />
+                      {isCheckingChild && (
+                        <ActivityIndicator
+                          size="small"
+                          color={Colors.primary}
+                        />
+                      )}
+                    </View>
+
+                    {/* Child Found Status */}
+                    {childFound?.exists === true && childFound.name && (
+                      <View style={styles.successMessage}>
+                        <Ionicons
+                          name="checkmark-circle"
+                          size={16}
+                          color={Colors.success}
+                        />
+                        <Text style={styles.successText}>
+                          دانش‌آموز {childFound.name}{" "}
+                          {childFound.class && `(کلاس ${childFound.class})`}{" "}
+                          یافت شد
+                        </Text>
+                      </View>
+                    )}
+
+                    {childFound?.exists === false && (
+                      <View style={styles.warningMessage}>
+                        <Ionicons
+                          name="alert-circle"
+                          size={16}
+                          color={Colors.warning}
+                        />
+                        <Text style={styles.warningText}>
+                          دانش‌آموزی با این ایمیل یافت نشد. می‌توانید بعداً
+                          اضافه کنید.
+                        </Text>
+                      </View>
+                    )}
+
+                    <Text style={styles.helperText}>
+                      با وارد کردن ایمیل دانش‌آموز، می‌توانید به‌طور خودکار به
+                      حساب فرزند خود متصل شوید
+                    </Text>
+                  </View>
+                )}
+
+                {/* Class Selection for Students */}
                 {formData.role === "student" && (
                   <View style={styles.inputGroup}>
-                    <Text style={styles.inputLabel}>کلاس</Text>
+                    <Text style={styles.inputLabel}>صنف</Text>
                     <TouchableOpacity
                       style={[
                         styles.inputContainer,
@@ -476,7 +616,7 @@ export default function RegisterScreen() {
                               !formData.class_id && styles.selectedOptionText,
                             ]}
                           >
-                            لطفا کلاس خود را انتخاب کنید
+                            لطفا صنف خود را انتخاب کنید
                           </Text>
                         </TouchableOpacity>
                         {classes.map((classItem) => (
@@ -544,6 +684,7 @@ export default function RegisterScreen() {
 }
 
 const styles = StyleSheet.create({
+  // ... (keep all your existing styles)
   container: {
     flex: 1,
   },
@@ -622,6 +763,12 @@ const styles = StyleSheet.create({
   inputError: {
     borderColor: Colors.danger,
   },
+  inputWarning: {
+    borderColor: Colors.warning,
+  },
+  inputSuccess: {
+    borderColor: Colors.success,
+  },
   inputIcon: {
     marginLeft: 8,
   },
@@ -639,6 +786,34 @@ const styles = StyleSheet.create({
   errorText: {
     fontSize: 12,
     color: Colors.danger,
+    textAlign: "right",
+    marginTop: 4,
+  },
+  successMessage: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginTop: 6,
+  },
+  successText: {
+    fontSize: 12,
+    color: Colors.success,
+    flex: 1,
+  },
+  warningMessage: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginTop: 6,
+  },
+  warningText: {
+    fontSize: 12,
+    color: Colors.warning,
+    flex: 1,
+  },
+  helperText: {
+    fontSize: 11,
+    color: Colors.textSecondary,
     textAlign: "right",
     marginTop: 4,
   },
@@ -663,20 +838,6 @@ const styles = StyleSheet.create({
   selectedOptionText: {
     color: Colors.primary,
     fontWeight: "600",
-  },
-  pickerContainer: {
-    backgroundColor: Colors.card,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    overflow: "hidden",
-    minHeight: 50,
-    justifyContent: "center",
-  },
-  picker: {
-    color: Colors.text,
-    height: 50,
-    width: "100%",
   },
   registerButton: {
     backgroundColor: Colors.primary,

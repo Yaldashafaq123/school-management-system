@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+// app/(student)/library/index.tsx
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -8,212 +9,107 @@ import {
   TouchableOpacity,
   RefreshControl,
   Image,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '@/constants/Colors';
 import { Header } from '@/components/Header';
-
-type Book = {
-  id: number;
-  title: string;
-  author: string;
-  description: string;
-  coverImage: string;
-  category: string;
-  subject: string;
-  grade: number;
-  pages: number;
-  fileSize: string;
-  fileFormat: string;
-  isFavorite: boolean;
-  lastRead?: {
-    page: number;
-    date: string;
-  };
-};
-
-type Category = {
-  id: number;
-  name: string;
-  icon: string;
-  count: number;
-};
+import { 
+  studentLibraryApi, 
+  Book, 
+  BookCategory,
+  getCategoryColor 
+} from '@/src/config/studentLibraryApi';
 
 export default function LibraryScreen() {
+  const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [selectedGrade, setSelectedGrade] = useState<number | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [viewType, setViewType] = useState<'grid' | 'list'>('grid');
+  const [categories, setCategories] = useState<BookCategory[]>([]);
+  const [books, setBooks] = useState<Book[]>([]);
+  const [recentReads, setRecentReads] = useState<Book[]>([]);
+  const [favorites, setFavorites] = useState<Book[]>([]);
+  const [grades, setGrades] = useState<number[]>([]);
+  const [filteredBooks, setFilteredBooks] = useState<Book[]>([]);
 
-  // Mock data
-  const categories: Category[] = [
-    { id: 1, name: 'ریاضی', icon: 'calculator', count: 24 },
-    { id: 2, name: 'علوم', icon: 'flask', count: 18 },
-    { id: 3, name: 'ادبیات', icon: 'book', count: 32 },
-    { id: 4, name: 'تاریخ', icon: 'time', count: 15 },
-    { id: 5, name: 'زبان انگلیسی', icon: 'language', count: 28 },
-    { id: 6, name: 'کامپیوتر', icon: 'desktop', count: 12 },
-  ];
+  const loadLibraryData = useCallback(async () => {
+    try {
+      const response = await studentLibraryApi.getLibrary();
+      if (response.success && response.data) {
+        setCategories(response.data.categories || []);
+        setBooks(response.data.books || []);
+        setRecentReads(response.data.recentReads || []);
+        setFavorites(response.data.favorites || []);
+        setGrades(response.data.grades || []);
+        setFilteredBooks(response.data.books || []);
+      }
+    } catch (error) {
+      console.error('Error loading library:', error);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, []);
 
-  const grades = [7, 8, 9, 10, 11, 12];
+  useEffect(() => {
+    loadLibraryData();
+  }, [loadLibraryData]);
 
-  const books: Book[] = [
-    {
-      id: 1,
-      title: 'ریاضیات پایه هفتم',
-      author: 'سازمان پژوهش و برنامه‌ریزی آموزشی',
-      description: 'کتاب درسی ریاضی پایه هفتم دوره اول متوسطه',
-      coverImage: 'https://via.placeholder.com/150x200/3B82F6/FFFFFF?text=ریاضی',
-      category: 'ریاضی',
-      subject: 'ریاضی',
-      grade: 7,
-      pages: 180,
-      fileSize: '25.4 MB',
-      fileFormat: 'PDF',
-      isFavorite: true,
-      lastRead: { page: 45, date: '۱۴۰۳/۱۰/۱۵' },
-    },
-    {
-      id: 2,
-      title: 'علوم تجربی هفتم',
-      author: 'سازمان پژوهش و برنامه‌ریزی آموزشی',
-      description: 'کتاب درسی علوم تجربی پایه هفتم',
-      coverImage: 'https://via.placeholder.com/150x200/10B981/FFFFFF?text=علوم',
-      category: 'علوم',
-      subject: 'علوم تجربی',
-      grade: 7,
-      pages: 210,
-      fileSize: '32.1 MB',
-      fileFormat: 'PDF',
-      isFavorite: false,
-    },
-    {
-      id: 3,
-      title: 'ادبیات فارسی هفتم',
-      author: 'سازمان پژوهش و برنامه‌ریزی آموزشی',
-      description: 'کتاب درسی ادبیات فارسی پایه هفتم',
-      coverImage: 'https://via.placeholder.com/150x200/F59E0B/FFFFFF?text=ادبیات',
-      category: 'ادبیات',
-      subject: 'ادبیات فارسی',
-      grade: 7,
-      pages: 165,
-      fileSize: '28.7 MB',
-      fileFormat: 'PDF',
-      isFavorite: true,
-      lastRead: { page: 89, date: '۱۴۰۳/۱۰/۱۰' },
-    },
-    {
-      id: 4,
-      title: 'تاریخ ایران باستان',
-      author: 'دکتر احمد احمدی',
-      description: 'کتاب کمک‌آموزشی تاریخ ایران باستان',
-      coverImage: 'https://via.placeholder.com/150x200/8B5CF6/FFFFFF?text=تاریخ',
-      category: 'تاریخ',
-      subject: 'مطالعات اجتماعی',
-      grade: 8,
-      pages: 245,
-      fileSize: '41.3 MB',
-      fileFormat: 'PDF',
-      isFavorite: false,
-    },
-    {
-      id: 5,
-      title: 'آموزش زبان انگلیسی',
-      author: 'خانم سارا محمدی',
-      description: 'کتاب مکالمه زبان انگلیسی سطح مقدماتی',
-      coverImage: 'https://via.placeholder.com/150x200/EC4899/FFFFFF?text=انگلیسی',
-      category: 'زبان انگلیسی',
-      subject: 'زبان انگلیسی',
-      grade: 9,
-      pages: 190,
-      fileSize: '29.8 MB',
-      fileFormat: 'PDF',
-      isFavorite: true,
-    },
-    {
-      id: 6,
-      title: 'مبانی کامپیوتر',
-      author: 'مهندس علی کریمی',
-      description: 'آموزش مبانی کامپیوتر و برنامه‌نویسی',
-      coverImage: 'https://via.placeholder.com/150x200/06B6D4/FFFFFF?text=کامپیوتر',
-      category: 'کامپیوتر',
-      subject: 'کار و فناوری',
-      grade: 10,
-      pages: 320,
-      fileSize: '52.6 MB',
-      fileFormat: 'PDF',
-      isFavorite: false,
-      lastRead: { page: 120, date: '۱۴۰۳/۰۹/۲۸' },
-    },
-    {
-      id: 7,
-      title: 'هندسه تحلیلی',
-      author: 'دکتر محمود رحیمی',
-      description: 'کتاب هندسه تحلیلی برای دانش‌آموزان متوسطه',
-      coverImage: 'https://via.placeholder.com/150x200/84CC16/FFFFFF?text=هندسه',
-      category: 'ریاضی',
-      subject: 'هندسه',
-      grade: 11,
-      pages: 275,
-      fileSize: '38.9 MB',
-      fileFormat: 'PDF',
-      isFavorite: true,
-    },
-    {
-      id: 8,
-      title: 'شیمی عمومی',
-      author: 'دکتر فاطمه حسینی',
-      description: 'کتاب شیمی عمومی پایه دهم',
-      coverImage: 'https://via.placeholder.com/150x200/F97316/FFFFFF?text=شیمی',
-      category: 'علوم',
-      subject: 'شیمی',
-      grade: 10,
-      pages: 295,
-      fileSize: '43.2 MB',
-      fileFormat: 'PDF',
-      isFavorite: false,
-    },
-  ];
+  useEffect(() => {
+    // Apply filters
+    let filtered = books;
 
-  const filteredBooks = books.filter(book => {
     if (searchQuery) {
-      return book.title.includes(searchQuery) ||
-             book.author.includes(searchQuery) ||
-             book.description.includes(searchQuery);
+      filtered = filtered.filter(book =>
+        book.title.includes(searchQuery) ||
+        book.author.includes(searchQuery) ||
+        book.description.includes(searchQuery)
+      );
     }
+
     if (selectedCategory) {
-      return book.category === selectedCategory;
+      filtered = filtered.filter(book => book.category === selectedCategory);
     }
+
     if (selectedGrade) {
-      return book.grade === selectedGrade;
+      filtered = filtered.filter(book => book.grade === selectedGrade);
     }
-    return true;
-  });
+
+    setFilteredBooks(filtered);
+  }, [searchQuery, selectedCategory, selectedGrade, books]);
 
   const handleRefresh = async () => {
     setRefreshing(true);
-    setTimeout(() => {
-      setRefreshing(false);
-    }, 1000);
+    await loadLibraryData();
   };
 
-  const toggleFavorite = (bookId: number) => {
-    // In real app, this would update the API
-    console.log('Toggle favorite for book:', bookId);
-  };
-
-  const getCategoryColor = (category: string) => {
-    const colors: Record<string, string> = {
-      'ریاضی': '#3B82F6',
-      'علوم': '#10B981',
-      'ادبیات': '#F59E0B',
-      'تاریخ': '#8B5CF6',
-      'زبان انگلیسی': '#EC4899',
-      'کامپیوتر': '#06B6D4',
-    };
-    return colors[category] || Colors.primary;
+  const toggleFavorite = async (bookId: number) => {
+    try {
+      const response = await studentLibraryApi.toggleFavorite(bookId);
+      if (response.success) {
+        // Update local state
+        setBooks(prevBooks =>
+          prevBooks.map(book =>
+            book.id === bookId
+              ? { ...book, isFavorite: response.isFavorite }
+              : book
+          )
+        );
+        setFilteredBooks(prevBooks =>
+          prevBooks.map(book =>
+            book.id === bookId
+              ? { ...book, isFavorite: response.isFavorite }
+              : book
+          )
+        );
+      }
+    } catch (error) {
+      console.error('Error toggling favorite:', error);
+    }
   };
 
   const renderGridView = () => (
@@ -288,7 +184,7 @@ export default function LibraryScreen() {
                 <View
                   style={[
                     styles.progressFill,
-                    { width: `${(book.lastRead.page / book.pages) * 100}%` }
+                    { width: `${book.readingProgress || 0}%` }
                   ]}
                 />
               </View>
@@ -358,6 +254,18 @@ export default function LibraryScreen() {
     </View>
   );
 
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.container} edges={['top']}>
+        <Header title="کتابخانه دیجیتال" />
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={Colors.primary} />
+          <Text style={styles.loadingText}>در حال بارگذاری کتابخانه...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <Header
@@ -406,84 +314,88 @@ export default function LibraryScreen() {
         </View>
 
         {/* Categories */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>دسته‌بندی موضوعی</Text>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.categoriesContainer}
-          >
-            {categories.map((category) => (
-              <TouchableOpacity
-                key={category.id}
-                style={[
-                  styles.categoryCard,
-                  selectedCategory === category.name && styles.categoryCardActive,
-                ]}
-                onPress={() => setSelectedCategory(
-                  selectedCategory === category.name ? null : category.name
-                )}
-              >
-                <View style={[
-                  styles.categoryIcon,
-                  { backgroundColor: `${getCategoryColor(category.name)}20` }
-                ]}>
-                  <Ionicons
-                    name={category.icon as any}
-                    size={24}
-                    color={getCategoryColor(category.name)}
-                  />
-                </View>
-                <Text style={styles.categoryName}>{category.name}</Text>
-                <Text style={styles.categoryCount}>{category.count} کتاب</Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-        </View>
+        {categories.length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>دسته‌بندی موضوعی</Text>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.categoriesContainer}
+            >
+              {categories.map((category) => (
+                <TouchableOpacity
+                  key={category.id}
+                  style={[
+                    styles.categoryCard,
+                    selectedCategory === category.name && styles.categoryCardActive,
+                  ]}
+                  onPress={() => setSelectedCategory(
+                    selectedCategory === category.name ? null : category.name
+                  )}
+                >
+                  <View style={[
+                    styles.categoryIcon,
+                    { backgroundColor: `${category.color}20` }
+                  ]}>
+                    <Ionicons
+                      name={category.icon as any}
+                      size={24}
+                      color={category.color}
+                    />
+                  </View>
+                  <Text style={styles.categoryName}>{category.name}</Text>
+                  <Text style={styles.categoryCount}>{category.count} کتاب</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        )}
 
         {/* Grade Filter */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>پایه تحصیلی</Text>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.gradesContainer}
-          >
-            <TouchableOpacity
-              style={[
-                styles.gradeChip,
-                selectedGrade === null && styles.gradeChipActive,
-              ]}
-              onPress={() => setSelectedGrade(null)}
+        {grades.length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>پایه تحصیلی</Text>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.gradesContainer}
             >
-              <Text style={[
-                styles.gradeChipText,
-                selectedGrade === null && styles.gradeChipTextActive,
-              ]}>
-                همه پایه‌ها
-              </Text>
-            </TouchableOpacity>
-            {grades.map((grade) => (
               <TouchableOpacity
-                key={grade}
                 style={[
                   styles.gradeChip,
-                  selectedGrade === grade && styles.gradeChipActive,
+                  selectedGrade === null && styles.gradeChipActive,
                 ]}
-                onPress={() => setSelectedGrade(
-                  selectedGrade === grade ? null : grade
-                )}
+                onPress={() => setSelectedGrade(null)}
               >
                 <Text style={[
                   styles.gradeChipText,
-                  selectedGrade === grade && styles.gradeChipTextActive,
+                  selectedGrade === null && styles.gradeChipTextActive,
                 ]}>
-                  پایه {grade}
+                  همه پایه‌ها
                 </Text>
               </TouchableOpacity>
-            ))}
-          </ScrollView>
-        </View>
+              {grades.map((grade) => (
+                <TouchableOpacity
+                  key={grade}
+                  style={[
+                    styles.gradeChip,
+                    selectedGrade === grade && styles.gradeChipActive,
+                  ]}
+                  onPress={() => setSelectedGrade(
+                    selectedGrade === grade ? null : grade
+                  )}
+                >
+                  <Text style={[
+                    styles.gradeChipText,
+                    selectedGrade === grade && styles.gradeChipTextActive,
+                  ]}>
+                    پایه {grade}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        )}
 
         {/* Active Filters */}
         {(selectedCategory || selectedGrade || searchQuery) && (
@@ -543,7 +455,7 @@ export default function LibraryScreen() {
         </View>
 
         {/* Recently Read */}
-        {books.some(b => b.lastRead) && (
+        {recentReads.length > 0 && (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>آخرین خوانده‌ها</Text>
             <ScrollView
@@ -551,26 +463,22 @@ export default function LibraryScreen() {
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={styles.recentBooksContainer}
             >
-              {books
-                .filter(b => b.lastRead)
-                .sort((a, b) => new Date(b.lastRead!.date).getTime() - new Date(a.lastRead!.date).getTime())
-                .slice(0, 5)
-                .map((book) => (
-                  <TouchableOpacity key={book.id} style={styles.recentBookCard}>
-                    <Image source={{ uri: book.coverImage }} style={styles.recentBookImage} />
-                    <View style={styles.recentBookInfo}>
-                      <Text style={styles.recentBookTitle} numberOfLines={1}>
-                        {book.title}
-                      </Text>
-                      <Text style={styles.recentBookProgress}>
-                        صفحه {book.lastRead!.page} از {book.pages}
-                      </Text>
-                      <Text style={styles.recentBookDate}>
-                        {book.lastRead!.date}
-                      </Text>
-                    </View>
-                  </TouchableOpacity>
-                ))}
+              {recentReads.map((book) => (
+                <TouchableOpacity key={book.id} style={styles.recentBookCard}>
+                  <Image source={{ uri: book.coverImage }} style={styles.recentBookImage} />
+                  <View style={styles.recentBookInfo}>
+                    <Text style={styles.recentBookTitle} numberOfLines={1}>
+                      {book.title}
+                    </Text>
+                    <Text style={styles.recentBookProgress}>
+                      صفحه {book.lastRead!.page} از {book.pages}
+                    </Text>
+                    <Text style={styles.recentBookDate}>
+                      {book.lastRead!.date}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              ))}
             </ScrollView>
           </View>
         )}
@@ -583,6 +491,16 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: Colors.background,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 14,
+    color: Colors.textSecondary,
   },
   content: {
     flex: 1,

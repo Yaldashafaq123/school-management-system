@@ -1,193 +1,151 @@
-// app/(teacher)/course/[id]/edit.tsx
-import React, { useState, useEffect } from 'react';
+import { Header } from "@/components/Header";
+import { Colors } from "@/constants/Colors";
+import { Lesson, teacherCoursesApi } from "@/src/config/teacherCoursesApi";
+import { Ionicons } from "@expo/vector-icons";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as ImagePicker from "expo-image-picker";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import { useCallback, useEffect, useState } from "react";
 import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-  TextInput,
+  ActivityIndicator,
   Alert,
   Image,
-  Switch,
-  ActivityIndicator,
   Modal,
-  FlatList,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
-import { useRouter, useLocalSearchParams } from 'expo-router';
-import { Colors } from '@/constants/Colors';
-import { Header } from '@/components/Header';
-import * as ImagePicker from 'expo-image-picker';
-import * as VideoThumbnails from 'expo-video-thumbnails';
+  ScrollView,
+  StyleSheet,
+  Switch,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
-// Mock data for editing
-const mockCourseData = {
-  1: {
-    id: 1,
-    title: 'ریاضی پایه هفتم',
-    slug: 'basic-math-7',
-    description: 'آموزش کامل ریاضی کلاس هفتم با مثال‌های عملی و تمرین‌های متنوع',
-    price: '1000000',
-    subject_id: '1',
-    class_id: '1',
-    is_general: false,
-    is_active: true,
-    requirements: 'آشنایی با چهار عمل اصلی ریاضی\nمفاهیم اولیه اعداد',
-    what_youll_learn: 'حل مسائل ریاضی پایه هفتم\nدرک مفاهیم هندسی\nکار با اعداد گویا',
-    thumbnail_url: 'https://images.unsplash.com/photo-1635070041078-e363dbe005cb?w=500',
-    lessons: [
-      {
-        id: 1,
-        title: 'آشنایی با اعداد صحیح',
-        description: 'مقدمه‌ای بر اعداد صحیح و کاربردهای آن',
-        order: 1,
-        video_url: 'https://example.com/video1.mp4',
-        duration: '15:30',
-        is_free: true,
-        thumbnail_url: 'https://images.unsplash.com/photo-1596495578065-6e0763fa1178?w=500',
-        created_at: '2024-01-15',
-      },
-      {
-        id: 2,
-        title: 'جمع و تفریق اعداد صحیح',
-        description: 'آموزش عملیات جمع و تفریق روی اعداد صحیح',
-        order: 2,
-        video_url: 'https://example.com/video2.mp4',
-        duration: '22:15',
-        is_free: false,
-        thumbnail_url: 'https://images.unsplash.com/photo-1509228468518-180dd4864904?w=500',
-        created_at: '2024-01-20',
-      },
-      {
-        id: 3,
-        title: 'ضرب و تقسیم اعداد صحیح',
-        description: 'آموزش عملیات ضرب و تقسیم اعداد صحیح',
-        order: 3,
-        video_url: 'https://example.com/video3.mp4',
-        duration: '18:45',
-        is_free: false,
-        thumbnail_url: 'https://images.unsplash.com/photo-1596495578065-6e0763fa1178?w=500',
-        created_at: '2024-01-25',
-      },
-    ],
-  },
-  2: {
-    id: 2,
-    title: 'علوم تجربی هفتم',
-    slug: 'science-7',
-    description: 'آموزش علوم تجربی کلاس هفتم با آزمایش‌های مجازی',
-    price: '800000',
-    subject_id: '2',
-    class_id: '1',
-    is_general: false,
-    is_active: true,
-    requirements: 'علاقه به علوم\nکنجکاوی علمی',
-    what_youll_learn: 'مفاهیم علوم تجربی\nآشنایی با بدن انسان\nآزمایش‌های علمی ساده',
-    thumbnail_url: 'https://images.unsplash.com/photo-1532094349884-543bc11b234d?w=500',
-    lessons: [
-      {
-        id: 1,
-        title: 'سلول و اجزای آن',
-        description: 'آشنایی با ساختار سلول و اجزای تشکیل‌دهنده آن',
-        order: 1,
-        video_url: 'https://example.com/science1.mp4',
-        duration: '20:10',
-        is_free: true,
-        thumbnail_url: 'https://images.unsplash.com/photo-1532094349884-543bc11b234d?w=500',
-        created_at: '2024-02-10',
-      },
-    ],
-  },
-};
+interface Subject {
+  id: number;
+  name: string;
+}
 
-const subjects = [
-  { id: 1, name: 'ریاضی' },
-  { id: 2, name: 'علوم تجربی' },
-  { id: 3, name: 'ادبیات فارسی' },
-  { id: 4, name: 'زبان انگلیسی' },
-  { id: 5, name: 'دینی' },
-  { id: 6, name: 'مطالعات اجتماعی' },
-  { id: 7, name: 'هنر' },
-  { id: 8, name: 'ورزش' },
-  { id: 9, name: 'برنامه‌نویسی' },
-  { id: 10, name: 'سایر' },
-];
-
-const classes = [
-  { id: 1, name: 'پایه هفتم' },
-  { id: 2, name: 'پایه هشتم' },
-  { id: 3, name: 'پایه نهم' },
-  { id: 4, name: 'پایه دهم' },
-  { id: 5, name: 'پایه یازدهم' },
-  { id: 6, name: 'پایه دوازدهم' },
-];
+interface Class {
+  id: number;
+  name: string;
+}
 
 export default function EditCourse() {
   const router = useRouter();
   const { id } = useLocalSearchParams();
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [uploadingImage, setUploadingImage] = useState(false);
   const [image, setImage] = useState<string | null>(null);
+  const [subjects, setSubjects] = useState<Subject[]>([]);
+  const [classes, setClasses] = useState<Class[]>([]);
+
   const [formData, setFormData] = useState({
-    title: '',
-    slug: '',
-    description: '',
-    price: '',
-    subject_id: '',
-    class_id: '',
-    is_general: false,
+    title: "",
+    description: "",
+    subject: "",
+    duration: "",
+    capacity: "",
+    schedule: "",
+    thumbnail: "",
+    classId: null as number | null,
     is_active: true,
-    requirements: '',
-    what_youll_learn: '',
-    thumbnail_url: '',
+    objectives: [] as string[],
+    requirements: [] as string[],
   });
-  
-  const [lessons, setLessons] = useState([]);
+
+  const [lessons, setLessons] = useState<Lesson[]>([]);
   const [showLessonModal, setShowLessonModal] = useState(false);
-  const [editingLesson, setEditingLesson] = useState(null);
+  const [editingLesson, setEditingLesson] = useState<Lesson | null>(null);
   const [lessonForm, setLessonForm] = useState({
-    title: '',
-    description: '',
-    video_url: '',
-    duration: '',
+    title: "",
+    description: "",
+    videoUrl: "",
+    duration: "",
     is_free: false,
-    order: 0,
+    order: 1,
   });
 
-  useEffect(() => {
-    loadCourseData();
-  }, [id]);
-
-  const loadCourseData = async () => {
-    setLoading(true);
+  const fetchCourseData = useCallback(async () => {
     try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      const courseData = mockCourseData[Number(id)] || mockCourseData[1];
-      setFormData({
-        title: courseData.title,
-        slug: courseData.slug,
-        description: courseData.description,
-        price: courseData.price,
-        subject_id: courseData.subject_id,
-        class_id: courseData.class_id,
-        is_general: courseData.is_general,
-        is_active: courseData.is_active,
-        requirements: courseData.requirements,
-        what_youll_learn: courseData.what_youll_learn,
-        thumbnail_url: courseData.thumbnail_url,
-      });
-      setImage(courseData.thumbnail_url);
-      setLessons(courseData.lessons || []);
-    } catch (error) {
-      Alert.alert('خطا', 'مشکلی در بارگذاری اطلاعات دوره پیش آمد.');
+      setLoading(true);
+      const response = await teacherCoursesApi.getCourse(Number(id));
+
+      if (response.success && response.data) {
+        const course = response.data;
+        setFormData({
+          title: course.title || "",
+          description: course.description || "",
+          subject: course.subject || "",
+          duration: course.duration?.toString() || "",
+          capacity: "",
+          schedule: course.schedule || "",
+          thumbnail: course.thumbnail_url || "",
+          classId: course.class_id,
+          is_active: course.is_active,
+          objectives: course.objectives?.map((obj) => obj.text) || [],
+          requirements: course.requirements?.map((req) => req.text) || [],
+        });
+        setImage(course.thumbnail_url || null);
+
+        // Fetch lessons for this course
+        await fetchCourseLessons();
+      }
+    } catch {
+      Alert.alert("خطا", "مشکلی در دریافت اطلاعات دوره پیش آمد.");
     } finally {
       setLoading(false);
     }
+  }, [id]);
+
+  const fetchCourseLessons = async () => {
+    try {
+      const response = await teacherCoursesApi.getCourseLessons(Number(id));
+      if (response.success) {
+        setLessons(response.data || []);
+      }
+    } catch {
+      // Silently fail - just show empty lessons
+    }
   };
+
+  const fetchSubjectsAndClasses = async () => {
+    try {
+      const token = await AsyncStorage.getItem("auth_token");
+
+      // Fetch classes
+      const classesResponse = await fetch(
+        `${process.env.EXPO_PUBLIC_API_URL}/teacher/available-classes`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        },
+      );
+      const classesData = await classesResponse.json();
+      setClasses(classesData.data || []);
+
+      // Fetch subjects
+      const subjectsResponse = await fetch(
+        `${process.env.EXPO_PUBLIC_API_URL}/teacher/subjects`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        },
+      );
+      const subjectsData = await subjectsResponse.json();
+      setSubjects(subjectsData.data || []);
+    } catch {
+      // Silently fail
+    }
+  };
+
+  useEffect(() => {
+    fetchCourseData();
+    fetchSubjectsAndClasses();
+  }, [fetchCourseData]);
 
   const handleImagePick = async () => {
     try {
@@ -200,13 +158,48 @@ export default function EditCourse() {
 
       if (!result.canceled) {
         setImage(result.assets[0].uri);
-        setFormData(prev => ({
+        setFormData((prev) => ({
           ...prev,
-          thumbnail_url: result.assets[0].uri,
+          thumbnail: result.assets[0].uri,
         }));
       }
-    } catch (error) {
-      Alert.alert('خطا', 'مشکلی در انتخاب تصویر پیش آمد.');
+    } catch {
+      Alert.alert("خطا", "مشکلی در انتخاب تصویر پیش آمد.");
+    }
+  };
+
+  const uploadImage = async (): Promise<string | null> => {
+    if (!image || image === formData.thumbnail) return formData.thumbnail;
+
+    try {
+      setUploadingImage(true);
+      const token = await AsyncStorage.getItem("auth_token");
+
+      const formDataImage = new FormData();
+      formDataImage.append("image", {
+        uri: image,
+        type: "image/jpeg",
+        name: "course.jpg",
+      } as any);
+
+      const response = await fetch(
+        `${process.env.EXPO_PUBLIC_API_URL}/upload`,
+        {
+          method: "POST",
+          body: formDataImage,
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        },
+      );
+
+      const data = await response.json();
+      return data.url;
+    } catch {
+      Alert.alert("خطا", "آپلود عکس با مشکل مواجه شد.");
+      return null;
+    } finally {
+      setUploadingImage(false);
     }
   };
 
@@ -214,153 +207,183 @@ export default function EditCourse() {
   const handleAddLesson = () => {
     setEditingLesson(null);
     setLessonForm({
-      title: '',
-      description: '',
-      video_url: '',
-      duration: '',
+      title: "",
+      description: "",
+      videoUrl: "",
+      duration: "",
       is_free: false,
       order: lessons.length + 1,
     });
     setShowLessonModal(true);
   };
 
-  const handleEditLesson = (lesson) => {
+  const handleEditLesson = (lesson: Lesson) => {
     setEditingLesson(lesson);
     setLessonForm({
       title: lesson.title,
       description: lesson.description,
-      video_url: lesson.video_url,
+      videoUrl: lesson.videoUrl,
       duration: lesson.duration,
-      is_free: lesson.is_free,
+      is_free: lesson.isFree,
       order: lesson.order,
     });
     setShowLessonModal(true);
   };
 
-  const handleDeleteLesson = (lessonId) => {
-    Alert.alert(
-      'حذف درس',
-      'آیا از حذف این درس اطمینان دارید؟',
-      [
-        { text: 'لغو', style: 'cancel' },
-        {
-          text: 'حذف',
-          style: 'destructive',
-          onPress: () => {
-            setLessons(lessons.filter(lesson => lesson.id !== lessonId));
-            Alert.alert('موفقیت', 'درس با موفقیت حذف شد.');
-          },
+  const handleDeleteLesson = async (lessonId: number) => {
+    Alert.alert("حذف درس", "آیا از حذف این درس اطمینان دارید؟", [
+      { text: "لغو", style: "cancel" },
+      {
+        text: "حذف",
+        style: "destructive",
+        onPress: async () => {
+          try {
+            const response = await teacherCoursesApi.deleteLesson(lessonId);
+            if (response.success) {
+              setLessons(lessons.filter((lesson) => lesson.id !== lessonId));
+              Alert.alert("موفقیت", "درس با موفقیت حذف شد.");
+            }
+          } catch {
+            Alert.alert("خطا", "مشکلی در حذف درس پیش آمد.");
+          }
         },
-      ]
-    );
+      },
+    ]);
   };
 
-  const handleSaveLesson = () => {
+  const handleSaveLesson = async () => {
     if (!lessonForm.title.trim()) {
-      Alert.alert('خطا', 'عنوان درس الزامی است.');
+      Alert.alert("خطا", "عنوان درس الزامی است.");
       return;
     }
 
-    if (!lessonForm.video_url.trim()) {
-      Alert.alert('خطا', 'لینک ویدیو الزامی است.');
+    if (!lessonForm.videoUrl.trim()) {
+      Alert.alert("خطا", "لینک ویدیو الزامی است.");
       return;
     }
 
-    if (editingLesson) {
-      // Update existing lesson
-      setLessons(lessons.map(lesson => 
-        lesson.id === editingLesson.id 
-          ? { ...editingLesson, ...lessonForm }
-          : lesson
-      ));
-      Alert.alert('موفقیت', 'درس با موفقیت ویرایش شد.');
-    } else {
-      // Add new lesson
-      const newLesson = {
-        id: Date.now(), // Temporary ID
-        ...lessonForm,
-        thumbnail_url: 'https://images.unsplash.com/photo-1596495578065-6e0763fa1178?w=500',
-        created_at: new Date().toISOString().split('T')[0],
-      };
-      setLessons([...lessons, newLesson]);
-      Alert.alert('موفقیت', 'درس جدید اضافه شد.');
+    try {
+      if (editingLesson && editingLesson.id) {
+        const response = await teacherCoursesApi.updateLesson(
+          editingLesson.id,
+          {
+            ...lessonForm,
+            course_id: Number(id),
+          },
+        );
+
+        if (response.success) {
+          setLessons(
+            lessons.map((lesson) =>
+              lesson.id === editingLesson.id
+                ? { ...editingLesson, ...lessonForm, id: editingLesson.id }
+                : lesson,
+            ),
+          );
+          Alert.alert("موفقیت", "درس با موفقیت ویرایش شد.");
+        }
+      } else {
+        const response = await teacherCoursesApi.createLesson(Number(id), {
+          ...lessonForm,
+          course_id: Number(id),
+        });
+
+        if (response.success) {
+          setLessons([...lessons, response.data]);
+          Alert.alert("موفقیت", "درس جدید اضافه شد.");
+        }
+      }
+      setShowLessonModal(false);
+      setEditingLesson(null);
+    } catch {
+      Alert.alert("خطا", "مشکلی در ذخیره درس پیش آمد.");
     }
-
-    setShowLessonModal(false);
-    setEditingLesson(null);
   };
 
-  const handleReorderLessons = (fromIndex, toIndex) => {
-    const updatedLessons = [...lessons];
-    const [movedLesson] = updatedLessons.splice(fromIndex, 1);
-    updatedLessons.splice(toIndex, 0, movedLesson);
-    
-    // Update order numbers
-    const reorderedLessons = updatedLessons.map((lesson, index) => ({
-      ...lesson,
-      order: index + 1,
-    }));
-    
-    setLessons(reorderedLessons);
+  const handleAddItem = (type: "objectives" | "requirements") => {
+    setFormData({
+      ...formData,
+      [type]: [...formData[type], ""],
+    });
   };
 
-  const generateSlug = (title: string) => {
-    return title
-      .replace(/[^آ-یa-z0-9\s]/gi, '')
-      .replace(/\s+/g, '-')
-      .toLowerCase();
+  const handleUpdateItem = (
+    type: "objectives" | "requirements",
+    index: number,
+    value: string,
+  ) => {
+    const newItems = [...formData[type]];
+    newItems[index] = value;
+    setFormData({ ...formData, [type]: newItems });
   };
 
-  const handleTitleChange = (text: string) => {
-    setFormData(prev => ({
-      ...prev,
-      title: text,
-      slug: generateSlug(text),
-    }));
+  const handleRemoveItem = (
+    type: "objectives" | "requirements",
+    index: number,
+  ) => {
+    const newItems = formData[type].filter((_, i) => i !== index);
+    setFormData({ ...formData, [type]: newItems });
   };
 
   const validateForm = () => {
     if (!formData.title.trim()) {
-      Alert.alert('خطا', 'عنوان دوره الزامی است.');
+      Alert.alert("خطا", "عنوان دوره الزامی است.");
       return false;
     }
-    
+
     if (!formData.description.trim()) {
-      Alert.alert('خطا', 'توضیحات دوره الزامی است.');
+      Alert.alert("خطا", "توضیحات دوره الزامی است.");
       return false;
     }
-    
-    if (!formData.subject_id && !formData.is_general) {
-      Alert.alert('خطا', 'لطفا موضوع دوره را انتخاب کنید.');
-      return false;
-    }
-    
+
     return true;
   };
 
+  // In handleSubmit function
   const handleSubmit = async () => {
     if (!validateForm()) return;
-    
+
     setSaving(true);
-    
+
     try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      
-      Alert.alert(
-        'موفقیت',
-        'تغییرات دوره با موفقیت ذخیره شد!',
-        [
-          {
-            text: 'باشه',
-            onPress: () => {
-              router.back();
-            },
-          },
-        ]
+      // Upload image if changed
+      let thumbnailUrl = formData.thumbnail;
+      if (image && image !== formData.thumbnail) {
+        const uploaded = await teacherCoursesApi.uploadImage(image);
+        thumbnailUrl = uploaded.url;
+      }
+
+      const updateData = {
+        title: formData.title,
+        description: formData.description,
+        subject: formData.subject,
+        duration: parseInt(formData.duration) || 0,
+        schedule: formData.schedule,
+        capacity: formData.capacity ? parseInt(formData.capacity) : undefined,
+        thumbnail: thumbnailUrl,
+        classId: formData.classId,
+        is_active: formData.is_active,
+        objectives: formData.objectives
+          .filter((obj) => obj.trim() !== "")
+          .map((text) => ({ text })),
+        requirements: formData.requirements
+          .filter((req) => req.trim() !== "")
+          .map((text) => ({ text })),
+      };
+
+      const response = await teacherCoursesApi.updateCourse(
+        Number(id),
+        updateData,
       );
+
+      if (response.success) {
+        Alert.alert("موفقیت", "تغییرات دوره با موفقیت ذخیره شد!", [
+          { text: "باشه", onPress: () => router.back() },
+        ]);
+      }
     } catch (error) {
-      Alert.alert('خطا', 'مشکلی در ذخیره تغییرات پیش آمد. لطفا دوباره تلاش کنید.');
+      console.error("Error updating course:", error);
+      Alert.alert("خطا", "مشکلی در ذخیره تغییرات پیش آمد.");
     } finally {
       setSaving(false);
     }
@@ -368,108 +391,61 @@ export default function EditCourse() {
 
   const handleDelete = () => {
     Alert.alert(
-      'حذف دوره',
-      'آیا از حذف این دوره اطمینان دارید؟ این عمل قابل بازگشت نیست.',
+      "حذف دوره",
+      "آیا از حذف این دوره اطمینان دارید؟ این عمل قابل بازگشت نیست.",
       [
-        { text: 'لغو', style: 'cancel' },
+        { text: "لغو", style: "cancel" },
         {
-          text: 'حذف',
-          style: 'destructive',
+          text: "حذف",
+          style: "destructive",
           onPress: async () => {
             try {
-              // Simulate delete API call
-              await new Promise(resolve => setTimeout(resolve, 1000));
-              Alert.alert('موفقیت', 'دوره با موفقیت حذف شد.');
-              router.push('/(teacher)/courses');
-            } catch (error) {
-              Alert.alert('خطا', 'مشکلی در حذف دوره پیش آمد.');
+              const response = await teacherCoursesApi.deleteCourse(Number(id));
+              if (response.success) {
+                Alert.alert("موفقیت", "دوره با موفقیت حذف شد.");
+                router.push("/(teacher)/courses");
+              }
+            } catch {
+              Alert.alert("خطا", "مشکلی در حذف دوره پیش آمد.");
             }
           },
         },
-      ]
+      ],
     );
   };
-
-  const renderLessonItem = ({ item, index, drag, isActive }) => (
-    <TouchableOpacity
-      style={[
-        styles.lessonItem,
-        isActive && styles.lessonItemActive,
-      ]}
-      onLongPress={drag}
-      onPress={() => handleEditLesson(item)}
-    >
-      <View style={styles.lessonDragHandle}>
-        <Ionicons name="reorder-three" size={24} color={Colors.textSecondary} />
-      </View>
-      
-      <View style={styles.lessonContent}>
-        <View style={styles.lessonHeader}>
-          <View style={styles.lessonOrder}>
-            <Text style={styles.lessonOrderText}>{item.order}</Text>
-          </View>
-          <Text style={styles.lessonTitle} numberOfLines={1}>
-            {item.title}
-          </Text>
-          {item.is_free && (
-            <View style={styles.freeBadge}>
-              <Text style={styles.freeBadgeText}>رایگان</Text>
-            </View>
-          )}
-        </View>
-        
-        <Text style={styles.lessonDescription} numberOfLines={2}>
-          {item.description}
-        </Text>
-        
-        <View style={styles.lessonFooter}>
-          <View style={styles.lessonMeta}>
-            <Ionicons name="time-outline" size={14} color={Colors.textSecondary} />
-            <Text style={styles.lessonMetaText}>{item.duration}</Text>
-          </View>
-          
-          <TouchableOpacity
-            style={styles.lessonAction}
-            onPress={() => handleDeleteLesson(item.id)}
-          >
-            <Ionicons name="trash-outline" size={18} color={Colors.danger} />
-          </TouchableOpacity>
-          
-          <TouchableOpacity
-            style={styles.lessonAction}
-            onPress={() => handleEditLesson(item)}
-          >
-            <Ionicons name="create-outline" size={18} color={Colors.primary} />
-          </TouchableOpacity>
-        </View>
-      </View>
-    </TouchableOpacity>
-  );
 
   if (loading) {
     return (
       <SafeAreaView style={styles.container}>
-        <Header title="بارگذاری..." showBack />
+        <Header title="ویرایش دوره" showBack />
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={Colors.primary} />
-          <Text style={styles.loadingText}>در حال بارگذاری اطلاعات دوره...</Text>
+          <Text style={styles.loadingText}>
+            در حال بارگذاری اطلاعات دوره...
+          </Text>
         </View>
       </SafeAreaView>
     );
   }
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
+    <SafeAreaView style={styles.container} edges={["top"]}>
       <Header
         title="ویرایش دوره"
         showBack
         onBackPress={() => router.back()}
         rightComponent={
           <View style={styles.headerActions}>
-            <TouchableOpacity onPress={handleAddLesson} style={styles.headerButton}>
+            <TouchableOpacity
+              onPress={handleAddLesson}
+              style={styles.headerButton}
+            >
               <Ionicons name="add-circle" size={24} color={Colors.primary} />
             </TouchableOpacity>
-            <TouchableOpacity onPress={handleDelete} style={styles.headerButton}>
+            <TouchableOpacity
+              onPress={handleDelete}
+              style={styles.headerButton}
+            >
               <Ionicons name="trash-outline" size={24} color={Colors.danger} />
             </TouchableOpacity>
           </View>
@@ -480,61 +456,133 @@ export default function EditCourse() {
         {/* Course Image */}
         <View style={styles.imageSection}>
           <Text style={styles.sectionTitle}>تصویر دوره</Text>
-          <TouchableOpacity style={styles.imagePicker} onPress={handleImagePick}>
+          <TouchableOpacity
+            style={styles.imagePicker}
+            onPress={handleImagePick}
+          >
             {image ? (
               <Image source={{ uri: image }} style={styles.selectedImage} />
             ) : (
               <View style={styles.imagePlaceholder}>
-                <Ionicons name="image-outline" size={40} color={Colors.textSecondary} />
-                <Text style={styles.imagePlaceholderText}>تغییر تصویر</Text>
-                <Text style={styles.imageHintText}>نسبت ۱۶:۹ پیشنهاد می‌شود</Text>
+                <Ionicons
+                  name="image-outline"
+                  size={40}
+                  color={Colors.textSecondary}
+                />
+                <Text style={styles.imagePlaceholderText}>انتخاب تصویر</Text>
               </View>
             )}
           </TouchableOpacity>
         </View>
 
-        {/* Lessons Management */}
+        {/* Lessons Management - Students will watch these videos */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>درس‌های دوره</Text>
-            <TouchableOpacity style={styles.addButton} onPress={handleAddLesson}>
+            <Text style={styles.sectionTitle}>درس‌های دوره (ویدیوها)</Text>
+            <TouchableOpacity
+              style={styles.addButton}
+              onPress={handleAddLesson}
+            >
               <Ionicons name="add" size={20} color="#fff" />
               <Text style={styles.addButtonText}>درس جدید</Text>
             </TouchableOpacity>
           </View>
-          
+
           {lessons.length === 0 ? (
             <View style={styles.emptyLessons}>
-              <Ionicons name="play-circle-outline" size={60} color={Colors.textSecondary} />
+              <Ionicons
+                name="play-circle-outline"
+                size={60}
+                color={Colors.textSecondary}
+              />
               <Text style={styles.emptyLessonsText}>
                 هنوز درسی اضافه نکرده‌اید
               </Text>
               <Text style={styles.emptyLessonsSubtext}>
-                درس‌های دوره را در این بخش مدیریت کنید
+                دانش‌آموزان ویدیوهای هر درس را به ترتیب مشاهده خواهند کرد
               </Text>
-              <TouchableOpacity style={styles.addFirstButton} onPress={handleAddLesson}>
-                <Text style={styles.addFirstButtonText}>اضافه کردن اولین درس</Text>
+              <TouchableOpacity
+                style={styles.addFirstButton}
+                onPress={handleAddLesson}
+              >
+                <Text style={styles.addFirstButtonText}>
+                  اضافه کردن اولین درس
+                </Text>
               </TouchableOpacity>
             </View>
           ) : (
             <View style={styles.lessonsContainer}>
               <Text style={styles.lessonsCount}>
-                {lessons.length} درس ({lessons.filter(l => l.is_free).length} رایگان)
+                {lessons.length} درس ({lessons.filter((l) => l.isFree).length}{" "}
+                رایگان)
               </Text>
-              
-              <View style={styles.lessonsList}>
-                {lessons
-                  .sort((a, b) => a.order - b.order)
-                  .map((lesson, index) => (
-                    <View key={lesson.id} style={styles.lessonWrapper}>
-                      {renderLessonItem({ item: lesson, index, drag: () => {}, isActive: false })}
+
+              {lessons
+                .sort((a, b) => (a.order || 0) - (b.order || 0))
+                .map((lesson, index) => (
+                  <View key={lesson.id || index} style={styles.lessonItem}>
+                    <View style={styles.lessonContent}>
+                      <View style={styles.lessonHeader}>
+                        <View style={styles.lessonOrder}>
+                          <Text style={styles.lessonOrderText}>
+                            {lesson.order || index + 1}
+                          </Text>
+                        </View>
+                        <Text style={styles.lessonTitle} numberOfLines={1}>
+                          {lesson.title}
+                        </Text>
+                        {lesson.isFree && (
+                          <View style={styles.freeBadge}>
+                            <Text style={styles.freeBadgeText}>رایگان</Text>
+                          </View>
+                        )}
+                      </View>
+
+                      <Text style={styles.lessonDescription} numberOfLines={2}>
+                        {lesson.description}
+                      </Text>
+
+                      <View style={styles.lessonFooter}>
+                        <View style={styles.lessonMeta}>
+                          <Ionicons
+                            name="time-outline"
+                            size={14}
+                            color={Colors.textSecondary}
+                          />
+                          <Text style={styles.lessonMetaText}>
+                            {lesson.duration}
+                          </Text>
+                        </View>
+
+                        <View style={styles.lessonActions}>
+                          <TouchableOpacity
+                            style={styles.lessonAction}
+                            onPress={() => handleEditLesson(lesson)}
+                          >
+                            <Ionicons
+                              name="create-outline"
+                              size={18}
+                              color={Colors.primary}
+                            />
+                          </TouchableOpacity>
+
+                          <TouchableOpacity
+                            style={styles.lessonAction}
+                            onPress={() =>
+                              lesson.id && handleDeleteLesson(lesson.id)
+                            }
+                          >
+                            <Ionicons
+                              name="trash-outline"
+                              size={18}
+                              color={Colors.danger}
+                            />
+                          </TouchableOpacity>
+                        </View>
+                      </View>
                     </View>
-                  ))}
-              </View>
-              
-              <Text style={styles.reorderHint}>
-                برای تغییر ترتیب، روی درس نگه دارید و بکشید
-              </Text>
+                  </View>
+                ))}
             </View>
           )}
         </View>
@@ -542,7 +590,7 @@ export default function EditCourse() {
         {/* Basic Information */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>اطلاعات اصلی</Text>
-          
+
           <View style={styles.formGroup}>
             <Text style={styles.label}>عنوان دوره *</Text>
             <TextInput
@@ -550,21 +598,12 @@ export default function EditCourse() {
               placeholder="مثال: ریاضی پایه هفتم"
               placeholderTextColor={Colors.textSecondary}
               value={formData.title}
-              onChangeText={handleTitleChange}
-              maxLength={100}
+              onChangeText={(text) =>
+                setFormData((prev) => ({ ...prev, title: text }))
+              }
             />
           </View>
-          
-          <View style={styles.formGroup}>
-            <Text style={styles.label}>شناسه (Slug)</Text>
-            <TextInput
-              style={[styles.input, styles.slugInput]}
-              value={formData.slug}
-              onChangeText={(text) => setFormData(prev => ({ ...prev, slug: text }))}
-            />
-            <Text style={styles.slugHint}>شناسه منحصر به فرد دوره برای URL</Text>
-          </View>
-          
+
           <View style={styles.formGroup}>
             <Text style={styles.label}>توضیحات دوره *</Text>
             <TextInput
@@ -572,152 +611,149 @@ export default function EditCourse() {
               placeholder="توضیحات کامل دوره را وارد کنید..."
               placeholderTextColor={Colors.textSecondary}
               value={formData.description}
-              onChangeText={(text) => setFormData(prev => ({ ...prev, description: text }))}
+              onChangeText={(text) =>
+                setFormData((prev) => ({ ...prev, description: text }))
+              }
               multiline
               numberOfLines={4}
               textAlignVertical="top"
             />
           </View>
-          
+
           <View style={styles.formGroup}>
-            <Text style={styles.label}>قیمت دوره (تومان)</Text>
+            <Text style={styles.label}>موضوع</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+              <View style={styles.chipContainer}>
+                {subjects.map((subject) => (
+                  <TouchableOpacity
+                    key={subject.id}
+                    style={[
+                      styles.chip,
+                      formData.subject === subject.name && styles.chipSelected,
+                    ]}
+                    onPress={() =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        subject: subject.name,
+                      }))
+                    }
+                  >
+                    <Text
+                      style={[
+                        styles.chipText,
+                        formData.subject === subject.name &&
+                          styles.chipTextSelected,
+                      ]}
+                    >
+                      {subject.name}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </ScrollView>
+          </View>
+
+          <View style={styles.formGroup}>
+            <Text style={styles.label}>مدت دوره (ساعت)</Text>
             <TextInput
               style={styles.input}
-              placeholder="مثال: 1000000"
+              placeholder="مثال: ۲۰"
               placeholderTextColor={Colors.textSecondary}
-              value={formData.price}
-              onChangeText={(text) => setFormData(prev => ({ ...prev, price: text }))}
+              value={formData.duration}
+              onChangeText={(text) =>
+                setFormData((prev) => ({ ...prev, duration: text }))
+              }
               keyboardType="numeric"
             />
-            <Text style={styles.hint}>برای دوره رایگان، فیلد را خالی بگذارید</Text>
           </View>
         </View>
 
-        {/* Course Settings */}
+        {/* Course Content - Objectives & Requirements */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>تنظیمات دوره</Text>
-          
-          <View style={styles.toggleGroup}>
-            <View style={styles.toggleRow}>
-              <Text style={styles.toggleLabel}>دوره عمومی</Text>
-              <Switch
-                value={formData.is_general}
-                onValueChange={(value) => setFormData(prev => ({ ...prev, is_general: value }))}
-                trackColor={{ false: '#767577', true: Colors.primary }}
-              />
-            </View>
-            <Text style={styles.toggleDescription}>
-              دوره‌های عمومی برای همه پایه‌ها قابل دسترسی هستند
-            </Text>
+          <Text style={styles.sectionTitle}>محتوای دوره</Text>
+
+          <View style={styles.formGroup}>
+            <Text style={styles.label}>اهداف یادگیری</Text>
+            {formData.objectives.map((objective, index) => (
+              <View key={index} style={styles.listItem}>
+                <TextInput
+                  style={[styles.input, styles.listInput]}
+                  value={objective}
+                  onChangeText={(text) =>
+                    handleUpdateItem("objectives", index, text)
+                  }
+                  placeholder={`هدف ${index + 1}`}
+                  placeholderTextColor={Colors.textSecondary}
+                />
+                {formData.objectives.length > 1 && (
+                  <TouchableOpacity
+                    style={styles.removeItemButton}
+                    onPress={() => handleRemoveItem("objectives", index)}
+                  >
+                    <Ionicons name="close" size={20} color={Colors.danger} />
+                  </TouchableOpacity>
+                )}
+              </View>
+            ))}
+            <TouchableOpacity
+              style={styles.addItemButton}
+              onPress={() => handleAddItem("objectives")}
+            >
+              <Ionicons name="add" size={20} color={Colors.primary} />
+              <Text style={styles.addItemText}>افزودن هدف یادگیری</Text>
+            </TouchableOpacity>
           </View>
-          
-          {!formData.is_general && (
-            <>
-              <View style={styles.formGroup}>
-                <Text style={styles.label}>موضوع</Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                  <View style={styles.chipContainer}>
-                    {subjects.map((subject) => (
-                      <TouchableOpacity
-                        key={subject.id}
-                        style={[
-                          styles.chip,
-                          formData.subject_id === subject.id.toString() && styles.chipSelected,
-                        ]}
-                        onPress={() => setFormData(prev => ({ 
-                          ...prev, 
-                          subject_id: subject.id.toString() 
-                        }))}
-                      >
-                        <Text style={[
-                          styles.chipText,
-                          formData.subject_id === subject.id.toString() && styles.chipTextSelected,
-                        ]}>
-                          {subject.name}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                </ScrollView>
+
+          <View style={styles.formGroup}>
+            <Text style={styles.label}>پیش‌نیازها</Text>
+            {formData.requirements.map((requirement, index) => (
+              <View key={index} style={styles.listItem}>
+                <TextInput
+                  style={[styles.input, styles.listInput]}
+                  value={requirement}
+                  onChangeText={(text) =>
+                    handleUpdateItem("requirements", index, text)
+                  }
+                  placeholder={`پیش‌نیاز ${index + 1}`}
+                  placeholderTextColor={Colors.textSecondary}
+                />
+                {formData.requirements.length > 1 && (
+                  <TouchableOpacity
+                    style={styles.removeItemButton}
+                    onPress={() => handleRemoveItem("requirements", index)}
+                  >
+                    <Ionicons name="close" size={20} color={Colors.danger} />
+                  </TouchableOpacity>
+                )}
               </View>
-              
-              <View style={styles.formGroup}>
-                <Text style={styles.label}>پایه تحصیلی</Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                  <View style={styles.chipContainer}>
-                    {classes.map((classItem) => (
-                      <TouchableOpacity
-                        key={classItem.id}
-                        style={[
-                          styles.chip,
-                          formData.class_id === classItem.id.toString() && styles.chipSelected,
-                        ]}
-                        onPress={() => setFormData(prev => ({ 
-                          ...prev, 
-                          class_id: classItem.id.toString() 
-                        }))}
-                      >
-                        <Text style={[
-                          styles.chipText,
-                          formData.class_id === classItem.id.toString() && styles.chipTextSelected,
-                        ]}>
-                          {classItem.name}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                </ScrollView>
-              </View>
-            </>
-          )}
-          
+            ))}
+            <TouchableOpacity
+              style={styles.addItemButton}
+              onPress={() => handleAddItem("requirements")}
+            >
+              <Ionicons name="add" size={20} color={Colors.primary} />
+              <Text style={styles.addItemText}>افزودن پیش‌نیاز</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* Settings */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>تنظیمات</Text>
+
           <View style={styles.toggleGroup}>
             <View style={styles.toggleRow}>
               <Text style={styles.toggleLabel}>فعال‌سازی دوره</Text>
               <Switch
                 value={formData.is_active}
-                onValueChange={(value) => setFormData(prev => ({ ...prev, is_active: value }))}
-                trackColor={{ false: '#767577', true: Colors.success }}
+                onValueChange={(value) =>
+                  setFormData((prev) => ({ ...prev, is_active: value }))
+                }
+                trackColor={{ false: "#767577", true: Colors.success }}
               />
             </View>
             <Text style={styles.toggleDescription}>
               دوره غیرفعال برای دانش‌آموزان نمایش داده نمی‌شود
-            </Text>
-          </View>
-        </View>
-
-        {/* Course Content */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>محتوای دوره</Text>
-          
-          <View style={styles.formGroup}>
-            <Text style={styles.label}>پیش‌نیازها</Text>
-            <TextInput
-              style={[styles.input, styles.textArea]}
-              placeholder="دانش و مهارت‌های مورد نیاز برای شرکت در دوره..."
-              placeholderTextColor={Colors.textSecondary}
-              value={formData.requirements}
-              onChangeText={(text) => setFormData(prev => ({ ...prev, requirements: text }))}
-              multiline
-              numberOfLines={3}
-              textAlignVertical="top"
-            />
-          </View>
-          
-          <View style={styles.formGroup}>
-            <Text style={styles.label}>آنچه می‌آموزید</Text>
-            <TextInput
-              style={[styles.input, styles.textArea]}
-              placeholder="مهارت‌ها و دانشی که پس از دوره کسب می‌کنید..."
-              placeholderTextColor={Colors.textSecondary}
-              value={formData.what_youll_learn}
-              onChangeText={(text) => setFormData(prev => ({ ...prev, what_youll_learn: text }))}
-              multiline
-              numberOfLines={4}
-              textAlignVertical="top"
-            />
-            <Text style={styles.hint}>
-              هر مورد را در یک خط جدید وارد کنید (با Enter)
             </Text>
           </View>
         </View>
@@ -731,16 +767,22 @@ export default function EditCourse() {
           >
             <Text style={styles.cancelButtonText}>لغو</Text>
           </TouchableOpacity>
-          
+
           <TouchableOpacity
-            style={[styles.button, styles.submitButton, saving && styles.submitButtonDisabled]}
+            style={[
+              styles.button,
+              styles.submitButton,
+              (saving || uploadingImage) && styles.submitButtonDisabled,
+            ]}
             onPress={handleSubmit}
-            disabled={saving}
+            disabled={saving || uploadingImage}
           >
-            {saving ? (
+            {saving || uploadingImage ? (
               <>
                 <ActivityIndicator size="small" color="#fff" />
-                <Text style={styles.submitButtonText}>در حال ذخیره...</Text>
+                <Text style={styles.submitButtonText}>
+                  {uploadingImage ? "در حال آپلود..." : "در حال ذخیره..."}
+                </Text>
               </>
             ) : (
               <>
@@ -750,11 +792,11 @@ export default function EditCourse() {
             )}
           </TouchableOpacity>
         </View>
-        
+
         <View style={styles.spacer} />
       </ScrollView>
 
-      {/* Lesson Modal */}
+      {/* Lesson Modal - For adding/editing videos */}
       <Modal
         visible={showLessonModal}
         transparent
@@ -765,13 +807,13 @@ export default function EditCourse() {
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>
-                {editingLesson ? 'ویرایش درس' : 'درس جدید'}
+                {editingLesson ? "ویرایش درس" : "درس جدید"}
               </Text>
               <TouchableOpacity onPress={() => setShowLessonModal(false)}>
                 <Ionicons name="close" size={24} color={Colors.text} />
               </TouchableOpacity>
             </View>
-            
+
             <ScrollView style={styles.modalBody}>
               <View style={styles.modalFormGroup}>
                 <Text style={styles.modalLabel}>عنوان درس *</Text>
@@ -779,90 +821,107 @@ export default function EditCourse() {
                   style={styles.modalInput}
                   placeholder="مثال: آشنایی با اعداد صحیح"
                   value={lessonForm.title}
-                  onChangeText={(text) => setLessonForm(prev => ({ ...prev, title: text }))}
+                  onChangeText={(text) =>
+                    setLessonForm((prev) => ({ ...prev, title: text }))
+                  }
                 />
               </View>
-              
+
               <View style={styles.modalFormGroup}>
                 <Text style={styles.modalLabel}>توضیحات</Text>
                 <TextInput
                   style={[styles.modalInput, styles.modalTextArea]}
                   placeholder="توضیحات کامل درس..."
                   value={lessonForm.description}
-                  onChangeText={(text) => setLessonForm(prev => ({ ...prev, description: text }))}
+                  onChangeText={(text) =>
+                    setLessonForm((prev) => ({ ...prev, description: text }))
+                  }
                   multiline
                   numberOfLines={3}
                   textAlignVertical="top"
                 />
               </View>
-              
+
               <View style={styles.modalFormGroup}>
                 <Text style={styles.modalLabel}>لینک ویدیو *</Text>
                 <TextInput
                   style={styles.modalInput}
                   placeholder="https://example.com/video.mp4"
-                  value={lessonForm.video_url}
-                  onChangeText={(text) => setLessonForm(prev => ({ ...prev, video_url: text }))}
+                  value={lessonForm.videoUrl}
+                  onChangeText={(text) =>
+                    setLessonForm((prev) => ({ ...prev, videoUrl: text }))
+                  }
                 />
                 <Text style={styles.modalHint}>
-                  از سرویس‌های میزبانی ویدیو مانند آپارات، یوتیوب یا Vimeo استفاده کنید
+                  می‌توانید از لینک‌های آپارات، یوتیوب یا سرور خود استفاده کنید
                 </Text>
               </View>
-              
+
               <View style={styles.modalFormGroup}>
                 <Text style={styles.modalLabel}>مدت زمان</Text>
                 <TextInput
                   style={styles.modalInput}
                   placeholder="مثال: 15:30"
                   value={lessonForm.duration}
-                  onChangeText={(text) => setLessonForm(prev => ({ ...prev, duration: text }))}
+                  onChangeText={(text) =>
+                    setLessonForm((prev) => ({ ...prev, duration: text }))
+                  }
                 />
-                <Text style={styles.modalHint}>فرقت دقیقه:ثانیه (مثال: 25:45)</Text>
+                <Text style={styles.modalHint}>
+                  فرمت: دقیقه:ثانیه (مثال: 25:45)
+                </Text>
               </View>
-              
+
               <View style={styles.modalFormGroup}>
                 <View style={styles.modalToggleRow}>
                   <Text style={styles.modalLabel}>درس رایگان</Text>
                   <Switch
                     value={lessonForm.is_free}
-                    onValueChange={(value) => setLessonForm(prev => ({ ...prev, is_free: value }))}
-                    trackColor={{ false: '#767577', true: Colors.success }}
+                    onValueChange={(value) =>
+                      setLessonForm((prev) => ({ ...prev, is_free: value }))
+                    }
+                    trackColor={{ false: "#767577", true: Colors.success }}
                   />
                 </View>
                 <Text style={styles.modalHint}>
                   درس‌های رایگان برای همه قابل مشاهده هستند
                 </Text>
               </View>
-              
+
               <View style={styles.modalFormGroup}>
-                <Text style={styles.modalLabel}>ترتیب</Text>
+                <Text style={styles.modalLabel}>ترتیب درس</Text>
                 <TextInput
                   style={styles.modalInput}
                   placeholder="شماره ترتیب"
                   value={lessonForm.order.toString()}
-                  onChangeText={(text) => setLessonForm(prev => ({ 
-                    ...prev, 
-                    order: parseInt(text) || 0 
-                  }))}
+                  onChangeText={(text) =>
+                    setLessonForm((prev) => ({
+                      ...prev,
+                      order: parseInt(text) || 0,
+                    }))
+                  }
                   keyboardType="numeric"
                 />
+                <Text style={styles.modalHint}>
+                  دانش‌آموزان درس‌ها را به این ترتیب مشاهده می‌کنند
+                </Text>
               </View>
             </ScrollView>
-            
+
             <View style={styles.modalFooter}>
-              <TouchableOpacity 
+              <TouchableOpacity
                 style={[styles.modalButton, styles.modalCancelButton]}
                 onPress={() => setShowLessonModal(false)}
               >
                 <Text style={styles.modalCancelButtonText}>لغو</Text>
               </TouchableOpacity>
-              
-              <TouchableOpacity 
+
+              <TouchableOpacity
                 style={[styles.modalButton, styles.modalSaveButton]}
                 onPress={handleSaveLesson}
               >
                 <Text style={styles.modalSaveButtonText}>
-                  {editingLesson ? 'ذخیره تغییرات' : 'اضافه کردن درس'}
+                  {editingLesson ? "ذخیره" : "اضافه کردن"}
                 </Text>
               </TouchableOpacity>
             </View>
@@ -880,8 +939,8 @@ const styles = StyleSheet.create({
   },
   loadingContainer: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
     gap: 16,
   },
   loadingText: {
@@ -889,7 +948,7 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
   },
   headerActions: {
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: 16,
   },
   headerButton: {
@@ -897,6 +956,12 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
+  },
+  imageSection: {
+    backgroundColor: Colors.card,
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
   },
   section: {
     backgroundColor: Colors.card,
@@ -906,19 +971,43 @@ const styles = StyleSheet.create({
     borderTopColor: Colors.border,
   },
   sectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     marginBottom: 16,
   },
   sectionTitle: {
     fontSize: 18,
-    fontWeight: 'bold',
+    fontWeight: "bold",
     color: Colors.text,
   },
+  imagePicker: {
+    height: 200,
+    backgroundColor: Colors.background,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: Colors.border,
+    borderStyle: "dashed",
+    overflow: "hidden",
+  },
+  selectedImage: {
+    width: "100%",
+    height: "100%",
+    resizeMode: "cover",
+  },
+  imagePlaceholder: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  imagePlaceholderText: {
+    fontSize: 16,
+    color: Colors.text,
+    marginTop: 8,
+  },
   addButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     backgroundColor: Colors.primary,
     paddingHorizontal: 12,
     paddingVertical: 8,
@@ -926,13 +1015,13 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   addButtonText: {
-    color: '#fff',
+    color: "#fff",
     fontSize: 14,
-    fontWeight: 'bold',
+    fontWeight: "bold",
   },
   emptyLessons: {
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     paddingVertical: 40,
     paddingHorizontal: 20,
   },
@@ -945,7 +1034,7 @@ const styles = StyleSheet.create({
   emptyLessonsSubtext: {
     fontSize: 14,
     color: Colors.textSecondary,
-    textAlign: 'center',
+    textAlign: "center",
     marginBottom: 24,
   },
   addFirstButton: {
@@ -955,47 +1044,34 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   addFirstButtonText: {
-    color: '#fff',
+    color: "#fff",
     fontSize: 14,
-    fontWeight: 'bold',
+    fontWeight: "bold",
   },
   lessonsContainer: {
-    marginTop: 8,
+    gap: 12,
   },
   lessonsCount: {
     fontSize: 14,
     color: Colors.textSecondary,
-    marginBottom: 12,
-  },
-  lessonsList: {
-    gap: 12,
-  },
-  lessonWrapper: {
     marginBottom: 8,
   },
   lessonItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     backgroundColor: Colors.background,
     borderRadius: 12,
     borderWidth: 1,
     borderColor: Colors.border,
-    overflow: 'hidden',
-  },
-  lessonItemActive: {
-    backgroundColor: 'rgba(59, 130, 246, 0.1)',
-  },
-  lessonDragHandle: {
-    paddingHorizontal: 12,
-    paddingVertical: 16,
+    overflow: "hidden",
   },
   lessonContent: {
     flex: 1,
     padding: 12,
   },
   lessonHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     marginBottom: 8,
     gap: 8,
   },
@@ -1004,22 +1080,22 @@ const styles = StyleSheet.create({
     height: 28,
     borderRadius: 14,
     backgroundColor: Colors.primary,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
   },
   lessonOrderText: {
-    color: '#fff',
+    color: "#fff",
     fontSize: 12,
-    fontWeight: 'bold',
+    fontWeight: "bold",
   },
   lessonTitle: {
     flex: 1,
     fontSize: 15,
-    fontWeight: '600',
+    fontWeight: "600",
     color: Colors.text,
   },
   freeBadge: {
-    backgroundColor: 'rgba(16, 185, 129, 0.1)',
+    backgroundColor: "rgba(16, 185, 129, 0.1)",
     paddingHorizontal: 8,
     paddingVertical: 2,
     borderRadius: 4,
@@ -1027,7 +1103,7 @@ const styles = StyleSheet.create({
   freeBadgeText: {
     fontSize: 10,
     color: Colors.success,
-    fontWeight: 'bold',
+    fontWeight: "bold",
   },
   lessonDescription: {
     fontSize: 13,
@@ -1036,71 +1112,32 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
   lessonFooter: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
   },
   lessonMeta: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 4,
   },
   lessonMetaText: {
     fontSize: 12,
     color: Colors.textSecondary,
   },
+  lessonActions: {
+    flexDirection: "row",
+    gap: 8,
+  },
   lessonAction: {
     padding: 4,
-    marginLeft: 8,
-  },
-  reorderHint: {
-    fontSize: 11,
-    color: Colors.textSecondary,
-    textAlign: 'center',
-    marginTop: 12,
-    fontStyle: 'italic',
-  },
-  imageSection: {
-    backgroundColor: Colors.card,
-    padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
-  },
-  imagePicker: {
-    height: 200,
-    backgroundColor: Colors.background,
-    borderRadius: 12,
-    borderWidth: 2,
-    borderColor: Colors.border,
-    borderStyle: 'dashed',
-    overflow: 'hidden',
-  },
-  selectedImage: {
-    width: '100%',
-    height: '100%',
-    resizeMode: 'cover',
-  },
-  imagePlaceholder: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  imagePlaceholderText: {
-    fontSize: 16,
-    color: Colors.text,
-    marginTop: 8,
-  },
-  imageHintText: {
-    fontSize: 12,
-    color: Colors.textSecondary,
-    marginTop: 4,
   },
   formGroup: {
     marginBottom: 20,
   },
   label: {
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: "600",
     color: Colors.text,
     marginBottom: 8,
   },
@@ -1112,46 +1149,14 @@ const styles = StyleSheet.create({
     padding: 12,
     fontSize: 15,
     color: Colors.text,
-    textAlign: 'right',
-  },
-  slugInput: {
-    backgroundColor: '#f8f9fa',
-    color: Colors.text,
-  },
-  slugHint: {
-    fontSize: 11,
-    color: Colors.textSecondary,
-    marginTop: 4,
+    textAlign: "right",
   },
   textArea: {
     minHeight: 100,
-    textAlignVertical: 'top',
-  },
-  hint: {
-    fontSize: 11,
-    color: Colors.textSecondary,
-    marginTop: 4,
-  },
-  toggleGroup: {
-    marginBottom: 20,
-  },
-  toggleRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 4,
-  },
-  toggleLabel: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: Colors.text,
-  },
-  toggleDescription: {
-    fontSize: 12,
-    color: Colors.textSecondary,
+    textAlignVertical: "top",
   },
   chipContainer: {
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: 8,
     paddingVertical: 8,
   },
@@ -1172,20 +1177,64 @@ const styles = StyleSheet.create({
     color: Colors.text,
   },
   chipTextSelected: {
-    color: '#fff',
-    fontWeight: 'bold',
+    color: "#fff",
+    fontWeight: "bold",
+  },
+  listItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 8,
+  },
+  listInput: {
+    flex: 1,
+  },
+  removeItemButton: {
+    padding: 8,
+  },
+  addItemButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 12,
+    backgroundColor: "rgba(59, 130, 246, 0.1)",
+    borderRadius: 8,
+    gap: 8,
+  },
+  addItemText: {
+    fontSize: 14,
+    color: Colors.primary,
+    fontWeight: "500",
+  },
+  toggleGroup: {
+    marginBottom: 20,
+  },
+  toggleRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 4,
+  },
+  toggleLabel: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: Colors.text,
+  },
+  toggleDescription: {
+    fontSize: 12,
+    color: Colors.textSecondary,
   },
   actions: {
-    flexDirection: 'row',
+    flexDirection: "row",
     padding: 16,
     gap: 12,
     marginTop: 16,
   },
   button: {
     flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
     padding: 16,
     borderRadius: 8,
     gap: 8,
@@ -1207,34 +1256,37 @@ const styles = StyleSheet.create({
   },
   submitButtonText: {
     fontSize: 16,
-    color: '#fff',
-    fontWeight: 'bold',
+    color: "#fff",
+    fontWeight: "bold",
+  },
+  spacer: {
+    height: 80,
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    justifyContent: "center",
+    alignItems: "center",
     padding: 16,
   },
   modalContent: {
     backgroundColor: Colors.background,
     borderRadius: 16,
-    width: '100%',
-    maxHeight: '80%',
-    overflow: 'hidden',
+    width: "100%",
+    maxHeight: "80%",
+    overflow: "hidden",
   },
   modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     padding: 16,
     borderBottomWidth: 1,
     borderBottomColor: Colors.border,
   },
   modalTitle: {
     fontSize: 18,
-    fontWeight: 'bold',
+    fontWeight: "bold",
     color: Colors.text,
   },
   modalBody: {
@@ -1246,7 +1298,7 @@ const styles = StyleSheet.create({
   },
   modalLabel: {
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: "600",
     color: Colors.text,
     marginBottom: 8,
   },
@@ -1258,11 +1310,11 @@ const styles = StyleSheet.create({
     padding: 12,
     fontSize: 15,
     color: Colors.text,
-    textAlign: 'right',
+    textAlign: "right",
   },
   modalTextArea: {
     minHeight: 80,
-    textAlignVertical: 'top',
+    textAlignVertical: "top",
   },
   modalHint: {
     fontSize: 11,
@@ -1270,13 +1322,12 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   modalToggleRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 4,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
   },
   modalFooter: {
-    flexDirection: 'row',
+    flexDirection: "row",
     padding: 16,
     gap: 12,
     borderTopWidth: 1,
@@ -1286,7 +1337,7 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: 12,
     borderRadius: 8,
-    alignItems: 'center',
+    alignItems: "center",
   },
   modalCancelButton: {
     backgroundColor: Colors.card,
@@ -1296,17 +1347,14 @@ const styles = StyleSheet.create({
   modalCancelButtonText: {
     fontSize: 14,
     color: Colors.text,
-    fontWeight: 'bold',
+    fontWeight: "bold",
   },
   modalSaveButton: {
     backgroundColor: Colors.primary,
   },
   modalSaveButtonText: {
     fontSize: 14,
-    color: '#fff',
-    fontWeight: 'bold',
-  },
-  spacer: {
-    height: 80,
+    color: "#fff",
+    fontWeight: "bold",
   },
 });

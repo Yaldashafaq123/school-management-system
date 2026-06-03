@@ -1,5 +1,4 @@
 // app/(teacher)/courses.tsx
-
 import { CourseCard } from "@/components/CourseCard";
 import { Header } from "@/components/Header";
 import { Colors } from "@/constants/Colors";
@@ -33,12 +32,12 @@ interface Course {
   subject_id: number | null;
   is_general: boolean;
   student_count: number;
-  revenue: number;
   rating: number;
   is_active: boolean;
   created_at: string;
   assignments_count?: number;
   exams_count?: number;
+  is_toggling?: boolean;
 }
 
 interface Stats {
@@ -46,7 +45,6 @@ interface Stats {
   active: number;
   inactive: number;
   totalStudents: number;
-  totalRevenue: number;
 }
 
 export default function TeacherCourses() {
@@ -58,18 +56,20 @@ export default function TeacherCourses() {
     active: 0,
     inactive: 0,
     totalStudents: 0,
-    totalRevenue: 0,
   });
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [filter, setFilter] = useState<"all" | "active" | "inactive">("all");
   const [refreshing, setRefreshing] = useState(false);
 
-  // Fetch courses from API
   const fetchCourses = async () => {
     try {
       const token = await AsyncStorage.getItem("auth_token");
-      if (!token) return;
+      if (!token) {
+        Alert.alert("خطا", "لطفا مجددا وارد شوید");
+        router.replace("/(auth)/login");
+        return;
+      }
 
       const response = await fetch(`${BASE_URL}/teacher/courses`, {
         headers: {
@@ -77,22 +77,43 @@ export default function TeacherCourses() {
         },
       });
 
+      if (response.status === 401) {
+        await AsyncStorage.removeItem("auth_token");
+        await AsyncStorage.removeItem("user_data");
+        Alert.alert("نشست منقضی", "لطفا مجددا وارد شوید");
+        router.replace("/(auth)/login");
+        return;
+      }
+
       const result = await response.json();
 
-      if (response.ok && result.data) {
-        setCourses(result.data.courses || []);
-        setStats(
-          result.data.stats || {
-            total: 0,
-            active: 0,
-            inactive: 0,
-            totalStudents: 0,
-            totalRevenue: 0,
-          },
+      if (response.ok) {
+        const coursesData = result.data?.courses || result.courses || [];
+
+        const activeCount = coursesData.filter(
+          (c: Course) => c.is_active,
+        ).length;
+        const inactiveCount = coursesData.filter(
+          (c: Course) => !c.is_active,
+        ).length;
+        const totalStudents = coursesData.reduce(
+          (sum: number, c: Course) => sum + (c.student_count || 0),
+          0,
         );
+
+        setCourses(coursesData);
+        setStats({
+          total: coursesData.length,
+          active: activeCount,
+          inactive: inactiveCount,
+          totalStudents: totalStudents,
+        });
+      } else {
+        Alert.alert("خطا", result.message || "خطا در دریافت اطلاعات");
       }
     } catch (error) {
       console.error("Error fetching courses:", error);
+      Alert.alert("خطا", "خطا در ارتباط با سرور");
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -103,11 +124,9 @@ export default function TeacherCourses() {
     fetchCourses();
   }, []);
 
-  // Filter courses
   useEffect(() => {
     let filtered = [...courses];
 
-    // Apply search filter
     if (searchQuery.trim()) {
       filtered = filtered.filter(
         (course) =>
@@ -116,7 +135,6 @@ export default function TeacherCourses() {
       );
     }
 
-    // Apply status filter
     if (filter === "active") {
       filtered = filtered.filter((course) => course.is_active);
     } else if (filter === "inactive") {
@@ -138,7 +156,11 @@ export default function TeacherCourses() {
   const handleToggleStatus = async (courseId: number) => {
     try {
       const token = await AsyncStorage.getItem("auth_token");
-      if (!token) return;
+      if (!token) {
+        Alert.alert("خطا", "لطفا مجددا وارد شوید");
+        router.replace("/(auth)/login");
+        return;
+      }
 
       Alert.alert(
         "تغییر وضعیت دوره",
@@ -149,48 +171,105 @@ export default function TeacherCourses() {
             text: "تغییر",
             style: "default",
             onPress: async () => {
-              const response = await fetch(
-                `${BASE_URL}/teacher/courses/${courseId}/toggle`,
-                {
-                  method: "PATCH",
-                  headers: {
-                    Authorization: `Bearer ${token}`,
-                  },
-                },
+              setCourses((prev) =>
+                prev.map((course) =>
+                  course.id === courseId
+                    ? { ...course, is_toggling: true }
+                    : course,
+                ),
               );
 
-              if (response.ok) {
-                // Update local state
+              try {
+                const response = await fetch(
+                  `${BASE_URL}/teacher/courses/${courseId}/toggle`,
+                  {
+                    method: "PATCH",
+                    headers: {
+                      Authorization: `Bearer ${token}`,
+                    },
+                  },
+                );
+
+                if (response.status === 401) {
+                  await AsyncStorage.removeItem("auth_token");
+                  await AsyncStorage.removeItem("user_data");
+                  Alert.alert("نشست منقضی", "لطفا مجددا وارد شوید");
+                  router.replace("/(auth)/login");
+                  return;
+                }
+
+                const result = await response.json();
+
                 setCourses((prev) =>
                   prev.map((course) =>
                     course.id === courseId
-                      ? { ...course, is_active: !course.is_active }
+                      ? { ...course, is_toggling: false }
                       : course,
                   ),
                 );
-                Alert.alert("موفقیت", "وضعیت دوره تغییر کرد");
-              } else {
-                Alert.alert("خطا", "تغییر وضعیت ناموفق بود");
+
+                if (response.ok) {
+                  setCourses((prev) =>
+                    prev.map((course) =>
+                      course.id === courseId
+                        ? {
+                            ...course,
+                            is_active: result.is_active ?? !course.is_active,
+                          }
+                        : course,
+                    ),
+                  );
+
+                  setStats((prev) => {
+                    const course = courses.find((c) => c.id === courseId);
+                    if (!course) return prev;
+
+                    const wasActive = course.is_active;
+                    return {
+                      ...prev,
+                      active: wasActive ? prev.active - 1 : prev.active + 1,
+                      inactive: wasActive
+                        ? prev.inactive + 1
+                        : prev.inactive - 1,
+                    };
+                  });
+
+                  Alert.alert("موفقیت", "وضعیت دوره با موفقیت تغییر کرد");
+                } else {
+                  Alert.alert(
+                    "خطا",
+                    result.message || "تغییر وضعیت ناموفق بود",
+                  );
+                }
+              } catch (error) {
+                setCourses((prev) =>
+                  prev.map((course) =>
+                    course.id === courseId
+                      ? { ...course, is_toggling: false }
+                      : course,
+                  ),
+                );
+                console.error("Toggle error:", error);
+                Alert.alert("خطا", "خطا در ارتباط با سرور");
               }
             },
           },
         ],
       );
     } catch (error) {
+      console.error("Toggle error:", error);
       Alert.alert("خطا", "خطا در ارتباط با سرور");
     }
   };
 
+  // ✅ FIXED: Correct navigation to edit page
   const handleEditCourse = (courseId: number) => {
+    console.log("Navigating to edit course:", courseId);
     router.push(`/(teacher)/course/${courseId}/edit` as any);
   };
 
   const handleCreateCourse = () => {
     router.push("/(teacher)/courses/create" as any);
-  };
-
-  const formatPrice = (price: number) => {
-    return price.toLocaleString("fa-IR") + " تومان";
   };
 
   if (loading) {
@@ -390,17 +469,7 @@ export default function TeacherCourses() {
                           color={Colors.textSecondary}
                         />
                         <Text style={styles.courseStatText}>
-                          {course.student_count}
-                        </Text>
-                      </View>
-                      <View style={styles.courseStat}>
-                        <Ionicons
-                          name="cash"
-                          size={14}
-                          color={Colors.textSecondary}
-                        />
-                        <Text style={styles.courseStatText}>
-                          {formatPrice(course.revenue)}
+                          {course.student_count || 0}
                         </Text>
                       </View>
                       <View style={styles.courseStat}>
@@ -410,7 +479,7 @@ export default function TeacherCourses() {
                           color={Colors.warning}
                         />
                         <Text style={styles.courseStatText}>
-                          {course.rating.toFixed(1)}
+                          {course.rating?.toFixed(1) || 0}
                         </Text>
                       </View>
                     </View>
@@ -424,42 +493,44 @@ export default function TeacherCourses() {
                             : styles.statusInactive,
                         ]}
                         onPress={() => handleToggleStatus(course.id)}
+                        disabled={course.is_toggling}
                       >
-                        <Ionicons
-                          name={
-                            course.is_active
-                              ? "checkmark-circle"
-                              : "close-circle"
-                          }
-                          size={16}
-                          color={
-                            course.is_active ? Colors.success : Colors.danger
-                          }
-                        />
-                        <Text
-                          style={[
-                            styles.statusText,
-                            {
-                              color: course.is_active
-                                ? Colors.success
-                                : Colors.danger,
-                            },
-                          ]}
-                        >
-                          {course.is_active ? "فعال" : "غیرفعال"}
-                        </Text>
-                      </TouchableOpacity>
-
-                      <TouchableOpacity
-                        style={styles.editButton}
-                        onPress={() => handleEditCourse(course.id)}
-                      >
-                        <Ionicons
-                          name="create-outline"
-                          size={16}
-                          color={Colors.primary}
-                        />
-                        <Text style={styles.editText}>ویرایش</Text>
+                        {course.is_toggling ? (
+                          <ActivityIndicator
+                            size="small"
+                            color={
+                              course.is_active ? Colors.success : Colors.danger
+                            }
+                          />
+                        ) : (
+                          <>
+                            <Ionicons
+                              name={
+                                course.is_active
+                                  ? "checkmark-circle"
+                                  : "close-circle"
+                              }
+                              size={16}
+                              color={
+                                course.is_active
+                                  ? Colors.success
+                                  : Colors.danger
+                              }
+                            />
+                            <Text
+                              style={[
+                                styles.statusText,
+                                {
+                                  color: course.is_active
+                                    ? Colors.success
+                                    : Colors.danger,
+                                },
+                              ]}
+                            >
+                              {course.is_active ? "فعال" : "غیرفعال"}
+                            </Text>
+                          </>
+                        )}
                       </TouchableOpacity>
                     </View>
                   </View>
@@ -641,6 +712,8 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: 8,
     gap: 6,
+    minWidth: 70,
+    justifyContent: "center",
   },
   statusActive: {
     backgroundColor: "rgba(16, 185, 129, 0.1)",

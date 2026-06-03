@@ -1,401 +1,461 @@
-import React, { useState, useEffect } from 'react';
+// app/(admin)/courses.tsx
+import { Header } from "@/components/Header";
+import { Colors } from "@/constants/Colors";
 import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-  TextInput,
-  Alert,
+  Course,
+  courseApi,
+  CourseStats
+} from "@/src/config/courseApi";
+import { Ionicons } from "@expo/vector-icons";
+import { useRouter } from "expo-router";
+import { useEffect, useState } from "react";
+import {
   ActivityIndicator,
+  Alert,
   Image,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
-import { Colors } from '../../../constants/Colors';
-import { Header } from '../../../components/Header';
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
-interface Course {
-  id: number;
-  title: string;
-  description: string;
-  thumbnail_url: string;
-  teacher_name: string;
-  price: number;
-  is_free: boolean;
-  rating: number;
-  student_count: number;
-  category: string;
-  status: 'published' | 'draft' | 'archived';
-  created_at: string;
-  updated_at: string;
-  enrolled_students: number;
-  completion_rate: number;
-  avg_rating: number;
-}
-
-export default function CoursesManagement() {
+export default function CourseManagementScreen() {
   const router = useRouter();
-  const [courses, setCourses] = useState<Course[]>([]);
-  const [filteredCourses, setFilteredCourses] = useState<Course[]>([]);
   const [loading, setLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [filterStatus, setFilterStatus] = useState<string>('all');
-  const [filterCategory, setFilterCategory] = useState<string>('all');
+  const [refreshing, setRefreshing] = useState(false);
+  const [courses, setCourses] = useState<Course[]>([]);
+  const [stats, setStats] = useState<CourseStats | null>(null);
+  const [filterStatus, setFilterStatus] = useState<string>("all");
+  const [filterType, setFilterType] = useState<string>("all");
 
   useEffect(() => {
-    fetchCourses();
+    loadData();
   }, []);
 
-  useEffect(() => {
-    filterCourses();
-  }, [searchQuery, filterStatus, filterCategory, courses]);
-
-  const fetchCourses = async () => {
+  const loadData = async () => {
     try {
       setLoading(true);
-      // TODO: Replace with actual API call
-      const mockCourses: Course[] = [
-        {
-          id: 1,
-          title: 'ریاضی پیشرفته پایه هفتم',
-          description: 'آموزش کامل ریاضیات پیشرفته برای پایه هفتم',
-          thumbnail_url: 'https://via.placeholder.com/300x200',
-          teacher_name: 'دکتر علی محمدی',
-          price: 500000,
-          is_free: false,
-          rating: 4.8,
-          student_count: 245,
-          category: 'ریاضی',
-          status: 'published',
-          created_at: '۱۴۰۳/۰۱/۱۵',
-          updated_at: '۱۴۰۳/۰۶/۲۰',
-          enrolled_students: 245,
-          completion_rate: 78,
-          avg_rating: 4.8,
-        },
-        {
-          id: 2,
-          title: 'برنامه‌نویسی پایتون',
-          description: 'آموزش برنامه‌نویسی پایتون از صفر',
-          thumbnail_url: 'https://via.placeholder.com/300x200',
-          teacher_name: 'مهندس مریم رضایی',
-          price: 0,
-          is_free: true,
-          rating: 4.9,
-          student_count: 320,
-          category: 'برنامه‌نویسی',
-          status: 'published',
-          created_at: '۱۴۰۳/۰۲/۱۰',
-          updated_at: '۱۴۰۳/۰۵/۱۵',
-          enrolled_students: 320,
-          completion_rate: 65,
-          avg_rating: 4.9,
-        },
-        {
-          id: 3,
-          title: 'آموزش زبان انگلیسی',
-          description: 'آموزش کامل زبان انگلیسی در ۶ ماه',
-          thumbnail_url: 'https://via.placeholder.com/300x200',
-          teacher_name: 'استاد محمد کریمی',
-          price: 300000,
-          is_free: false,
-          rating: 4.7,
-          student_count: 180,
-          category: 'زبان',
-          status: 'draft',
-          created_at: '۱۴۰۳/۰۳/۰۵',
-          updated_at: '۱۴۰۳/۰۶/۱۰',
-          enrolled_students: 0,
-          completion_rate: 0,
-          avg_rating: 0,
-        },
-      ];
-      setCourses(mockCourses);
-      setFilteredCourses(mockCourses);
+      const [coursesRes, statsRes] = await Promise.all([
+        courseApi.getCourses(),
+        courseApi.getCourseStats(),
+      ]);
+
+      if (coursesRes.success && coursesRes.data) {
+        setCourses(coursesRes.data);
+      }
+      if (statsRes.success && statsRes.data) {
+        setStats(statsRes.data);
+      }
     } catch (error) {
-      Alert.alert('خطا', 'در دریافت اطلاعات دوره‌ها مشکلی پیش آمده');
+      console.error("Error loading data:", error);
     } finally {
       setLoading(false);
     }
   };
 
-  const filterCourses = () => {
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    await loadData();
+    setRefreshing(false);
+  };
+
+  const handleToggleStatus = async (courseId: number) => {
+    try {
+      const response = await courseApi.toggleCourseStatus(courseId);
+      if (response.success) {
+        setCourses(
+          courses.map((course) =>
+            course.id === courseId
+              ? { ...course, is_active: !course.is_active }
+              : course,
+          ),
+        );
+        Alert.alert("موفقیت", response.message);
+      } else {
+        Alert.alert("خطا", response.message);
+      }
+    } catch (error) {
+      Alert.alert("خطا", "خطا در تغییر وضعیت دوره");
+    }
+  };
+
+  const handleDeleteCourse = async (courseId: number, courseTitle: string) => {
+    Alert.alert("حذف دوره", `آیا از حذف دوره "${courseTitle}" اطمینان دارید؟`, [
+      { text: "لغو", style: "cancel" },
+      {
+        text: "حذف",
+        style: "destructive",
+        onPress: async () => {
+          try {
+            const response = await courseApi.deleteCourse(courseId);
+            if (response.success) {
+              setCourses(courses.filter((c) => c.id !== courseId));
+              Alert.alert("موفقیت", response.message);
+              loadData();
+            } else {
+              Alert.alert("خطا", response.message);
+            }
+          } catch (error) {
+            Alert.alert("خطا", "خطا در حذف دوره");
+          }
+        },
+      },
+    ]);
+  };
+
+  const getFilteredCourses = () => {
     let filtered = [...courses];
 
-    if (searchQuery) {
-      filtered = filtered.filter(course =>
-        course.title.includes(searchQuery) ||
-        course.description.includes(searchQuery) ||
-        course.teacher_name.includes(searchQuery)
-      );
+    if (filterStatus === "active") {
+      filtered = filtered.filter((c) => c.is_active);
+    } else if (filterStatus === "inactive") {
+      filtered = filtered.filter((c) => !c.is_active);
     }
 
-    if (filterStatus !== 'all') {
-      filtered = filtered.filter(course => course.status === filterStatus);
+    if (filterType === "general") {
+      filtered = filtered.filter((c) => c.is_general);
+    } else if (filterType === "class") {
+      filtered = filtered.filter((c) => !c.is_general);
     }
 
-    if (filterCategory !== 'all') {
-      filtered = filtered.filter(course => course.category === filterCategory);
-    }
-
-    setFilteredCourses(filtered);
+    return filtered;
   };
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'published': return Colors.success;
-      case 'draft': return Colors.warning;
-      case 'archived': return Colors.textSecondary;
-      default: return Colors.textSecondary;
-    }
-  };
-
-  const getStatusText = (status: string) => {
-    switch (status) {
-      case 'published': return 'منتشر شده';
-      case 'draft': return 'پیش‌نویس';
-      case 'archived': return 'آرشیو شده';
-      default: return status;
-    }
-  };
-
-  const handleDeleteCourse = (courseId: number) => {
-    Alert.alert(
-      'حذف دوره',
-      'آیا از حذف این دوره اطمینان دارید؟',
-      [
-        { text: 'لغو', style: 'cancel' },
-        {
-          text: 'حذف',
-          style: 'destructive',
-          onPress: () => {
-            // TODO: Implement delete API
-            setCourses(courses.filter(course => course.id !== courseId));
-            Alert.alert('موفق', 'دوره با موفقیت حذف شد');
-          },
-        },
-      ]
-    );
-  };
-
-  const handleChangeStatus = (courseId: number, newStatus: Course['status']) => {
-    // TODO: Implement status change API
-    setCourses(courses.map(course =>
-      course.id === courseId ? { ...course, status: newStatus } : course
-    ));
-  };
-
-  const categories = ['همه', 'ریاضی', 'برنامه‌نویسی', 'زبان', 'علوم', 'تاریخ'];
+  const filteredCourses = getFilteredCourses();
 
   if (loading) {
     return (
-      <SafeAreaView style={styles.container}>
-        <Header title="مدیریت دوره‌ها" />
+      <SafeAreaView style={styles.container} edges={["top"]}>
+        <Header
+          title="مدیریت دوره‌ها"
+          showBack
+          onBackPress={() => router.back()}
+        />
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={Colors.primary} />
+          <Text style={styles.loadingText}>در حال بارگذاری...</Text>
         </View>
       </SafeAreaView>
     );
   }
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={["top"]}>
       <Header
         title="مدیریت دوره‌ها"
+        showBack
+        onBackPress={() => router.back()}
         rightComponent={
           <TouchableOpacity
-            style={styles.addButton}
-            onPress={() => router.push('/(admin)/courses/create')}
+            onPress={() => router.push("/(admin)/courses/create")}
           >
-            <Ionicons name="add" size={24} color="#fff" />
+            <Ionicons name="add-circle" size={24} color={Colors.primary} />
           </TouchableOpacity>
         }
       />
 
-      <ScrollView style={styles.content}>
-        {/* Search and Filters */}
-        <View style={styles.filterSection}>
-          <View style={styles.searchContainer}>
-            <Ionicons name="search" size={20} color={Colors.textSecondary} />
-            <TextInput
-              style={styles.searchInput}
-              placeholder="جستجوی دوره..."
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-              placeholderTextColor={Colors.textSecondary}
-            />
+      <ScrollView
+        style={styles.content}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            colors={[Colors.primary]}
+          />
+        }
+      >
+        {/* Course Stats */}
+        <View style={styles.statsGrid}>
+          <View style={styles.statCard}>
+            <View
+              style={[
+                styles.statIcon,
+                { backgroundColor: "rgba(59, 130, 246, 0.1)" },
+              ]}
+            >
+              <Ionicons name="book" size={24} color={Colors.primary} />
+            </View>
+            <Text style={styles.statValue}>{stats?.total || 0}</Text>
+            <Text style={styles.statLabel}>دوره کل</Text>
           </View>
 
-          <View style={styles.filterRow}>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+          <View style={styles.statCard}>
+            <View
+              style={[
+                styles.statIcon,
+                { backgroundColor: "rgba(16, 185, 129, 0.1)" },
+              ]}
+            >
+              <Ionicons name="school" size={24} color={Colors.success} />
+            </View>
+            <Text style={styles.statValue}>{stats?.class || 0}</Text>
+            <Text style={styles.statLabel}>دوره کلاسی</Text>
+          </View>
+
+          <View style={styles.statCard}>
+            <View
+              style={[
+                styles.statIcon,
+                { backgroundColor: "rgba(139, 92, 246, 0.1)" },
+              ]}
+            >
+              <Ionicons name="earth" size={24} color={Colors.secondary} />
+            </View>
+            <Text style={styles.statValue}>{stats?.general || 0}</Text>
+            <Text style={styles.statLabel}>دوره عمومی</Text>
+          </View>
+
+          <View style={styles.statCard}>
+            <View
+              style={[
+                styles.statIcon,
+                { backgroundColor: "rgba(245, 158, 11, 0.1)" },
+              ]}
+            >
+              <Ionicons name="people" size={24} color={Colors.warning} />
+            </View>
+            <Text style={styles.statValue}>
+              {stats?.avg_students_per_course || 0}
+            </Text>
+            <Text style={styles.statLabel}>میانگین دانش‌آموز</Text>
+          </View>
+        </View>
+
+        {/* Filters */}
+        <View style={styles.filtersContainer}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+            <View style={styles.filterChips}>
               <TouchableOpacity
-                style={[styles.filterChip, filterStatus === 'all' && styles.filterChipActive]}
-                onPress={() => setFilterStatus('all')}
+                style={[
+                  styles.filterChip,
+                  filterStatus === "all" && styles.filterChipActive,
+                ]}
+                onPress={() => setFilterStatus("all")}
               >
-                <Text style={[styles.filterChipText, filterStatus === 'all' && styles.filterChipTextActive]}>
+                <Text
+                  style={[
+                    styles.filterChipText,
+                    filterStatus === "all" && styles.filterChipTextActive,
+                  ]}
+                >
                   همه
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.filterChip, filterStatus === 'published' && styles.filterChipActive]}
-                onPress={() => setFilterStatus('published')}
+                style={[
+                  styles.filterChip,
+                  filterStatus === "active" && styles.filterChipActive,
+                ]}
+                onPress={() => setFilterStatus("active")}
               >
-                <Text style={[styles.filterChipText, filterStatus === 'published' && styles.filterChipTextActive]}>
-                  منتشر شده
+                <Text
+                  style={[
+                    styles.filterChipText,
+                    filterStatus === "active" && styles.filterChipTextActive,
+                  ]}
+                >
+                  فعال
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.filterChip, filterStatus === 'draft' && styles.filterChipActive]}
-                onPress={() => setFilterStatus('draft')}
+                style={[
+                  styles.filterChip,
+                  filterStatus === "inactive" && styles.filterChipActive,
+                ]}
+                onPress={() => setFilterStatus("inactive")}
               >
-                <Text style={[styles.filterChipText, filterStatus === 'draft' && styles.filterChipTextActive]}>
-                  پیش‌نویس
+                <Text
+                  style={[
+                    styles.filterChipText,
+                    filterStatus === "inactive" && styles.filterChipTextActive,
+                  ]}
+                >
+                  غیرفعال
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.filterChip, filterStatus === 'archived' && styles.filterChipActive]}
-                onPress={() => setFilterStatus('archived')}
+                style={[
+                  styles.filterChip,
+                  filterType === "class" && styles.filterChipActive,
+                ]}
+                onPress={() => setFilterType("class")}
               >
-                <Text style={[styles.filterChipText, filterStatus === 'archived' && styles.filterChipTextActive]}>
-                  آرشیو شده
+                <Text
+                  style={[
+                    styles.filterChipText,
+                    filterType === "class" && styles.filterChipTextActive,
+                  ]}
+                >
+                  کلاسی
                 </Text>
               </TouchableOpacity>
-            </ScrollView>
-          </View>
-
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categoryScroll}>
-            {categories.map((category, index) => (
               <TouchableOpacity
-                key={index}
-                style={[styles.categoryChip, filterCategory === (category === 'همه' ? 'all' : category) && styles.categoryChipActive]}
-                onPress={() => setFilterCategory(category === 'همه' ? 'all' : category)}
+                style={[
+                  styles.filterChip,
+                  filterType === "general" && styles.filterChipActive,
+                ]}
+                onPress={() => setFilterType("general")}
               >
-                <Text style={[styles.categoryChipText, filterCategory === (category === 'همه' ? 'all' : category) && styles.categoryChipTextActive]}>
-                  {category}
+                <Text
+                  style={[
+                    styles.filterChipText,
+                    filterType === "general" && styles.filterChipTextActive,
+                  ]}
+                >
+                  عمومی
                 </Text>
               </TouchableOpacity>
-            ))}
+            </View>
           </ScrollView>
-        </View>
-
-        {/* Stats */}
-        <View style={styles.statsContainer}>
-          <View style={styles.statItem}>
-            <Text style={styles.statValue}>{courses.length}</Text>
-            <Text style={styles.statLabel}>دوره کل</Text>
-          </View>
-          <View style={styles.statItem}>
-            <Text style={styles.statValue}>
-              {courses.filter(c => c.status === 'published').length}
-            </Text>
-            <Text style={styles.statLabel}>منتشر شده</Text>
-          </View>
-          <View style={styles.statItem}>
-            <Text style={styles.statValue}>
-              {courses.filter(c => c.is_free).length}
-            </Text>
-            <Text style={styles.statLabel}>رایگان</Text>
-          </View>
-          <View style={styles.statItem}>
-            <Text style={styles.statValue}>
-              {courses.reduce((sum, course) => sum + course.enrolled_students, 0)}
-            </Text>
-            <Text style={styles.statLabel}>ثبت‌نامی</Text>
-          </View>
         </View>
 
         {/* Courses List */}
         <View style={styles.coursesList}>
-          {filteredCourses.map(course => (
-            <TouchableOpacity
-              key={course.id}
-              style={styles.courseCard}
-              onPress={() => router.push(`/(admin)/courses/${course.id}`)}
-            >
-              <Image
-                source={{ uri: course.thumbnail_url }}
-                style={styles.courseImage}
+          {filteredCourses.length === 0 ? (
+            <View style={styles.emptyState}>
+              <Ionicons
+                name="book-outline"
+                size={60}
+                color={Colors.textSecondary}
               />
-              <View style={styles.courseContent}>
-                <View style={styles.courseHeader}>
-                  <View style={styles.courseTitleRow}>
-                    <Text style={styles.courseTitle} numberOfLines={1}>
-                      {course.title}
-                    </Text>
-                    <View style={[styles.statusBadge, { backgroundColor: `${getStatusColor(course.status)}20` }]}>
-                      <Text style={[styles.statusText, { color: getStatusColor(course.status) }]}>
-                        {getStatusText(course.status)}
+              <Text style={styles.emptyStateTitle}>دوره‌ای یافت نشد</Text>
+              <Text style={styles.emptyStateText}>
+                برای ایجاد دوره جدید، روی دکمه + در بالای صفحه کلیک کنید
+              </Text>
+            </View>
+          ) : (
+            filteredCourses.map((course) => (
+              <View key={course.id} style={styles.courseCard}>
+                <Image
+                  source={{ uri: course.thumbnail_url }}
+                  style={styles.courseImage}
+                />
+                <View style={styles.courseContent}>
+                  <View style={styles.courseHeader}>
+                    <Text style={styles.courseTitle}>{course.title}</Text>
+                    <View
+                      style={[
+                        styles.courseTypeBadge,
+                        {
+                          backgroundColor: course.is_general
+                            ? `${Colors.secondary}20`
+                            : `${Colors.primary}20`,
+                        },
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.courseTypeText,
+                          {
+                            color: course.is_general
+                              ? Colors.secondary
+                              : Colors.primary,
+                          },
+                        ]}
+                      >
+                        {course.is_general ? "عمومی" : "کلاسی"}
                       </Text>
                     </View>
                   </View>
+
                   <Text style={styles.courseDescription} numberOfLines={2}>
                     {course.description}
                   </Text>
-                </View>
 
-                <View style={styles.courseMeta}>
-                  <View style={styles.metaItem}>
-                    <Ionicons name="person" size={14} color={Colors.textSecondary} />
-                    <Text style={styles.metaText}>{course.teacher_name}</Text>
-                  </View>
-                  <View style={styles.metaItem}>
-                    <Ionicons name="people" size={14} color={Colors.textSecondary} />
-                    <Text style={styles.metaText}>{course.enrolled_students} دانش‌آموز</Text>
-                  </View>
-                  <View style={styles.metaItem}>
-                    <Ionicons name="star" size={14} color={Colors.warning} />
-                    <Text style={styles.metaText}>{course.avg_rating.toFixed(1)}</Text>
-                  </View>
-                </View>
-
-                <View style={styles.courseFooter}>
-                  <View style={styles.priceContainer}>
-                    {course.is_free ? (
-                      <Text style={styles.freeText}>رایگان</Text>
-                    ) : (
-                      <Text style={styles.priceText}>
-                        {course.price.toLocaleString()} تومان
+                  <View style={styles.courseMeta}>
+                    <View style={styles.metaItem}>
+                      <Ionicons
+                        name="person"
+                        size={12}
+                        color={Colors.textSecondary}
+                      />
+                      <Text style={styles.metaText}>{course.teacher_name}</Text>
+                    </View>
+                    <View style={styles.metaItem}>
+                      <Ionicons
+                        name="people"
+                        size={12}
+                        color={Colors.textSecondary}
+                      />
+                      <Text style={styles.metaText}>
+                        {course.student_count} دانش‌آموز
                       </Text>
-                    )}
+                    </View>
+                    <View
+                      style={[
+                        styles.statusBadge,
+                        {
+                          backgroundColor: course.is_active
+                            ? `${Colors.success}20`
+                            : `${Colors.danger}20`,
+                        },
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.statusText,
+                          {
+                            color: course.is_active
+                              ? Colors.success
+                              : Colors.danger,
+                          },
+                        ]}
+                      >
+                        {course.is_active ? "فعال" : "غیرفعال"}
+                      </Text>
+                    </View>
                   </View>
-                  <View style={styles.actionButtons}>
+
+                  <View style={styles.courseFooter}>
                     <TouchableOpacity
-                      style={styles.actionButton}
-                      onPress={(e) => {
-                        e.stopPropagation();
-                        handleChangeStatus(course.id, course.status === 'published' ? 'draft' : 'published');
-                      }}
+                      style={styles.courseActionButton}
+                      onPress={() => handleToggleStatus(course.id)}
                     >
                       <Ionicons
-                        name={course.status === 'published' ? 'eye-off' : 'eye'}
-                        size={20}
+                        name={course.is_active ? "eye-off" : "eye"}
+                        size={18}
+                        color={
+                          course.is_active ? Colors.warning : Colors.success
+                        }
+                      />
+                      <Text style={styles.actionText}>
+                        {course.is_active ? "غیرفعال" : "فعال"}
+                      </Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={styles.courseActionButton}
+                      onPress={() =>
+                        router.push(`/(admin)/course/${course.id}` as any)
+                      }
+                    >
+                      <Ionicons
+                        name="create"
+                        size={18}
                         color={Colors.primary}
                       />
+                      <Text style={styles.actionText}>ویرایش</Text>
                     </TouchableOpacity>
+
                     <TouchableOpacity
-                      style={styles.actionButton}
-                      onPress={(e) => {
-                        e.stopPropagation();
-                        handleDeleteCourse(course.id);
-                      }}
+                      style={styles.courseActionButton}
+                      onPress={() =>
+                        handleDeleteCourse(course.id, course.title)
+                      }
                     >
-                      <Ionicons name="trash-outline" size={20} color={Colors.danger} />
+                      <Ionicons name="trash" size={18} color={Colors.danger} />
+                      <Text style={styles.actionText}>حذف</Text>
                     </TouchableOpacity>
                   </View>
                 </View>
               </View>
-            </TouchableOpacity>
-          ))}
+            ))
+          )}
         </View>
-
-        {filteredCourses.length === 0 && (
-          <View style={styles.emptyState}>
-            <Ionicons name="book-outline" size={64} color={Colors.textSecondary} />
-            <Text style={styles.emptyStateText}>دوره‌ای یافت نشد</Text>
-          </View>
-        )}
       </ScrollView>
     </SafeAreaView>
   );
@@ -412,47 +472,61 @@ const styles = StyleSheet.create({
   },
   loadingContainer: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 20,
   },
-  addButton: {
-    backgroundColor: Colors.primary,
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    justifyContent: 'center',
-    alignItems: 'center',
+  loadingText: {
+    marginTop: 16,
+    fontSize: 16,
+    color: Colors.textSecondary,
   },
-  filterSection: {
-    marginBottom: 20,
+  statsGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 12,
+    marginBottom: 24,
   },
-  searchContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  statCard: {
+    flex: 1,
+    minWidth: "45%",
     backgroundColor: Colors.card,
     borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    padding: 16,
+    alignItems: "center",
     borderWidth: 1,
     borderColor: Colors.border,
+  },
+  statIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    justifyContent: "center",
+    alignItems: "center",
     marginBottom: 12,
   },
-  searchInput: {
-    flex: 1,
-    marginRight: 8,
-    fontSize: 16,
+  statValue: {
+    fontSize: 20,
+    fontWeight: "bold",
     color: Colors.text,
-    textAlign: 'right',
+    marginBottom: 4,
   },
-  filterRow: {
-    marginBottom: 12,
+  statLabel: {
+    fontSize: 12,
+    color: Colors.textSecondary,
+  },
+  filtersContainer: {
+    marginBottom: 16,
+  },
+  filterChips: {
+    flexDirection: "row",
+    gap: 8,
   },
   filterChip: {
     paddingHorizontal: 16,
     paddingVertical: 8,
-    borderRadius: 20,
     backgroundColor: Colors.card,
-    marginRight: 8,
+    borderRadius: 20,
     borderWidth: 1,
     borderColor: Colors.border,
   },
@@ -465,160 +539,117 @@ const styles = StyleSheet.create({
     color: Colors.text,
   },
   filterChipTextActive: {
-    color: '#fff',
-  },
-  categoryScroll: {
-    marginBottom: 16,
-  },
-  categoryChip: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    backgroundColor: Colors.card,
-    marginRight: 8,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  categoryChipActive: {
-    backgroundColor: Colors.secondary,
-    borderColor: Colors.secondary,
-  },
-  categoryChipText: {
-    fontSize: 14,
-    color: Colors.text,
-  },
-  categoryChipTextActive: {
-    color: '#fff',
-  },
-  statsContainer: {
-    flexDirection: 'row',
-    backgroundColor: Colors.card,
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 20,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  statItem: {
-    flex: 1,
-    alignItems: 'center',
-  },
-  statValue: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: Colors.text,
-    marginBottom: 4,
-  },
-  statLabel: {
-    fontSize: 12,
-    color: Colors.textSecondary,
+    color: "#fff",
+    fontWeight: "bold",
   },
   coursesList: {
     gap: 16,
+    marginBottom: 24,
+  },
+  emptyState: {
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 40,
+    backgroundColor: Colors.card,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  emptyStateTitle: {
+    fontSize: 18,
+    fontWeight: "bold",
+    color: Colors.text,
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  emptyStateText: {
+    fontSize: 14,
+    color: Colors.textSecondary,
+    textAlign: "center",
   },
   courseCard: {
     backgroundColor: Colors.card,
     borderRadius: 12,
-    overflow: 'hidden',
+    overflow: "hidden",
     borderWidth: 1,
     borderColor: Colors.border,
   },
   courseImage: {
-    width: '100%',
-    height: 160,
+    width: "100%",
+    height: 150,
   },
   courseContent: {
     padding: 16,
   },
   courseHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
     marginBottom: 12,
-  },
-  courseTitleRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 8,
   },
   courseTitle: {
     fontSize: 16,
-    fontWeight: 'bold',
+    fontWeight: "bold",
     color: Colors.text,
     flex: 1,
-    marginRight: 8,
+    marginRight: 12,
   },
-  statusBadge: {
+  courseTypeBadge: {
     paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 4,
+    paddingVertical: 4,
+    borderRadius: 6,
   },
-  statusText: {
+  courseTypeText: {
     fontSize: 12,
-    fontWeight: '500',
+    fontWeight: "500",
   },
   courseDescription: {
     fontSize: 14,
     color: Colors.textSecondary,
     lineHeight: 20,
+    marginBottom: 12,
   },
   courseMeta: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 16,
     marginBottom: 16,
-    paddingBottom: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
+    flexWrap: "wrap",
   },
   metaItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 4,
   },
   metaText: {
     fontSize: 12,
     color: Colors.textSecondary,
   },
+  statusBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 10,
+  },
+  statusText: {
+    fontSize: 10,
+    fontWeight: "bold",
+  },
   courseFooter: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    gap: 16,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: Colors.border,
   },
-  priceContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
+  courseActionButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    padding: 8,
   },
-  freeText: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: Colors.success,
-  },
-  priceText: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: Colors.primary,
-  },
-  actionButtons: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  actionButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: Colors.background,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  emptyState: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 60,
-  },
-  emptyStateText: {
-    fontSize: 16,
-    color: Colors.textSecondary,
-    marginTop: 16,
+  actionText: {
+    fontSize: 12,
+    color: Colors.text,
   },
 });

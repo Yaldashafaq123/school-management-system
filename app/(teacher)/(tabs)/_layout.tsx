@@ -1,24 +1,37 @@
-import { Tabs } from 'expo-router';
-import { Platform, StyleSheet } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import { BlurView } from 'expo-blur';
-import { Colors } from '../../../constants/Colors';
+import { Ionicons } from "@expo/vector-icons";
+import { BlurView } from "expo-blur";
+import { Tabs } from "expo-router";
+import { Platform, StyleSheet } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Colors } from "../../../constants/Colors";
 
 export default function TeacherTabLayout() {
+  const insets = useSafeAreaInsets();
+
   return (
     <Tabs
       screenOptions={{
         headerShown: false,
         tabBarStyle: {
-          backgroundColor: Platform.OS === 'ios' ? 'transparent' : Colors.card,
+          backgroundColor: Platform.OS === "ios" ? "transparent" : Colors.card,
           borderTopColor: Colors.border,
           borderTopWidth: 1,
-          height: Platform.OS === 'ios' ? 85 : 70,
-          paddingBottom: Platform.OS === 'ios' ? 25 : 12,
+
+          // ✅ fixed height
+          height: 60 + insets.bottom,
+          paddingBottom: insets.bottom,
           paddingTop: 8,
+
+          // optional shadow
+          shadowColor: "#000",
+          shadowOffset: { width: 0, height: -2 },
+          shadowOpacity: 0.05,
+          shadowRadius: 4,
+          elevation: 5,
         },
+
         tabBarBackground:
-          Platform.OS === 'ios'
+          Platform.OS === "ios"
             ? () => (
                 <BlurView
                   tint="light"
@@ -27,55 +40,63 @@ export default function TeacherTabLayout() {
                 />
               )
             : undefined,
+
         tabBarActiveTintColor: Colors.primary,
         tabBarInactiveTintColor: Colors.textSecondary,
+
         tabBarLabelStyle: {
           fontSize: 12,
-          fontWeight: '500',
+          fontWeight: "500",
           marginTop: 4,
         },
+
+        tabBarHideOnKeyboard: true,
       }}
     >
-      <Tabs.Screen 
-        name="index" 
+      <Tabs.Screen
+        name="index"
         options={{
-          title: 'داشبورد',
+          title: "داشبورد",
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="speedometer" size={size} color={color} />
           ),
         }}
       />
-      <Tabs.Screen 
-        name="courses" 
+
+      <Tabs.Screen
+        name="courses"
         options={{
-          title: 'دوره‌ها',
+          title: "دوره‌ها",
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="book" size={size} color={color} />
           ),
         }}
       />
-      <Tabs.Screen 
-        name="students" 
+
+      <Tabs.Screen
+        name="students"
         options={{
-          title: 'دانش‌آموزان',
+          title: "دانش‌آموزان",
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="people" size={size} color={color} />
           ),
         }}
       />
-      <Tabs.Screen 
-        name="grading" 
+
+      <Tabs.Screen
+        name="grading"
         options={{
-          title: 'نمره‌دهی',
+          title: "نمره‌دهی",
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="checkmark-circle" size={size} color={color} />
           ),
         }}
       />
-      <Tabs.Screen 
-        name="profile" 
+
+      <Tabs.Screen
+        name="profile"
         options={{
-          title: 'پروفایل',
+          title: "پروفایل",
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="person" size={size} color={color} />
           ),

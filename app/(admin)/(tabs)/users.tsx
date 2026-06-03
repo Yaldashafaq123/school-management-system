@@ -1,147 +1,184 @@
-// app/(admin)/users.tsx
-import React, { useState, useEffect } from 'react';
+import { Header } from "@/components/Header";
+import { Colors } from "@/constants/Colors";
+import { AdminUser, adminUserApi, UserStats } from "@/src/config/adminUserApi";
+import { Ionicons } from "@expo/vector-icons";
+import { useRouter } from "expo-router";
+import { useCallback, useEffect, useState } from "react";
 import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-  TextInput,
-  Modal,
-  Alert,
   ActivityIndicator,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
-import { Picker } from '@react-native-picker/picker';
-import { Colors } from '@/constants/Colors';
-import { Header } from '@/components/Header';
-import { User, UserRole } from '@/types';
+  Alert,
+  Modal,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 export default function UserManagementScreen() {
   const router = useRouter();
-  const [users, setUsers] = useState<User[]>([
-    { id: 1, name: 'مدیر سیستم', email: 'admin@example.com', role: 'admin', profile_image: 'https://i.pravatar.cc/300' },
-    { id: 2, name: 'معلم ریاضی', email: 'teacher1@example.com', role: 'teacher', profile_image: 'https://i.pravatar.cc/300' },
-    { id: 3, name: 'معلم علوم', email: 'teacher2@example.com', role: 'teacher', profile_image: 'https://i.pravatar.cc/300' },
-    { id: 4, name: 'دانش‌آموز ۱', email: 'student1@example.com', role: 'student', profile_image: 'https://i.pravatar.cc/300' },
-    { id: 5, name: 'دانش‌آموز ۲', email: 'student2@example.com', role: 'student', profile_image: 'https://i.pravatar.cc/300' },
-  ]);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedRole, setSelectedRole] = useState<string>('all');
-  const [showUserModal, setShowUserModal] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [users, setUsers] = useState<AdminUser[]>([]);
+  const [stats, setStats] = useState<UserStats | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedRole, setSelectedRole] = useState<string>("all");
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [hasMore, setHasMore] = useState(false);
+
   const [showDeleteModal, setShowDeleteModal] = useState(false);
-  const [selectedUser, setSelectedUser] = useState<User | null>(null);
-  const [newUser, setNewUser] = useState({
-    name: '',
-    email: '',
-    role: 'student' as UserRole,
-    password: '',
-  });
-  const [loading, setLoading] = useState(false);
+  const [selectedUser, setSelectedUser] = useState<AdminUser | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
   const roles = [
-    { id: 'all', label: 'همه' },
-    { id: 'admin', label: 'مدیر' },
-    { id: 'teacher', label: 'معلم' },
-    { id: 'student', label: 'دانش‌آموز' },
+    { id: "all", label: "همه" },
+    { id: "admin", label: "مدیر" },
+    { id: "teacher", label: "معلم" },
+    { id: "student", label: "دانش‌آموز" },
+    { id: "parent", label: "والدین" },
   ];
 
-  const filteredUsers = users.filter(user => {
-    if (searchQuery && !user.name.toLowerCase().includes(searchQuery.toLowerCase()) && 
-        !user.email.toLowerCase().includes(searchQuery.toLowerCase())) {
-      return false;
-    }
-    if (selectedRole !== 'all' && user.role !== selectedRole) {
-      return false;
-    }
-    return true;
-  });
-
-  const handleCreateUser = async () => {
-    if (!newUser.name.trim() || !newUser.email.trim() || !newUser.password.trim()) {
-      Alert.alert('خطا', 'لطفا تمام فیلدها را پر کنید');
-      return;
-    }
-
-    setLoading(true);
+  const loadUsers = useCallback(async () => {
     try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      const newUserObj: User = {
-        id: users.length + 1,
-        name: newUser.name,
-        email: newUser.email,
-        role: newUser.role,
-        profile_image: 'https://i.pravatar.cc/300',
-      };
+      setLoading(true);
+      const [usersRes, statsRes] = await Promise.all([
+        adminUserApi.getUsers({
+          search: searchQuery || undefined,
+          role: selectedRole,
+          page,
+        }),
+        adminUserApi.getUserStats(),
+      ]);
 
-      setUsers([...users, newUserObj]);
-      setNewUser({ name: '', email: '', role: 'student', password: '' });
-      setShowUserModal(false);
-      
-      Alert.alert('موفقیت', 'کاربر جدید با موفقیت ایجاد شد');
+      if (usersRes.success && usersRes.data) {
+        setUsers(usersRes.data.users);
+        setTotalPages(usersRes.data.totalPages);
+        setHasMore(usersRes.data.page < usersRes.data.totalPages);
+      }
+      if (statsRes.success && statsRes.data) {
+        setStats(statsRes.data);
+      }
     } catch (error) {
-      Alert.alert('خطا', 'ایجاد کاربر ناموفق بود');
+      console.error("Error loading users:", error);
     } finally {
       setLoading(false);
+    }
+  }, [searchQuery, selectedRole, page]);
+
+  useEffect(() => {
+    loadUsers();
+  }, [loadUsers]);
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    setPage(1);
+    await loadUsers();
+    setRefreshing(false);
+  };
+
+  const handleLoadMore = () => {
+    if (hasMore && !loading) {
+      setPage((prev) => prev + 1);
     }
   };
 
   const handleDeleteUser = async () => {
     if (!selectedUser) return;
 
-    setLoading(true);
+    setSubmitting(true);
     try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      setUsers(users.filter(user => user.id !== selectedUser.id));
-      setShowDeleteModal(false);
-      setSelectedUser(null);
-      
-      Alert.alert('موفقیت', 'کاربر با موفقیت حذف شد');
+      const response = await adminUserApi.deleteUser(selectedUser.id);
+      if (response.success) {
+        Alert.alert("موفقیت", response.message);
+        setShowDeleteModal(false);
+        setSelectedUser(null);
+        loadUsers();
+      } else {
+        Alert.alert("خطا", response.message);
+      }
     } catch (error) {
-      Alert.alert('خطا', 'حذف کاربر ناموفق بود');
+      Alert.alert("خطا", "حذف کاربر ناموفق بود");
     } finally {
-      setLoading(false);
+      setSubmitting(false);
     }
   };
 
-  const getRoleColor = (role: UserRole) => {
+  const getRoleColor = (role: string) => {
     switch (role) {
-      case 'admin': return Colors.danger;
-      case 'teacher': return Colors.warning;
-      case 'student': return Colors.primary;
-      default: return Colors.textSecondary;
+      case "admin":
+        return Colors.danger;
+      case "teacher":
+        return Colors.warning;
+      case "student":
+        return Colors.primary;
+      case "parent":
+        return Colors.secondary;
+      default:
+        return Colors.textSecondary;
     }
   };
 
-  const getRoleText = (role: UserRole) => {
+  const getRoleText = (role: string) => {
     switch (role) {
-      case 'admin': return 'مدیر';
-      case 'teacher': return 'معلم';
-      case 'student': return 'دانش‌آموز';
-      default: return 'کاربر';
+      case "admin":
+        return "مدیر";
+      case "teacher":
+        return "معلم";
+      case "student":
+        return "دانش‌آموز";
+      case "parent":
+        return "والدین";
+      default:
+        return "کاربر";
     }
   };
+
+  if (loading && page === 1) {
+    return (
+      <SafeAreaView style={styles.container} edges={["top"]}>
+        <Header
+          title="مدیریت کاربران"
+          showBack
+          onBackPress={() => router.back()}
+        />
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={Colors.primary} />
+          <Text style={styles.loadingText}>در حال بارگذاری...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
+    <SafeAreaView style={styles.container} edges={["top"]}>
       <Header
         title="مدیریت کاربران"
         showBack
         onBackPress={() => router.back()}
         rightComponent={
-          <TouchableOpacity onPress={() => setShowUserModal(true)}>
+          <TouchableOpacity
+            onPress={() => router.push("/(admin)/users/create")}
+          >
             <Ionicons name="person-add" size={24} color={Colors.primary} />
           </TouchableOpacity>
         }
       />
 
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        style={styles.content}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            colors={[Colors.primary]}
+          />
+        }
+      >
         {/* Search and Filters */}
         <View style={styles.searchSection}>
           <View style={styles.searchContainer}>
@@ -151,8 +188,21 @@ export default function UserManagementScreen() {
               placeholder="جستجوی کاربر..."
               placeholderTextColor={Colors.textSecondary}
               value={searchQuery}
-              onChangeText={setSearchQuery}
+              onChangeText={(text) => {
+                setSearchQuery(text);
+                setPage(1);
+              }}
+              textAlign="right"
             />
+            {searchQuery.length > 0 && (
+              <TouchableOpacity onPress={() => setSearchQuery("")}>
+                <Ionicons
+                  name="close-circle"
+                  size={20}
+                  color={Colors.textSecondary}
+                />
+              </TouchableOpacity>
+            )}
           </View>
 
           <ScrollView
@@ -167,7 +217,10 @@ export default function UserManagementScreen() {
                   styles.filterChip,
                   selectedRole === role.id && styles.filterChipActive,
                 ]}
-                onPress={() => setSelectedRole(role.id)}
+                onPress={() => {
+                  setSelectedRole(role.id);
+                  setPage(1);
+                }}
               >
                 <Text
                   style={[
@@ -185,169 +238,142 @@ export default function UserManagementScreen() {
         {/* Stats */}
         <View style={styles.statsGrid}>
           <View style={styles.statItem}>
-            <Text style={styles.statValue}>{users.length}</Text>
+            <Text style={styles.statValue}>{stats?.total || 0}</Text>
             <Text style={styles.statLabel}>کل کاربران</Text>
           </View>
           <View style={styles.statItem}>
             <Text style={[styles.statValue, { color: Colors.danger }]}>
-              {users.filter(u => u.role === 'admin').length}
+              {stats?.admin || 0}
             </Text>
             <Text style={styles.statLabel}>مدیر</Text>
           </View>
           <View style={styles.statItem}>
             <Text style={[styles.statValue, { color: Colors.warning }]}>
-              {users.filter(u => u.role === 'teacher').length}
+              {stats?.teacher || 0}
             </Text>
             <Text style={styles.statLabel}>معلم</Text>
           </View>
           <View style={styles.statItem}>
             <Text style={[styles.statValue, { color: Colors.primary }]}>
-              {users.filter(u => u.role === 'student').length}
+              {stats?.student || 0}
             </Text>
             <Text style={styles.statLabel}>دانش‌آموز</Text>
+          </View>
+          <View style={styles.statItem}>
+            <Text style={[styles.statValue, { color: Colors.secondary }]}>
+              {stats?.parent || 0}
+            </Text>
+            <Text style={styles.statLabel}>والدین</Text>
           </View>
         </View>
 
         {/* Users List */}
         <View style={styles.usersList}>
-          {filteredUsers.length === 0 ? (
+          {users.length === 0 ? (
             <View style={styles.emptyState}>
-              <Ionicons name="people-outline" size={60} color={Colors.textSecondary} />
+              <Ionicons
+                name="people-outline"
+                size={60}
+                color={Colors.textSecondary}
+              />
               <Text style={styles.emptyStateText}>کاربری یافت نشد</Text>
+              <Text style={styles.emptyStateSubtext}>
+                برای ایجاد کاربر جدید، روی دکمه + در بالای صفحه کلیک کنید
+              </Text>
             </View>
           ) : (
-            filteredUsers.map((user) => (
-              <View key={user.id} style={styles.userCard}>
-                <View style={styles.userInfo}>
-                  <View style={styles.avatarContainer}>
-                    <Text style={styles.avatarText}>
-                      {user.name.charAt(0)}
-                    </Text>
+            users.map((user) => {
+              // Get the user's display name (handle both fullName and name)
+              const displayName = user.fullName || user.name || "کاربر";
+              const userEmail = user.email || "";
+              const userPhone = user.phone || "";
+
+              return (
+                <View key={user.id} style={styles.userCard}>
+                  <View style={styles.userInfo}>
+                    <View style={styles.avatarContainer}>
+                      <Text style={styles.avatarText}>
+                        {displayName.charAt(0)}
+                      </Text>
+                    </View>
+                    <View style={styles.userDetails}>
+                      <Text style={styles.userName}>{displayName}</Text>
+                      <Text style={styles.userEmail}>{userEmail}</Text>
+                      {userPhone ? (
+                        <Text style={styles.userPhone}>{userPhone}</Text>
+                      ) : null}
+                    </View>
                   </View>
-                  <View style={styles.userDetails}>
-                    <Text style={styles.userName}>{user.name}</Text>
-                    <Text style={styles.userEmail}>{user.email}</Text>
+
+                  <View style={styles.userActions}>
+                    <View
+                      style={[
+                        styles.roleBadge,
+                        { backgroundColor: `${getRoleColor(user.role)}20` },
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.roleText,
+                          { color: getRoleColor(user.role) },
+                        ]}
+                      >
+                        {getRoleText(user.role)}
+                      </Text>
+                    </View>
+
+                    <View style={styles.actionButtons}>
+                      <TouchableOpacity
+                        style={styles.actionButton}
+                        onPress={() =>
+                          router.push(`/(admin)/users/${user.id}` as any)
+                        }
+                      >
+                        <Ionicons
+                          name="eye"
+                          size={20}
+                          color={Colors.textSecondary}
+                        />
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        style={styles.actionButton}
+                        onPress={() => {
+                          setSelectedUser(user);
+                          setShowDeleteModal(true);
+                        }}
+                      >
+                        <Ionicons
+                          name="trash"
+                          size={20}
+                          color={Colors.danger}
+                        />
+                      </TouchableOpacity>
+                    </View>
                   </View>
                 </View>
-                
-                <View style={styles.userActions}>
-                  <View style={[
-                    styles.roleBadge,
-                    { backgroundColor: `${getRoleColor(user.role)}20` }
-                  ]}>
-                    <Text style={[styles.roleText, { color: getRoleColor(user.role) }]}>
-                      {getRoleText(user.role)}
-                    </Text>
-                  </View>
-                  
-                  <View style={styles.actionButtons}>
-                    <TouchableOpacity
-                      style={styles.actionButton}
-                      onPress={() => {
-                        setSelectedUser(user);
-                        // Navigate to user details
-                      }}
-                    >
-                      <Ionicons name="eye" size={20} color={Colors.textSecondary} />
-                    </TouchableOpacity>
-                    
-                    <TouchableOpacity
-                      style={styles.actionButton}
-                      onPress={() => {
-                        setSelectedUser(user);
-                        setShowDeleteModal(true);
-                      }}
-                    >
-                      <Ionicons name="trash" size={20} color={Colors.danger} />
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              </View>
-            ))
+              );
+            })
+          )}
+
+          {hasMore && (
+            <TouchableOpacity
+              style={styles.loadMoreButton}
+              onPress={handleLoadMore}
+            >
+              <Text style={styles.loadMoreText}>بارگذاری بیشتر</Text>
+              <Ionicons name="chevron-down" size={18} color={Colors.primary} />
+            </TouchableOpacity>
           )}
         </View>
       </ScrollView>
-
-      {/* Create User Modal */}
-      <Modal
-        visible={showUserModal}
-        animationType="slide"
-        presentationStyle="pageSheet"
-      >
-        <SafeAreaView style={styles.modalContainer}>
-          <View style={styles.modalHeader}>
-            <TouchableOpacity onPress={() => setShowUserModal(false)}>
-              <Text style={styles.modalCancel}>لغو</Text>
-            </TouchableOpacity>
-            <Text style={styles.modalTitle}>ایجاد کاربر جدید</Text>
-            <TouchableOpacity onPress={handleCreateUser}>
-              <Text style={styles.modalSave}>ذخیره</Text>
-            </TouchableOpacity>
-          </View>
-
-          <ScrollView style={styles.modalContent}>
-            <View style={styles.form}>
-              <View style={styles.formGroup}>
-                <Text style={styles.formLabel}>نام کامل</Text>
-                <TextInput
-                  style={styles.formInput}
-                  placeholder="نام و نام خانوادگی"
-                  value={newUser.name}
-                  onChangeText={(text) => setNewUser(prev => ({ ...prev, name: text }))}
-                />
-              </View>
-
-              <View style={styles.formGroup}>
-                <Text style={styles.formLabel}>ایمیل</Text>
-                <TextInput
-                  style={styles.formInput}
-                  placeholder="example@email.com"
-                  value={newUser.email}
-                  onChangeText={(text) => setNewUser(prev => ({ ...prev, email: text }))}
-                  keyboardType="email-address"
-                  autoCapitalize="none"
-                />
-              </View>
-
-              <View style={styles.formGroup}>
-                <Text style={styles.formLabel}>رمز عبور</Text>
-                <TextInput
-                  style={styles.formInput}
-                  placeholder="رمز عبور"
-                  value={newUser.password}
-                  onChangeText={(text) => setNewUser(prev => ({ ...prev, password: text }))}
-                  secureTextEntry
-                />
-              </View>
-
-              <View style={styles.formGroup}>
-                <Text style={styles.formLabel}>نقش کاربری</Text>
-                <View style={styles.pickerContainer}>
-                  <Picker
-                    selectedValue={newUser.role}
-                    onValueChange={(value) => setNewUser(prev => ({ ...prev, role: value }))}
-                    style={styles.picker}
-                  >
-                    <Picker.Item label="دانش‌آموز" value="student" />
-                    <Picker.Item label="معلم" value="teacher" />
-                    <Picker.Item label="مدیر" value="admin" />
-                  </Picker>
-                </View>
-              </View>
-
-              {loading && (
-                <ActivityIndicator size="small" color={Colors.primary} style={styles.loadingIndicator} />
-              )}
-            </View>
-          </ScrollView>
-        </SafeAreaView>
-      </Modal>
 
       {/* Delete Confirmation Modal */}
       <Modal
         visible={showDeleteModal}
         transparent
         animationType="fade"
+        onRequestClose={() => setShowDeleteModal(false)}
       >
         <View style={styles.deleteModalOverlay}>
           <View style={styles.deleteModalContent}>
@@ -355,25 +381,27 @@ export default function UserManagementScreen() {
               <Ionicons name="warning" size={40} color={Colors.danger} />
               <Text style={styles.deleteModalTitle}>حذف کاربر</Text>
               <Text style={styles.deleteModalText}>
-                آیا از حذف کاربر {selectedUser?.name} مطمئن هستید؟
+                آیا از حذف کاربر{" "}
+                {selectedUser?.fullName || selectedUser?.name || "این کاربر"}{" "}
+                مطمئن هستید؟
               </Text>
             </View>
-            
+
             <View style={styles.deleteModalActions}>
               <TouchableOpacity
                 style={styles.deleteCancelButton}
                 onPress={() => setShowDeleteModal(false)}
-                disabled={loading}
+                disabled={submitting}
               >
                 <Text style={styles.deleteCancelText}>لغو</Text>
               </TouchableOpacity>
-              
+
               <TouchableOpacity
                 style={styles.deleteConfirmButton}
                 onPress={handleDeleteUser}
-                disabled={loading}
+                disabled={submitting}
               >
-                {loading ? (
+                {submitting ? (
                   <ActivityIndicator size="small" color="#fff" />
                 ) : (
                   <Text style={styles.deleteConfirmText}>حذف</Text>
@@ -396,12 +424,23 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: 16,
   },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 20,
+  },
+  loadingText: {
+    marginTop: 16,
+    fontSize: 16,
+    color: Colors.textSecondary,
+  },
   searchSection: {
     marginBottom: 24,
   },
   searchContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     backgroundColor: Colors.card,
     borderRadius: 12,
     paddingHorizontal: 16,
@@ -415,7 +454,7 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: Colors.text,
     marginHorizontal: 12,
-    textAlign: 'right',
+    textAlign: "right",
   },
   filtersContainer: {
     marginHorizontal: -16,
@@ -439,25 +478,29 @@ const styles = StyleSheet.create({
     color: Colors.text,
   },
   filterTextActive: {
-    color: '#fff',
-    fontWeight: 'bold',
+    color: "#fff",
+    fontWeight: "bold",
   },
   statsGrid: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "space-between",
     backgroundColor: Colors.card,
     borderRadius: 16,
     padding: 20,
     marginBottom: 24,
     borderWidth: 1,
     borderColor: Colors.border,
+    gap: 12,
   },
   statItem: {
-    alignItems: 'center',
+    flex: 1,
+    minWidth: "18%",
+    alignItems: "center",
   },
   statValue: {
     fontSize: 20,
-    fontWeight: 'bold',
+    fontWeight: "bold",
     color: Colors.text,
     marginBottom: 4,
   },
@@ -467,16 +510,24 @@ const styles = StyleSheet.create({
   },
   usersList: {
     gap: 12,
+    marginBottom: 24,
   },
   emptyState: {
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     paddingVertical: 60,
   },
   emptyStateText: {
     fontSize: 16,
-    color: Colors.textSecondary,
+    color: Colors.text,
     marginTop: 16,
+    fontWeight: "bold",
+  },
+  emptyStateSubtext: {
+    fontSize: 14,
+    color: Colors.textSecondary,
+    marginTop: 8,
+    textAlign: "center",
   },
   userCard: {
     backgroundColor: Colors.card,
@@ -486,8 +537,8 @@ const styles = StyleSheet.create({
     borderColor: Colors.border,
   },
   userInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     marginBottom: 12,
     gap: 12,
   },
@@ -496,20 +547,20 @@ const styles = StyleSheet.create({
     height: 48,
     borderRadius: 24,
     backgroundColor: Colors.primary,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
   },
   avatarText: {
-    color: '#fff',
+    color: "#fff",
     fontSize: 18,
-    fontWeight: 'bold',
+    fontWeight: "bold",
   },
   userDetails: {
     flex: 1,
   },
   userName: {
     fontSize: 16,
-    fontWeight: 'bold',
+    fontWeight: "bold",
     color: Colors.text,
     marginBottom: 4,
   },
@@ -517,10 +568,15 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: Colors.textSecondary,
   },
+  userPhone: {
+    fontSize: 12,
+    color: Colors.textSecondary,
+    marginTop: 2,
+  },
   userActions: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
   },
   roleBadge: {
     paddingHorizontal: 12,
@@ -529,101 +585,48 @@ const styles = StyleSheet.create({
   },
   roleText: {
     fontSize: 12,
-    fontWeight: 'bold',
+    fontWeight: "bold",
   },
   actionButtons: {
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: 12,
   },
   actionButton: {
     padding: 8,
   },
-  modalContainer: {
-    flex: 1,
-    backgroundColor: Colors.background,
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
-  },
-  modalTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: Colors.text,
-  },
-  modalCancel: {
-    fontSize: 16,
-    color: Colors.danger,
-  },
-  modalSave: {
-    fontSize: 16,
-    color: Colors.primary,
-    fontWeight: 'bold',
-  },
-  modalContent: {
-    flex: 1,
-    padding: 20,
-  },
-  form: {
-    gap: 20,
-  },
-  formGroup: {
+  loadMoreButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 12,
     gap: 8,
   },
-  formLabel: {
+  loadMoreText: {
     fontSize: 14,
-    fontWeight: '600',
-    color: Colors.text,
-  },
-  formInput: {
-    backgroundColor: Colors.card,
-    borderRadius: 8,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    fontSize: 15,
-    color: Colors.text,
-    textAlign: 'right',
-  },
-  pickerContainer: {
-    backgroundColor: Colors.card,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    overflow: 'hidden',
-  },
-  picker: {
-    color: Colors.text,
-  },
-  loadingIndicator: {
-    marginTop: 20,
+    color: Colors.primary,
+    fontWeight: "500",
   },
   deleteModalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    justifyContent: "center",
+    alignItems: "center",
     padding: 20,
   },
   deleteModalContent: {
     backgroundColor: Colors.card,
     borderRadius: 16,
     padding: 24,
-    width: '100%',
+    width: "100%",
     maxWidth: 400,
   },
   deleteModalHeader: {
-    alignItems: 'center',
+    alignItems: "center",
     marginBottom: 24,
   },
   deleteModalTitle: {
     fontSize: 20,
-    fontWeight: 'bold',
+    fontWeight: "bold",
     color: Colors.text,
     marginTop: 16,
     marginBottom: 8,
@@ -631,17 +634,17 @@ const styles = StyleSheet.create({
   deleteModalText: {
     fontSize: 14,
     color: Colors.textSecondary,
-    textAlign: 'center',
+    textAlign: "center",
     lineHeight: 22,
   },
   deleteModalActions: {
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: 12,
   },
   deleteCancelButton: {
     flex: 1,
     paddingVertical: 12,
-    alignItems: 'center',
+    alignItems: "center",
     borderRadius: 8,
     borderWidth: 1,
     borderColor: Colors.border,
@@ -654,12 +657,12 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: Colors.danger,
     paddingVertical: 12,
-    alignItems: 'center',
+    alignItems: "center",
     borderRadius: 8,
   },
   deleteConfirmText: {
     fontSize: 16,
-    color: '#fff',
-    fontWeight: 'bold',
+    color: "#fff",
+    fontWeight: "bold",
   },
 });

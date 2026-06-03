@@ -1,4 +1,4 @@
-// app/(auth)/login.tsx - Enhanced version with parent role
+// app/(auth)/login.tsx - COMPLETELY FIXED
 import { Colors } from "@/constants/Colors";
 import { useAuth } from "@/contexts/AuthContext";
 import { Ionicons } from "@expo/vector-icons";
@@ -8,6 +8,7 @@ import { useRouter } from "expo-router";
 import { useState } from "react";
 import {
   Alert,
+  Image,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -18,6 +19,7 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+
 export default function LoginScreen() {
   const router = useRouter();
   const { login, loading, error } = useAuth();
@@ -50,72 +52,43 @@ export default function LoginScreen() {
     return Object.keys(errors).length === 0;
   };
 
- const handleLogin = async () => {
-  if (!validateForm()) return;
-
-  try {
-    await login({ email, password, rememberMe });
-
-    const userDataStr = await AsyncStorage.getItem("user_data");
-
-    if (!userDataStr) {
-      Alert.alert("خطا", "اطلاعات کاربر یافت نشد");
-      return;
-    }
-
-    const userData = JSON.parse(userDataStr);
-
-    console.log("User role after login:", userData.role);
-
-    switch (userData.role) {
-      case "ADMIN":
-        router.replace("/(admin)/(tabs)");
-        break;
-
-      case "TEACHER":
-        router.replace("/(teacher)/(tabs)");
-        break;
-
-      case "STUDENT":
-        router.replace("/(student)/(tabs)");
-        break;
-
-      case "PARENT":
-        router.replace("/(parent)/(tabs)");
-        break;
-
-      default:
-        router.replace("/");
-    }
-  } catch (error) {
-    Alert.alert("خطا در ورود", "ایمیل یا رمز عبور اشتباه است");
-  }
-};
-
-  const handleDemoLogin = async (
-    role: "student" | "teacher" | "admin" | "parent",
-  ) => {
-    const demoCredentials = {
-      student: { email: "student@example.com", password: "123456" },
-      teacher: { email: "teacher@example.com", password: "123456" },
-      admin: { email: "admin@example.com", password: "123456" },
-      parent: { email: "parent@example.com", password: "123456" },
-    };
-
-    setEmail(demoCredentials[role].email);
-    setPassword(demoCredentials[role].password);
+  const handleLogin = async () => {
+    if (!validateForm()) return;
 
     try {
-      await login(demoCredentials[role]);
+      await login({ email, password, rememberMe });
 
-      // Redirect based on role
-      if (role === "parent") {
-        router.replace("/(parent)/(tabs)");
-      } else {
-        router.replace("/");
+      const userDataStr = await AsyncStorage.getItem("user_data");
+
+      if (!userDataStr) {
+        Alert.alert("خطا", "اطلاعات کاربر یافت نشد");
+        return;
       }
-    } catch (err) {
-      Alert.alert("خطا", "ورود با حساب آزمایشی ناموفق بود");
+
+      const userData = JSON.parse(userDataStr);
+      console.log("User role after login:", userData.role);
+
+      // Convert to uppercase for case-insensitive comparison
+      const role = userData.role?.toUpperCase();
+
+      switch (role) {
+        case "ADMIN":
+          router.replace("/(admin)/(tabs)");
+          break;
+        case "TEACHER":
+          router.replace("/(teacher)/(tabs)");
+          break;
+        case "STUDENT":
+          router.replace("/(student)/(tabs)");
+          break;
+        case "PARENT":
+          router.replace("/(parent)/(tabs)");
+          break;
+        default:
+          router.replace("/");
+      }
+    } catch (error) {
+      Alert.alert("خطا در ورود", "ایمیل یا رمز عبور اشتباه است");
     }
   };
 
@@ -134,16 +107,20 @@ export default function LoginScreen() {
             style={styles.gradient}
           >
             <View style={styles.header}>
-              <TouchableOpacity
-                style={styles.backButton}
-                onPress={() => router.back()}
-              >
-                {/* <Ionicons name="arrow-forward" size={24} color="#fff" /> */}
-              </TouchableOpacity>
-              <Text style={styles.logoText}>آموزش فارسی</Text>
+              <View style={styles.headerPlaceholder} />
             </View>
 
             <View style={styles.card}>
+              {/* Logo Section */}
+              <View style={styles.logoSection}>
+                <Image
+                  source={require("../../assets/images/icon1.png")}
+                  style={styles.logo}
+                  resizeMode="contain"
+                />
+                <Text style={styles.appName}>Hoshmand Asra</Text>
+              </View>
+
               <View style={styles.welcomeSection}>
                 <Text style={styles.title}>خوش آمدید 👋</Text>
                 <Text style={styles.subtitle}>
@@ -305,64 +282,23 @@ export default function LoginScreen() {
                   )}
                 </TouchableOpacity>
 
-                {/* Divider */}
-                <View style={styles.divider}>
-                  <View style={styles.dividerLine} />
-                  <Text style={styles.dividerText}>یا</Text>
-                  <View style={styles.dividerLine} />
-                </View>
-
-                {/* Demo Accounts */}
-                <View style={styles.demoSection}>
-                  <Text style={styles.demoTitle}>ورود با حساب آزمایشی</Text>
-                  <View style={styles.demoButtons}>
-                    <TouchableOpacity
-                      style={[styles.demoButton, styles.studentButton]}
-                      onPress={() => handleDemoLogin("student")}
-                      disabled={loading}
-                    >
-                      <Ionicons name="person" size={16} color="#fff" />
-                      <Text style={styles.demoButtonText}>دانش‌آموز</Text>
-                    </TouchableOpacity>
-
-                    <TouchableOpacity
-                      style={[styles.demoButton, styles.teacherButton]}
-                      onPress={() => handleDemoLogin("teacher")}
-                      disabled={loading}
-                    >
-                      <Ionicons name="school" size={16} color="#fff" />
-                      <Text style={styles.demoButtonText}>معلم</Text>
-                    </TouchableOpacity>
-
-                    <TouchableOpacity
-                      style={[styles.demoButton, styles.parentButton]}
-                      onPress={() => handleDemoLogin("parent")}
-                      disabled={loading}
-                    >
-                      <Ionicons name="people" size={16} color="#fff" />
-                      <Text style={styles.demoButtonText}>والدین</Text>
-                    </TouchableOpacity>
-
-                    <TouchableOpacity
-                      style={[styles.demoButton, styles.adminButton]}
-                      onPress={() => handleDemoLogin("admin")}
-                      disabled={loading}
-                    >
-                      <Ionicons name="shield" size={16} color="#fff" />
-                      <Text style={styles.demoButtonText}>مدیر</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-
                 {/* Register Link */}
                 <View style={styles.registerContainer}>
-                  <Text style={styles.registerText}>حساب کاربری ندارید؟</Text>
                   <TouchableOpacity
                     onPress={() => router.push("/(auth)/register")}
                     disabled={loading}
                   >
                     <Text style={styles.registerLink}>ثبت‌نام کنید</Text>
                   </TouchableOpacity>
+                  <Text style={styles.registerText}>حساب کاربری ندارید؟</Text>
+                </View>
+
+                {/* Footer - FIXED */}
+                <View style={styles.footerContainer}>
+                  <Text style={styles.footerText}>
+                    © {new Date().getFullYear()} Web Studio. All rights
+                    reserved.
+                  </Text>
                 </View>
               </View>
             </View>
@@ -392,15 +328,14 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     paddingHorizontal: 20,
     paddingTop: 20,
-    paddingBottom: 40,
+    paddingBottom: 20,
   },
   backButton: {
     padding: 8,
+    zIndex: 1,
   },
-  logoText: {
-    fontSize: 20,
-    fontWeight: "bold",
-    color: "#fff",
+  headerPlaceholder: {
+    width: 40,
   },
   card: {
     flex: 1,
@@ -408,7 +343,25 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 30,
     borderTopRightRadius: 30,
     paddingHorizontal: 24,
-    paddingTop: 40,
+    paddingTop: 0,
+  },
+  logoSection: {
+    alignItems: "center",
+    marginTop: -40,
+    marginBottom: 24,
+  },
+  logo: {
+    width: 200,
+    height: 200,
+    borderRadius: 90,
+    backgroundColor: "#fff",
+    marginBottom: 12,
+  },
+  appName: {
+    fontSize: 24,
+    fontWeight: "bold",
+    color: Colors.primary,
+    textAlign: "center",
   },
   welcomeSection: {
     marginBottom: 32,
@@ -427,6 +380,7 @@ const styles = StyleSheet.create({
   },
   form: {
     gap: 24,
+    paddingBottom: 20,
   },
   inputGroup: {
     gap: 8,
@@ -457,7 +411,6 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 15,
     color: Colors.text,
-    // textAlign: "right",
   },
   passwordToggle: {
     padding: 4,
@@ -533,62 +486,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "bold",
   },
-  divider: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginVertical: 8,
-  },
-  dividerLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: Colors.border,
-  },
-  dividerText: {
-    marginHorizontal: 16,
-    color: Colors.textSecondary,
-    fontSize: 14,
-  },
-  demoSection: {
-    gap: 12,
-  },
-  demoTitle: {
-    fontSize: 14,
-    color: Colors.textSecondary,
-    textAlign: "center",
-  },
-  demoButtons: {
-    flexDirection: "row",
-    justifyContent: "center",
-    flexWrap: "wrap",
-    gap: 8,
-  },
-  demoButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 8,
-    gap: 4,
-    minWidth: 80,
-    justifyContent: "center",
-  },
-  studentButton: {
-    backgroundColor: "#10b981",
-  },
-  teacherButton: {
-    backgroundColor: "#f59e0b",
-  },
-  parentButton: {
-    backgroundColor: "#8b5cf6",
-  },
-  adminButton: {
-    backgroundColor: "#ef4444",
-  },
-  demoButtonText: {
-    color: "#fff",
-    fontSize: 12,
-    fontWeight: "bold",
-  },
   registerContainer: {
     flexDirection: "row",
     justifyContent: "center",
@@ -604,5 +501,16 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: Colors.primary,
     fontWeight: "bold",
+  },
+  footerContainer: {
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 24,
+    marginBottom: 20,
+  },
+  footerText: {
+    fontSize: 12,
+    color: Colors.textSecondary,
+    textAlign: "center",
   },
 });

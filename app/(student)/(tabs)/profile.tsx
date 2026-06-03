@@ -1,15 +1,21 @@
+// app/(student)/profile/index.tsx
 import { Header } from "@/components/Header";
 import { Colors } from "@/constants/Colors";
 import { useAuth } from "@/contexts/AuthContext";
-import { DashboardStats } from "@/types";
+import {
+  studentGrades,
+  studentProfileApi,
+} from "@/src/config/studentProfileApi";
 import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 import { useRouter } from "expo-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
+  ActivityIndicator,
   Alert,
   Image,
   Modal,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Switch,
@@ -20,7 +26,6 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-// Student-specific interface
 interface StudentProfileData {
   bio?: string;
   grade?: string;
@@ -31,48 +36,52 @@ interface StudentProfileData {
   interests?: string[];
 }
 
-const defaultProfileImage = "https://i.pravatar.cc/300";
+interface Stats {
+  total_courses: number;
+  enrolled_courses: number;
+  completed_courses: number;
+  total_hours: number;
+  certificates: number;
+  assignments_pending: number;
+  exams_upcoming: number;
+}
 
-const studentGrades = [
-  "اول ابتدایی",
-  "دوم ابتدایی",
-  "سوم ابتدایی",
-  "چهارم ابتدایی",
-  "پنجم ابتدایی",
-  "ششم ابتدایی",
-  "اول متوسطه",
-  "دوم متوسطه",
-  "سوم متوسطه",
-  "چهارم متوسطه",
-];
+// Use null for default profile image - will show placeholder
+const defaultProfileImage = null;
 
 export default function ProfileScreen() {
   const router = useRouter();
-  const { user, logout, updateProfile } = useAuth();
+  const { user, logout, updateProfile: updateAuthProfile } = useAuth();
 
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [profileImage, setProfileImage] = useState(
-    user?.profile_image || defaultProfileImage,
+  const [saving, setSaving] = useState(false);
+  const [profileImage, setProfileImage] = useState<string | null>(
+    user?.profile_image || null,
   );
   const [showGradeModal, setShowGradeModal] = useState(false);
-
-  // Student-specific data
-  const studentData: StudentProfileData = {
-    bio: (user as any)?.bio || "دانش‌آموز علاقه‌مند به ریاضی و علوم",
-    grade: (user as any)?.grade || "چهارم ابتدایی",
-    school: (user as any)?.school || "دبستان نمونه دولتی فرهنگ",
-    birthDate: (user as any)?.birthDate || "۱۳۹۵/۰۶/۱۵",
-    parentContact: (user as any)?.parentContact || "۰۹۱۲۳۴۵۶۷۸۹",
-    address: (user as any)?.address || "تهران، خیابان ولیعصر",
-    interests: (user as any)?.interests || ["ریاضی", "علوم", "هنر", "ورزش"],
-  };
+  const [stats, setStats] = useState<Stats>({
+    total_courses: 0,
+    enrolled_courses: 0,
+    completed_courses: 0,
+    total_hours: 0,
+    certificates: 0,
+    assignments_pending: 0,
+    exams_upcoming: 0,
+  });
 
   const [formData, setFormData] = useState({
-    name: user?.name || "",
+    fullName: user?.fullName || "",
     email: user?.email || "",
     phone: user?.phone || "",
-    ...studentData,
+    bio: "",
+    grade: "",
+    school: "",
+    birthDate: "",
+    parentContact: "",
+    address: "",
+    interests: [] as string[],
   });
 
   const [notifications, setNotifications] = useState({
@@ -85,14 +94,46 @@ export default function ProfileScreen() {
     systemAnnouncements: true,
   });
 
-  const stats: DashboardStats = {
-    total_courses: 12,
-    enrolled_courses: 5,
-    completed_courses: 2,
-    total_hours: 48,
-    certificates: 3,
-    assignments_pending: 2,
-    exams_upcoming: 1,
+  useEffect(() => {
+    loadProfileData();
+  }, []);
+
+  const loadProfileData = async () => {
+    try {
+      setLoading(true);
+      const response = await studentProfileApi.getProfile();
+
+      if (response.success && response.data) {
+        const { user: userData, student, stats: statsData } = response.data;
+
+        setFormData({
+          fullName: userData.fullName || "",
+          email: userData.email || "",
+          phone: userData.phone || "",
+          bio: student.bio || "",
+          grade: student.grade || "",
+          school: student.school || "",
+          birthDate: student.birthDate || "",
+          parentContact: student.parentContact || "",
+          address: student.address || "",
+          interests: Array.isArray(student.interests) ? student.interests : [],
+        });
+
+        setProfileImage(userData.profileImage || null);
+        setStats(statsData);
+      }
+    } catch (error) {
+      console.error("Error loading profile:", error);
+      Alert.alert("خطا", "دریافت اطلاعات پروفایل با مشکل مواجه شد");
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+
+  const onRefresh = () => {
+    setRefreshing(true);
+    loadProfileData();
   };
 
   const menuItems = [
@@ -100,16 +141,16 @@ export default function ProfileScreen() {
       title: "دوره‌های من",
       icon: "book-outline",
       color: Colors.primary,
-      onPress: () => router.push("/my-courses" as any),
+      onPress: () => router.push("/(student)/courses" as any),
     },
     {
       title: "گواهینامه‌ها",
       icon: "trophy-outline",
       color: Colors.warning,
-      onPress: () => router.push("/certificates" as any),
+      onPress: () => router.push("/(public)/certificates" as any),
     },
     {
-      title: "تکالیف",
+      title: "کارخانگی",
       icon: "document-text-outline",
       color: Colors.success,
       onPress: () => router.push("/(student)/assignments" as any),
@@ -118,19 +159,19 @@ export default function ProfileScreen() {
       title: "آزمون‌ها",
       icon: "clipboard-outline",
       color: Colors.danger,
-      onPress: () => router.push("/app/(public)/exams.tsx" as any),
+      onPress: () => router.push("/student/exams" as any),
     },
     {
       title: "تنظیمات",
       icon: "settings-outline",
       color: Colors.textSecondary,
-      onPress: () => router.push("./" as any),
+      onPress: () => router.push("/(public)/settings" as any),
     },
     {
       title: "راهنما و پشتیبانی",
       icon: "help-circle-outline",
       color: Colors.info,
-      onPress: () => router.push("/help" as any),
+      onPress: () => router.push("/(public)/info" as any),
     },
   ];
 
@@ -169,17 +210,25 @@ export default function ProfileScreen() {
 
     if (!result.canceled) {
       setProfileImage(result.assets[0].uri);
+      try {
+        const response = await studentProfileApi.uploadProfileImage(
+          result.assets[0].uri,
+        );
+        if (response.success) {
+          Alert.alert("موفقیت", "عکس پروفایل با موفقیت به‌روزرسانی شد");
+        }
+      } catch (error) {
+        Alert.alert("خطا", "آپلود عکس با مشکل مواجه شد");
+      }
     }
   };
 
   const handleSave = async () => {
-    setLoading(true);
+    setSaving(true);
     try {
-      const updateData: any = {
-        name: formData.name,
-        email: formData.email,
+      const updateData = {
+        fullName: formData.fullName,
         phone: formData.phone,
-        profile_image: profileImage,
         bio: formData.bio,
         grade: formData.grade,
         school: formData.school,
@@ -189,14 +238,24 @@ export default function ProfileScreen() {
         interests: formData.interests,
       };
 
-      await updateProfile(updateData);
-      Alert.alert("موفقیت", "پروفایل با موفقیت به‌روزرسانی شد.");
-      setIsEditing(false);
+      const response = await studentProfileApi.updateProfile(updateData);
+
+      if (response.success) {
+        // Update auth context
+        await updateAuthProfile(updateData);
+
+        Alert.alert("موفقیت", "پروفایل با موفقیت به‌روزرسانی شد.");
+        setIsEditing(false);
+        loadProfileData(); // Reload to get fresh data
+      }
     } catch (error: any) {
       console.error("Profile update error:", error);
-      Alert.alert("خطا", "در به‌روزرسانی پروفایل خطایی رخ داد.");
+      Alert.alert(
+        "خطا",
+        error?.message || "در به‌روزرسانی پروفایل خطایی رخ داد.",
+      );
     } finally {
-      setLoading(false);
+      setSaving(false);
     }
   };
 
@@ -205,7 +264,7 @@ export default function ProfileScreen() {
   };
 
   const getRoleText = (role: string) => {
-    switch (role) {
+    switch (role?.toLowerCase()) {
       case "admin":
         return "مدیر سیستم";
       case "teacher":
@@ -216,6 +275,31 @@ export default function ProfileScreen() {
         return "کاربر";
     }
   };
+
+  const renderProfileImage = () => {
+    if (profileImage) {
+      return (
+        <Image source={{ uri: profileImage }} style={styles.profileImage} />
+      );
+    }
+    return (
+      <View style={[styles.profileImage, styles.placeholderImage]}>
+        <Ionicons name="person" size={40} color={Colors.textSecondary} />
+      </View>
+    );
+  };
+
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.container} edges={["top"]}>
+        <Header title="پروفایل" />
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={Colors.primary} />
+          <Text style={styles.loadingText}>در حال بارگذاری پروفایل...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
@@ -232,15 +316,25 @@ export default function ProfileScreen() {
         }
       />
 
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        style={styles.content}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            colors={[Colors.primary]}
+          />
+        }
+      >
         {/* Profile Header */}
         <View style={styles.profileHeader}>
-          <TouchableOpacity onPress={isEditing ? pickImage : undefined}>
+          <TouchableOpacity
+            onPress={isEditing ? pickImage : undefined}
+            disabled={!isEditing}
+          >
             <View style={styles.profileImageContainer}>
-              <Image
-                source={{ uri: profileImage }}
-                style={styles.profileImage}
-              />
+              {renderProfileImage()}
               {isEditing && (
                 <View style={styles.editImageBadge}>
                   <Ionicons name="camera" size={16} color="#fff" />
@@ -255,29 +349,33 @@ export default function ProfileScreen() {
                 <Text style={styles.label}>نام و نام خانوادگی</Text>
                 <TextInput
                   style={styles.input}
-                  value={formData.name}
+                  value={formData.fullName}
                   onChangeText={(text) =>
-                    setFormData({ ...formData, name: text })
+                    setFormData({ ...formData, fullName: text })
                   }
                   placeholder="نام و نام خانوادگی"
                   textAlign="right"
                 />
               </View>
             ) : (
-              <View style={styles.nameRow}>
-                <Text style={styles.profileName}>{user?.name}</Text>
-                <View style={styles.roleBadge}>
-                  <Text style={styles.roleText}>
-                    {getRoleText(user?.role || "student")}
+              <>
+                <View style={styles.nameRow}>
+                  <Text style={styles.profileName}>
+                    {formData.fullName || user?.fullName}
                   </Text>
+                  <View style={styles.roleBadge}>
+                    <Text style={styles.roleText}>
+                      {getRoleText(user?.role || "student")}
+                    </Text>
+                  </View>
                 </View>
-              </View>
-            )}
-
-            <Text style={styles.profileEmail}>{user?.email}</Text>
-
-            {!isEditing && (
-              <Text style={styles.profileBio}>{studentData.bio}</Text>
+                <Text style={styles.profileEmail}>
+                  {formData.email || user?.email}
+                </Text>
+                {formData.bio && (
+                  <Text style={styles.profileBio}>{formData.bio}</Text>
+                )}
+              </>
             )}
           </View>
 
@@ -295,6 +393,72 @@ export default function ProfileScreen() {
             </TouchableOpacity>
           )}
         </View>
+
+        {/* Bio Details (Non-edit mode) */}
+        {!isEditing && (
+          <View style={styles.bioSection}>
+            <View style={styles.bioDetails}>
+              {formData.grade && formData.school && (
+                <View style={styles.detailItem}>
+                  <Ionicons
+                    name="school"
+                    size={16}
+                    color={Colors.textSecondary}
+                  />
+                  <Text style={styles.detailText}>
+                    {formData.grade} - {formData.school}
+                  </Text>
+                </View>
+              )}
+              {formData.birthDate && (
+                <View style={styles.detailItem}>
+                  <Ionicons
+                    name="calendar"
+                    size={16}
+                    color={Colors.textSecondary}
+                  />
+                  <Text style={styles.detailText}>
+                    تاریخ تولد: {formData.birthDate}
+                  </Text>
+                </View>
+              )}
+              {formData.parentContact && (
+                <View style={styles.detailItem}>
+                  <Ionicons
+                    name="call"
+                    size={16}
+                    color={Colors.textSecondary}
+                  />
+                  <Text style={styles.detailText}>
+                    تماس والدین: {formData.parentContact}
+                  </Text>
+                </View>
+              )}
+              {formData.address && (
+                <View style={styles.detailItem}>
+                  <Ionicons
+                    name="location"
+                    size={16}
+                    color={Colors.textSecondary}
+                  />
+                  <Text style={styles.detailText}>{formData.address}</Text>
+                </View>
+              )}
+              {formData.interests && formData.interests.length > 0 && (
+                <View style={styles.detailItem}>
+                  <Ionicons
+                    name="heart"
+                    size={16}
+                    color={Colors.textSecondary}
+                  />
+                  <Text style={styles.detailText}>
+                    علاقه‌مندی‌ها: {formData.interests.join("، ")}
+                  </Text>
+                </View>
+              )}
+            </View>
+          </View>
+        )}
 
         {/* Edit Form Section */}
         {isEditing && (
@@ -338,43 +502,45 @@ export default function ProfileScreen() {
             </View>
 
             <View style={styles.formGroup}>
-              <Text style={styles.label}>مدرسه</Text>
+              <Text style={styles.label}>مکتب</Text>
               <TextInput
                 style={styles.input}
                 value={formData.school}
                 onChangeText={(text) =>
                   setFormData({ ...formData, school: text })
                 }
-                placeholder="نام مدرسه"
+                placeholder="نام مکتب"
                 textAlign="right"
               />
             </View>
 
-            <View style={styles.formGroup}>
-              <Text style={styles.label}>تاریخ تولد</Text>
-              <TextInput
-                style={styles.input}
-                value={formData.birthDate}
-                onChangeText={(text) =>
-                  setFormData({ ...formData, birthDate: text })
-                }
-                placeholder="مثال: ۱۳۹۵/۰۶/۱۵"
-                textAlign="right"
-              />
-            </View>
+            <View style={styles.row}>
+              <View style={[styles.formGroup, { flex: 1, marginRight: 8 }]}>
+                <Text style={styles.label}>تاریخ تولد</Text>
+                <TextInput
+                  style={styles.input}
+                  value={formData.birthDate}
+                  onChangeText={(text) =>
+                    setFormData({ ...formData, birthDate: text })
+                  }
+                  placeholder="مثال: ۱۳۹۵/۰۶/۱۵"
+                  textAlign="right"
+                />
+              </View>
 
-            <View style={styles.formGroup}>
-              <Text style={styles.label}>تماس والدین</Text>
-              <TextInput
-                style={styles.input}
-                value={formData.parentContact}
-                onChangeText={(text) =>
-                  setFormData({ ...formData, parentContact: text })
-                }
-                placeholder="شماره تماس والدین"
-                keyboardType="phone-pad"
-                textAlign="right"
-              />
+              <View style={[styles.formGroup, { flex: 1, marginLeft: 8 }]}>
+                <Text style={styles.label}>تماس والدین</Text>
+                <TextInput
+                  style={styles.input}
+                  value={formData.parentContact}
+                  onChangeText={(text) =>
+                    setFormData({ ...formData, parentContact: text })
+                  }
+                  placeholder="شماره تماس"
+                  keyboardType="phone-pad"
+                  textAlign="right"
+                />
+              </View>
             </View>
 
             <View style={styles.formGroup}>
@@ -398,67 +564,16 @@ export default function ProfileScreen() {
                 style={[styles.input, styles.textArea]}
                 value={formData.interests?.join("، ")}
                 onChangeText={(text) =>
-                  setFormData({ ...formData, interests: text.split("، ") })
+                  setFormData({
+                    ...formData,
+                    interests: text.split("، ").filter((i) => i.trim()),
+                  })
                 }
                 placeholder="علاقه‌مندی‌های خود را با کاما جدا کنید"
                 multiline
                 numberOfLines={2}
                 textAlign="right"
               />
-            </View>
-          </View>
-        )}
-
-        {/* Bio Section (Non-edit mode) */}
-        {!isEditing && (
-          <View style={styles.bioSection}>
-            <View style={styles.bioDetails}>
-              <View style={styles.detailItem}>
-                <Ionicons
-                  name="school"
-                  size={16}
-                  color={Colors.textSecondary}
-                />
-                <Text style={styles.detailText}>
-                  {studentData.grade} - {studentData.school}
-                </Text>
-              </View>
-              <View style={styles.detailItem}>
-                <Ionicons
-                  name="calendar"
-                  size={16}
-                  color={Colors.textSecondary}
-                />
-                <Text style={styles.detailText}>
-                  تاریخ تولد: {studentData.birthDate}
-                </Text>
-              </View>
-              <View style={styles.detailItem}>
-                <Ionicons name="call" size={16} color={Colors.textSecondary} />
-                <Text style={styles.detailText}>
-                  تماس والدین: {studentData.parentContact}
-                </Text>
-              </View>
-              <View style={styles.detailItem}>
-                <Ionicons
-                  name="location"
-                  size={16}
-                  color={Colors.textSecondary}
-                />
-                <Text style={styles.detailText}>{studentData.address}</Text>
-              </View>
-              {studentData.interests && studentData.interests.length > 0 && (
-                <View style={styles.detailItem}>
-                  <Ionicons
-                    name="heart"
-                    size={16}
-                    color={Colors.textSecondary}
-                  />
-                  <Text style={styles.detailText}>
-                    علاقه‌مندی‌ها: {studentData.interests.join("، ")}
-                  </Text>
-                </View>
-              )}
             </View>
           </View>
         )}
@@ -525,6 +640,112 @@ export default function ProfileScreen() {
           </View>
         </View>
 
+        {/* Quick Actions */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>دسترسی سریع</Text>
+          <View style={styles.menuGrid}>
+            {menuItems.map((item, index) => (
+              <TouchableOpacity
+                key={index}
+                style={styles.menuItem}
+                onPress={item.onPress}
+              >
+                <View
+                  style={[
+                    styles.menuIcon,
+                    { backgroundColor: `${item.color}10` },
+                  ]}
+                >
+                  <Ionicons
+                    name={item.icon as any}
+                    size={24}
+                    color={item.color}
+                  />
+                </View>
+                <Text style={styles.menuText}>{item.title}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+
+        {/* Pending Items */}
+        {(stats.assignments_pending > 0 || stats.exams_upcoming > 0) && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>اقدامات در انتظار</Text>
+            <View style={styles.pendingItems}>
+              {stats.assignments_pending > 0 && (
+                <TouchableOpacity
+                  style={styles.pendingItem}
+                  onPress={() => router.push("/(student)/assignments")}
+                >
+                  <View style={styles.pendingItemLeft}>
+                    <View
+                      style={[
+                        styles.pendingIcon,
+                        { backgroundColor: "rgba(239, 68, 68, 0.1)" },
+                      ]}
+                    >
+                      <Ionicons
+                        name="document-text"
+                        size={20}
+                        color={Colors.danger}
+                      />
+                    </View>
+                    <View>
+                      <Text style={styles.pendingTitle}>
+                        {stats.assignments_pending} کارخانگی در انتظار
+                      </Text>
+                      <Text style={styles.pendingSubtitle}>
+                        کارخانگی در انتظار تحویل
+                      </Text>
+                    </View>
+                  </View>
+                  <Ionicons
+                    name="chevron-back"
+                    size={20}
+                    color={Colors.textSecondary}
+                  />
+                </TouchableOpacity>
+              )}
+
+              {stats.exams_upcoming > 0 && (
+                <TouchableOpacity
+                  style={styles.pendingItem}
+                  onPress={() => router.push("/student/exams")}
+                >
+                  <View style={styles.pendingItemLeft}>
+                    <View
+                      style={[
+                        styles.pendingIcon,
+                        { backgroundColor: "rgba(59, 130, 246, 0.1)" },
+                      ]}
+                    >
+                      <Ionicons
+                        name="clipboard"
+                        size={20}
+                        color={Colors.primary}
+                      />
+                    </View>
+                    <View>
+                      <Text style={styles.pendingTitle}>
+                        {stats.exams_upcoming} آزمون
+                      </Text>
+                      <Text style={styles.pendingSubtitle}>
+                        آزمون‌های پیش رو
+                      </Text>
+                    </View>
+                  </View>
+                  <Ionicons
+                    name="chevron-back"
+                    size={20}
+                    color={Colors.textSecondary}
+                  />
+                </TouchableOpacity>
+              )}
+            </View>
+          </View>
+        )}
+
         {/* Notifications Section */}
         {isEditing && (
           <View style={styles.section}>
@@ -566,9 +787,9 @@ export default function ProfileScreen() {
 
               <View style={styles.notificationItem}>
                 <View>
-                  <Text style={styles.notificationTitle}>مهلت تکالیف</Text>
+                  <Text style={styles.notificationTitle}>مهلت کارخانگی</Text>
                   <Text style={styles.notificationDesc}>
-                    یادآوری زمان تحویل تکالیف
+                    یادآوری زمان تحویل کارخانگی
                   </Text>
                 </View>
                 <Switch
@@ -605,114 +826,22 @@ export default function ProfileScreen() {
           </View>
         )}
 
-        {/* Quick Actions */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>دسترسی سریع</Text>
-          <View style={styles.menuGrid}>
-            {menuItems.map((item, index) => (
-              <TouchableOpacity
-                key={index}
-                style={styles.menuItem}
-                onPress={item.onPress}
-              >
-                <View
-                  style={[
-                    styles.menuIcon,
-                    { backgroundColor: `${item.color}10` },
-                  ]}
-                >
-                  <Ionicons
-                    name={item.icon as any}
-                    size={24}
-                    color={item.color}
-                  />
-                </View>
-                <Text style={styles.menuText}>{item.title}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </View>
-
-        {/* Pending Items */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>اقدامات در انتظار</Text>
-          <View style={styles.pendingItems}>
-            {stats.assignments_pending > 0 && (
-              <TouchableOpacity style={styles.pendingItem}>
-                <View style={styles.pendingItemLeft}>
-                  <View
-                    style={[
-                      styles.pendingIcon,
-                      { backgroundColor: "rgba(239, 68, 68, 0.1)" },
-                    ]}
-                  >
-                    <Ionicons
-                      name="document-text"
-                      size={20}
-                      color={Colors.danger}
-                    />
-                  </View>
-                  <View>
-                    <Text style={styles.pendingTitle}>
-                      {stats.assignments_pending} تکلیف
-                    </Text>
-                    <Text style={styles.pendingSubtitle}>
-                      تکالیف در انتظار تحویل
-                    </Text>
-                  </View>
-                </View>
-                <Ionicons
-                  name="chevron-back"
-                  size={20}
-                  color={Colors.textSecondary}
-                />
-              </TouchableOpacity>
-            )}
-
-            {stats.exams_upcoming > 0 && (
-              <TouchableOpacity style={styles.pendingItem}>
-                <View style={styles.pendingItemLeft}>
-                  <View
-                    style={[
-                      styles.pendingIcon,
-                      { backgroundColor: "rgba(59, 130, 246, 0.1)" },
-                    ]}
-                  >
-                    <Ionicons
-                      name="clipboard"
-                      size={20}
-                      color={Colors.primary}
-                    />
-                  </View>
-                  <View>
-                    <Text style={styles.pendingTitle}>
-                      {stats.exams_upcoming} آزمون
-                    </Text>
-                    <Text style={styles.pendingSubtitle}>آزمون‌های پیش رو</Text>
-                  </View>
-                </View>
-                <Ionicons
-                  name="chevron-back"
-                  size={20}
-                  color={Colors.textSecondary}
-                />
-              </TouchableOpacity>
-            )}
-          </View>
-        </View>
-
         {/* Action Buttons */}
         <View style={styles.section}>
           {isEditing ? (
             <TouchableOpacity
-              style={[styles.saveButton, loading && styles.saveButtonDisabled]}
+              style={[styles.saveButton, saving && styles.saveButtonDisabled]}
               onPress={handleSave}
-              disabled={loading}
+              disabled={saving}
             >
-              <Ionicons name="save" size={20} color="#fff" />
-              <Text style={styles.saveButtonText}>
-                {loading ? "در حال ذخیره..." : "ذخیره تغییرات"}
-              </Text>
+              {saving ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <>
+                  <Ionicons name="save" size={20} color="#fff" />
+                  <Text style={styles.saveButtonText}>ذخیره تغییرات</Text>
+                </>
+              )}
             </TouchableOpacity>
           ) : (
             <TouchableOpacity
@@ -739,13 +868,6 @@ export default function ProfileScreen() {
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>انتخاب پایه تحصیلی</Text>
-              <TouchableOpacity onPress={() => setShowGradeModal(false)}>
-                <Ionicons name="close" size={24} color={Colors.text} />
-              </TouchableOpacity>
-            </View>
-
             <ScrollView style={styles.modalList}>
               {studentGrades.map((grade, index) => (
                 <TouchableOpacity
@@ -772,15 +894,25 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: Colors.background,
   },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: Colors.background,
+  },
+  loadingText: {
+    marginTop: 16,
+    fontSize: 16,
+    color: Colors.textSecondary,
+  },
   content: {
     flex: 1,
-    paddingBottom: 32,
   },
   profileHeader: {
     alignItems: "center",
     padding: 24,
     backgroundColor: Colors.card,
-    marginBottom: 24,
+    marginBottom: 16,
   },
   profileImageContainer: {
     position: "relative",
@@ -792,6 +924,14 @@ const styles = StyleSheet.create({
     borderRadius: 50,
     borderWidth: 4,
     borderColor: Colors.card,
+  },
+  placeholderImage: {
+    backgroundColor: Colors.background,
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 2,
+    borderColor: Colors.border,
+    borderStyle: "dashed",
   },
   editImageBadge: {
     position: "absolute",
@@ -862,7 +1002,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 16,
     backgroundColor: Colors.card,
-    marginBottom: 24,
+    marginBottom: 16,
     borderRadius: 12,
     marginHorizontal: 20,
   },
@@ -870,7 +1010,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 16,
     backgroundColor: Colors.card,
-    marginBottom: 24,
+    marginBottom: 16,
     borderRadius: 12,
     marginHorizontal: 20,
   },
@@ -885,6 +1025,7 @@ const styles = StyleSheet.create({
   detailText: {
     fontSize: 14,
     color: Colors.textSecondary,
+    flex: 1,
   },
   section: {
     paddingHorizontal: 20,
@@ -1038,6 +1179,10 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: Colors.text,
     textAlign: "right",
+  },
+  row: {
+    flexDirection: "row",
+    justifyContent: "space-between",
   },
   notificationsList: {
     gap: 16,

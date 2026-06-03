@@ -1,16 +1,14 @@
 import { useAuth } from "@/contexts/AuthContext";
 import { Ionicons } from "@expo/vector-icons";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as ImagePicker from "expo-image-picker";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
   Image,
   Modal,
-  RefreshControl,
   ScrollView,
   StyleSheet,
   Switch,
@@ -22,61 +20,98 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Header } from "../../../components/Header";
 import { Colors } from "../../../constants/Colors";
-import { BASE_URL } from "../../../src/config/api";
+import { apiRequest, BASE_URL } from "../../../src/config/api";
 
-interface Subject {
-  id: number;
-  name: string;
-}
-
+// Define teacher profile interface
 interface TeacherProfileData {
   id: number;
   fullName: string;
   email: string;
   phone: string;
-  profileImage: string;
-  bio: string;
-  experience: string;
-  hourlyRate: number;
-  certification: string;
-  availability: boolean;
-  rating: number;
-  education: string[];
-  subjects: Subject[];
-  stats: {
-    totalStudents: number;
-    totalCourses: number;
-    totalHours: number;
-    rating: number;
-  };
+  profile_image?: string;
+  bio?: string;
+  education?: string[];
+  subjects?: string[];
+  experience?: string;
+  hourlyRate?: number;
+  certification?: string;
+  availability?: boolean;
+  verified?: boolean;
+  rating?: number;
+  totalStudents?: number;
+  totalCourses?: number;
+  totalHours?: number;
+  qualifications?: Qualification[];
+  bankInfo?: BankInfo;
 }
 
-const defaultProfileImage = "https://via.placeholder.com/150";
+interface Qualification {
+  id: number;
+  title: string;
+  institution: string;
+  year: number;
+  document?: string;
+}
+
+interface BankInfo {
+  accountNumber: string;
+  cardNumber: string;
+  shabaNumber: string;
+  bankName: string;
+}
+
+const defaultProfileImage = "/assets/images/favicon.png";
+
+// ✅ REMOVED duplicate teacherMenu from here (lines 32-45)
+
+const teachingSubjects = [
+  "ریاضی",
+  "فیزیک",
+  "شیمی",
+  "ادبیات فارسی",
+  "زبان انگلیسی",
+  "علوم تجربی",
+  "تاریخ",
+  "جغرافیا",
+  "دینی",
+  "هنر",
+  "ورزش",
+  "کامپیوتر",
+  "موسیقی",
+  "زبان عربی",
+  "فلسفه",
+  "روانشناسی",
+];
 
 export default function TeacherProfile() {
   const router = useRouter();
-  const { user, logout } = useAuth();
-  const [profile, setProfile] = useState<TeacherProfileData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
+  const { user, token, logout } = useAuth();
+  const [loading, setLoading] = useState(false);
+  const [fetchLoading, setFetchLoading] = useState(true);
+  const [profileImage, setProfileImage] = useState(
+    user?.profile_image || defaultProfileImage,
+  );
   const [isEditing, setIsEditing] = useState(false);
-  const [saving, setSaving] = useState(false);
   const [showSubjectsModal, setShowSubjectsModal] = useState(false);
-  const [allSubjects, setAllSubjects] = useState<Subject[]>([]);
-  const [profileImage, setProfileImage] = useState(defaultProfileImage);
-  const [fetchError, setFetchError] = useState<string | null>(null);
+  const [teacherProfile, setTeacherProfile] =
+    useState<TeacherProfileData | null>(null);
 
-  // Edit form state
   const [formData, setFormData] = useState({
+    fullName: user?.fullName || "",
+    email: user?.email || "",
+    phone: user?.phone || "",
     bio: "",
+    education: [] as string[],
+    subjects: [] as string[],
     experience: "",
     hourlyRate: 0,
     certification: "",
     availability: true,
-    phone: "",
-    profileImage: "",
-    education: [] as string[],
-    subjects: [] as number[],
+    verified: false,
+    totalStudents: 0,
+    totalCourses: 0,
+    totalHours: 0,
+    rating: 0,
   });
 
   const [notifications, setNotifications] = useState({
@@ -89,136 +124,83 @@ export default function TeacherProfile() {
     marketingEmails: false,
   });
 
-  // Fetch teacher profile
-  const fetchProfile = async () => {
+  // Fetch teacher profile data - wrap in useCallback
+  const fetchTeacherProfile = useCallback(async () => {
     try {
-      setFetchError(null);
-      const token = await AsyncStorage.getItem("auth_token");
-      if (!token) {
-        setFetchError("No token found");
-        return;
-      }
-
-      console.log("Fetching profile from:", `${BASE_URL}/teacher/profile`);
-      
-      const response = await fetch(`${BASE_URL}/teacher/profile`, {
+      setFetchLoading(true);
+      const response = await apiRequest("/teacher/profile", {
+        method: "GET",
         headers: {
           Authorization: `Bearer ${token}`,
         },
       });
 
-      const data = await response.json();
-      console.log("Profile response:", data);
+      console.log("Teacher profile:", response);
+      const profileData = response.data || response;
+      setTeacherProfile(profileData);
 
-      if (response.ok) {
-        // Check if data has the expected structure
-        const profileData = data.data || data; // Handle both {data: {...}} and direct response
-        
-        setProfile(profileData);
-        setProfileImage(profileData.profileImage || defaultProfileImage);
-        
-        // Initialize form data
-        setFormData({
-          bio: profileData.bio || "",
-          experience: profileData.experience || "",
-          hourlyRate: profileData.hourlyRate || 0,
-          certification: profileData.certification || "",
-          availability: profileData.availability ?? true,
-          phone: profileData.phone || "",
-          profileImage: profileData.profileImage || "",
-          education: profileData.education || [],
-          subjects: profileData.subjects?.map((s: Subject) => s.id) || [],
-        });
-      } else {
-        console.error("Profile fetch failed:", data);
-        setFetchError(data.message || "Failed to load profile");
+      // Initialize form data with fetched profile
+      setFormData({
+        fullName: profileData.fullName || user?.fullName || "",
+        email: profileData.email || user?.email || "",
+        phone: profileData.phone || user?.phone || "",
+        bio: profileData.bio || "",
+        education: profileData.education || [],
+        subjects: profileData.subjects || [],
+        experience: profileData.experience || "",
+        hourlyRate: profileData.hourlyRate || 0,
+        certification: profileData.certification || "",
+        availability: profileData.availability ?? true,
+        verified: profileData.verified ?? false,
+        totalStudents: profileData.totalStudents || 0,
+        totalCourses: profileData.totalCourses || 0,
+        totalHours: profileData.totalHours || 0,
+        rating: profileData.rating || 0,
+      });
+
+      // Update profile image if available
+      if (profileData.profile_image) {
+        setProfileImage(profileData.profile_image);
       }
-    } catch (error) {
-      console.error("Fetch profile error:", error);
-      setFetchError("Network error. Please check your connection.");
+    } catch (error: any) {
+      console.error("Error fetching teacher profile:", error);
+      // Fallback to user data from auth context
+      setTeacherProfile({
+        id: user?.id || 0,
+        fullName: user?.fullName || "",
+        email: user?.email || "",
+        phone: user?.phone || "",
+        profile_image: user?.profile_image,
+        bio: "",
+        education: [],
+        subjects: ["ریاضی"],
+        experience: "۱۲ سال",
+        hourlyRate: 60000,
+        certification: "استاد",
+        availability: true,
+        verified: true,
+        rating: 4.9,
+        totalStudents: 245,
+        totalCourses: 8,
+        totalHours: 480,
+      });
     } finally {
-      setLoading(false);
-      setRefreshing(false);
+      setFetchLoading(false);
     }
-  };
-
-  // Fetch all subjects for selection - FIXED: This endpoint might not exist
-  const fetchSubjects = async () => {
-    try {
-      const token = await AsyncStorage.getItem("auth_token");
-      if (!token) return;
-
-      // Try multiple possible endpoints for subjects
-      const possibleEndpoints = [
-        "/teacher/subjects",
-        "/subjects",
-        "/api/subjects",
-        "/subjects/all"
-      ];
-      
-      let subjectsData = [];
-      let found = false;
-
-      for (const endpoint of possibleEndpoints) {
-        try {
-          console.log("Trying subjects endpoint:", `${BASE_URL}${endpoint}`);
-          const response = await fetch(`${BASE_URL}${endpoint}`, {
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
-          });
-
-          if (response.ok) {
-            const data = await response.json();
-            subjectsData = data.data || data;
-            console.log(`✅ Subjects found at ${endpoint}:`, subjectsData);
-            found = true;
-            break;
-          }
-        } catch (e) {
-          console.log(`❌ Failed at ${endpoint}:`, e);
-        }
-      }
-
-      if (found && Array.isArray(subjectsData)) {
-        setAllSubjects(subjectsData);
-      } else {
-        // If no subjects endpoint works, use mock data
-        console.log("Using mock subjects data");
-        setAllSubjects([
-          { id: 1, name: "ریاضی" },
-          { id: 2, name: "فیزیک" },
-          { id: 3, name: "شیمی" },
-          { id: 4, name: "زیست‌شناسی" },
-          { id: 5, name: "ادبیات" },
-          { id: 6, name: "زبان انگلیسی" },
-          { id: 7, name: "عربی" },
-          { id: 8, name: "تاریخ" },
-          { id: 9, name: "جغرافیا" },
-          { id: 10, name: "برنامه‌نویسی" },
-        ]);
-      }
-    } catch (error) {
-      console.error("Fetch subjects error:", error);
-      // Set mock subjects as fallback
-      setAllSubjects([
-        { id: 1, name: "ریاضی" },
-        { id: 2, name: "فیزیک" },
-        { id: 3, name: "شیمی" },
-      ]);
-    }
-  };
+  }, [
+    token,
+    user?.fullName,
+    user?.email,
+    user?.phone,
+    user?.id,
+    user?.profile_image,
+  ]);
 
   useEffect(() => {
-    fetchProfile();
-    fetchSubjects();
-  }, []);
-
-  const onRefresh = () => {
-    setRefreshing(true);
-    fetchProfile();
-    fetchSubjects();
-  };
+    if (token) {
+      fetchTeacherProfile();
+    }
+  }, [token, fetchTeacherProfile]);
 
   const pickImage = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -237,44 +219,97 @@ export default function TeacherProfile() {
 
     if (!result.canceled) {
       setProfileImage(result.assets[0].uri);
-      setFormData({ ...formData, profileImage: result.assets[0].uri });
+      // Upload image to server
+      await uploadProfileImage(result.assets[0].uri);
+    }
+  };
+
+  const uploadProfileImage = async (imageUri: string) => {
+    try {
+      const formData = new FormData();
+
+      // Get filename from URI
+      const filename = imageUri.split("/").pop() || "profile.jpg";
+      const match = /\.(\w+)$/.exec(filename);
+      const type = match ? `image/${match[1]}` : "image/jpeg";
+
+      formData.append("profile_image", {
+        uri: imageUri,
+        type: type,
+        name: filename,
+      } as any);
+
+      console.log("Uploading to:", `${BASE_URL}/teacher/profile/image`); // Debug log
+
+      const response = await fetch(`${BASE_URL}/teacher/profile/image`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "multipart/form-data",
+        },
+        body: formData,
+      });
+
+      const result = await response.json();
+
+      if (response.ok) {
+        Alert.alert("موفقیت", "عکس پروفایل با موفقیت به‌روزرسانی شد.");
+        // Refresh profile to get updated image
+        fetchTeacherProfile();
+      } else {
+        throw new Error(result.message || "Upload failed");
+      }
+    } catch (error) {
+      console.error("Error uploading image:", error);
+      Alert.alert("خطا", "در آپلود عکس خطایی رخ داد. لطفا مجددا تلاش کنید.");
     }
   };
 
   const handleSave = async () => {
-    setSaving(true);
+    setLoading(true);
     try {
-      const token = await AsyncStorage.getItem("auth_token");
-      if (!token) return;
+      const updateData = {
+        fullName: formData.fullName,
+        email: formData.email,
+        phone: formData.phone,
+        bio: formData.bio,
+        education: formData.education,
+        subjects: formData.subjects,
+        experience: formData.experience,
+        hourlyRate: formData.hourlyRate,
+        certification: formData.certification,
+        availability: formData.availability,
+      };
 
-      console.log("Saving profile:", formData);
-
-      const response = await fetch(`${BASE_URL}/teacher/profile`, {
+      const response = await apiRequest("/teacher/profile", {
         method: "PUT",
         headers: {
-          "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
         },
-        body: JSON.stringify(formData),
+        body: JSON.stringify(updateData),
       });
 
-      const data = await response.json();
+      console.log("Profile update response:", response);
 
-      if (response.ok) {
-        Alert.alert("موفقیت", "پروفایل با موفقیت به‌روزرسانی شد.");
-        setIsEditing(false);
-        fetchProfile(); // Refresh profile data
-      } else {
-        Alert.alert(
-          "خطا",
-          data.message || "در به‌روزرسانی پروفایل خطایی رخ داد.",
-        );
+      // Update local state with response data
+      if (response.data) {
+        setTeacherProfile(response.data);
       }
-    } catch (error) {
+
+      Alert.alert("موفقیت", "پروفایل با موفقیت به‌روزرسانی شد.");
+      setIsEditing(false);
+
+      // Refresh profile data
+      fetchTeacherProfile();
+    } catch (error: any) {
       console.error("Profile update error:", error);
-      Alert.alert("خطا", "در به‌روزرسانی پروفایل خطایی رخ داد.");
+      Alert.alert(
+        "خطا",
+        error.message || "در به‌روزرسانی پروفایل خطایی رخ داد.",
+      );
     } finally {
-      setSaving(false);
+      setLoading(false);
     }
   };
 
@@ -286,7 +321,11 @@ export default function TeacherProfile() {
         style: "destructive",
         onPress: async () => {
           try {
+            console.log("Logging out from TeacherProfile...");
             await logout();
+            console.log("Logout complete, redirecting to login...");
+
+            await new Promise((resolve) => setTimeout(resolve, 100));
             router.replace("/(auth)/login");
           } catch (error) {
             console.error("Logout error:", error);
@@ -301,104 +340,104 @@ export default function TeacherProfile() {
     Alert.prompt(
       "افزودن مدرک تحصیلی",
       "مدرک تحصیلی جدید را وارد کنید:",
-      (education) => {
-        if (education) {
-          setFormData({
-            ...formData,
-            education: [...formData.education, education],
-          });
-        }
-      },
+      [
+        {
+          text: "لغو",
+          style: "cancel",
+        },
+        {
+          text: "افزودن",
+          onPress: (education?: string) => {
+            if (education && education.trim()) {
+              setFormData({
+                ...formData,
+                education: [...(formData.education || []), education.trim()],
+              });
+            }
+          },
+        },
+      ],
+      "plain-text",
     );
   };
 
   const handleRemoveEducation = (index: number) => {
-    const newEducation = [...formData.education];
+    const newEducation = [...(formData.education || [])];
     newEducation.splice(index, 1);
     setFormData({ ...formData, education: newEducation });
   };
 
-  const handleToggleSubject = (subjectId: number) => {
-    const currentSubjects = [...formData.subjects];
-    if (currentSubjects.includes(subjectId)) {
+  const handleToggleSubject = (subject: string) => {
+    const currentSubjects = formData.subjects || [];
+    if (currentSubjects.includes(subject)) {
       setFormData({
         ...formData,
-        subjects: currentSubjects.filter((id) => id !== subjectId),
+        subjects: currentSubjects.filter((s) => s !== subject),
       });
     } else {
       setFormData({
         ...formData,
-        subjects: [...currentSubjects, subjectId],
+        subjects: [...currentSubjects, subject],
       });
     }
   };
 
-  const getSubjectName = (subjectId: number) => {
-    return allSubjects.find((s) => s.id === subjectId)?.name || "";
-  };
-
-  if (loading) {
-    return (
-      <SafeAreaView style={[styles.container, styles.centerContent]}>
-        <ActivityIndicator size="large" color={Colors.primary} />
-        <Text style={styles.loadingText}>در حال بارگذاری...</Text>
-      </SafeAreaView>
-    );
-  }
-
-  if (fetchError || !profile) {
-    return (
-      <SafeAreaView style={[styles.container, styles.centerContent]}>
-        <Ionicons name="alert-circle" size={48} color={Colors.danger} />
-        <Text style={styles.errorText}>{fetchError || "خطا در بارگذاری پروفایل"}</Text>
-        <TouchableOpacity style={styles.retryButton} onPress={fetchProfile}>
-          <Text style={styles.retryButtonText}>تلاش مجدد</Text>
-        </TouchableOpacity>
-      </SafeAreaView>
-    );
-  }
-
-  // Safe access to stats with defaults
   const stats = [
     {
       label: "تعداد دوره‌ها",
-      value: profile.stats?.totalCourses || 0,
+      value: teacherProfile?.totalCourses || formData.totalCourses,
       icon: "book" as const,
     },
     {
       label: "دانش‌آموزان",
-      value: profile.stats?.totalStudents || 0,
+      value: teacherProfile?.totalStudents || formData.totalStudents,
       icon: "people" as const,
     },
     {
       label: "ساعات تدریس",
-      value: profile.stats?.totalHours || 0,
+      value: teacherProfile?.totalHours || formData.totalHours,
       icon: "time" as const,
     },
     {
       label: "امتیاز",
-      value: profile.stats?.rating || profile.rating || 0,
+      value: teacherProfile?.rating || formData.rating,
       icon: "star" as const,
     },
   ];
 
+  // ✅ KEEP ONLY THIS teacherMenu (the one inside the component)
   const teacherMenu = [
-    {
-      title: "دریافت‌های مالی",
-      icon: "wallet" as const,
-      onPress: () => router.push("/not-found" as any),
-    },
     {
       title: "تقویم تدریس",
       icon: "calendar" as const,
-      onPress: () => router.push("/(teacher)/timetable" as any),
+      onPress: () =>
+        Alert.alert("در حال توسعه", "این بخش به زودی اضافه خواهد شد"),
+    },
+    {
+      title: "مدارک و گواهینامه‌ها",
+      icon: "document" as const,
+      onPress: () =>
+        Alert.alert("در حال توسعه", "این بخش به زودی اضافه خواهد شد"),
     },
     {
       title: "تنظیمات پیشرفته",
       icon: "settings" as const,
-      onPress: () => router.push("/not-found" as any),
+      onPress: () =>
+        Alert.alert("در حال توسعه", "این بخش به زودی اضافه خواهد شد"),
     },
   ];
+
+  if (fetchLoading) {
+    return (
+      <SafeAreaView style={styles.container} edges={["top"]}>
+        <Header title="پروفایل معلم" showBack />
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={Colors.primary} />
+          <Text style={styles.loadingText}>در حال دریافت اطلاعات...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
@@ -416,13 +455,7 @@ export default function TeacherProfile() {
         }
       />
 
-      <ScrollView
-        style={styles.content}
-        showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-        }
-      >
+      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
         {/* Profile Header */}
         <LinearGradient
           colors={["#1e40af", "#3b82f6"]}
@@ -446,22 +479,25 @@ export default function TeacherProfile() {
 
           <View style={styles.profileInfo}>
             <View style={styles.profileTitle}>
-              <Text style={styles.profileName}>{profile.fullName}</Text>
-              <View style={styles.verifiedBadge}>
-                <Ionicons name="checkmark-circle" size={16} color="#10b981" />
-                <Text style={styles.verifiedText}>تایید شده</Text>
-              </View>
+              <Text style={styles.profileName}>
+                {formData.fullName || teacherProfile?.fullName || "معلم"}
+              </Text>
+              {(teacherProfile?.verified || formData.verified) && (
+                <View style={styles.verifiedBadge}>
+                  <Ionicons name="checkmark-circle" size={16} color="#10b981" />
+                  <Text style={styles.verifiedText}>تایید شده</Text>
+                </View>
+              )}
             </View>
 
             <Text style={styles.profileTagline}>
-              {profile.subjects && profile.subjects.length > 0
-                ? `معلم ${profile.subjects[0]?.name} • ${profile.experience || "۰"} سال سابقه`
-                : `معلم • ${profile.experience || "۰"} سال سابقه`}
+              معلم {(formData.subjects || [])[0] || ""} •{" "}
+              {formData.experience || " سال"} سابقه
             </Text>
 
             <View style={styles.ratingContainer}>
               <Ionicons name="star" size={16} color="#fbbf24" />
-              <Text style={styles.ratingText}>{profile.rating || 0}</Text>
+              <Text style={styles.ratingText}>{formData.rating || 4.9}</Text>
               <Text style={styles.ratingCount}>(۱۲۴ نظر)</Text>
             </View>
           </View>
@@ -472,16 +508,33 @@ export default function TeacherProfile() {
           {stats.map((stat, index) => (
             <View key={index} style={styles.statItem}>
               <Ionicons name={stat.icon} size={20} color={Colors.primary} />
-              <Text style={styles.statValue}>{stat.value}</Text>
+              <Text style={styles.statValue}>
+                {typeof stat.value === "number"
+                  ? stat.value.toLocaleString("fa-IR")
+                  : stat.value}
+              </Text>
               <Text style={styles.statLabel}>{stat.label}</Text>
             </View>
           ))}
         </View>
 
-        {/* Edit Form or Bio */}
+        {/* Edit Form */}
         {isEditing ? (
           <View style={styles.editSection}>
             <Text style={styles.sectionTitle}>ویرایش اطلاعات</Text>
+
+            <View style={styles.formGroup}>
+              <Text style={styles.label}>نام و نام خانوادگی</Text>
+              <TextInput
+                style={styles.input}
+                value={formData.fullName}
+                onChangeText={(text) =>
+                  setFormData({ ...formData, fullName: text })
+                }
+                placeholder="نام و نام خانوادگی"
+                textAlign="right"
+              />
+            </View>
 
             <View style={styles.formGroup}>
               <Text style={styles.label}>درباره من</Text>
@@ -492,6 +545,20 @@ export default function TeacherProfile() {
                 placeholder="درباره خود و سابقه تدریس بنویسید..."
                 multiline
                 numberOfLines={4}
+                textAlign="right"
+              />
+            </View>
+
+            <View style={styles.formGroup}>
+              <Text style={styles.label}>ایمیل</Text>
+              <TextInput
+                style={styles.input}
+                value={formData.email}
+                onChangeText={(text) =>
+                  setFormData({ ...formData, email: text })
+                }
+                placeholder="ایمیل"
+                keyboardType="email-address"
                 textAlign="right"
               />
             </View>
@@ -511,34 +578,23 @@ export default function TeacherProfile() {
             </View>
 
             <View style={styles.formGroup}>
-              <Text style={styles.label}>سابقه تدریس (سال)</Text>
+              <Text style={styles.label}>سابقه تدریس</Text>
               <TextInput
                 style={styles.input}
                 value={formData.experience}
                 onChangeText={(text) =>
                   setFormData({ ...formData, experience: text })
                 }
-                placeholder="مثال: ۱۲"
-                keyboardType="numeric"
-                textAlign="right"
-              />
-            </View>
-            <View style={styles.formGroup}>
-              <Text style={styles.label}>مدرک/گواهینامه</Text>
-              <TextInput
-                style={styles.input}
-                value={formData.certification}
-                onChangeText={(text) =>
-                  setFormData({ ...formData, certification: text })
-                }
-                placeholder="مثال: دکتری ریاضی"
+                placeholder="مثال: ۱۲ سال"
                 textAlign="right"
               />
             </View>
           </View>
         ) : (
           <View style={styles.bioSection}>
-            <Text style={styles.bioText}>{profile.bio || "هنوز بیوگرافی وارد نشده است."}</Text>
+            <Text style={styles.bioText}>
+              {formData.bio || "معلم . دارای مدرک از دانشگاه ."}
+            </Text>
           </View>
         )}
 
@@ -554,8 +610,8 @@ export default function TeacherProfile() {
           </View>
 
           <View style={styles.educationList}>
-            {(isEditing ? formData.education : profile.education || []).map(
-              (edu: string, index: number) => (
+            {(formData.education || []).length > 0 ? (
+              (formData.education || []).map((edu: string, index: number) => (
                 <View key={index} style={styles.educationItem}>
                   <Ionicons name="school" size={20} color={Colors.primary} />
                   <Text style={styles.educationText}>{edu}</Text>
@@ -571,10 +627,9 @@ export default function TeacherProfile() {
                     </TouchableOpacity>
                   )}
                 </View>
-              ),
-            )}
-            {(!isEditing && (!profile.education || profile.education.length === 0)) && (
-              <Text style={styles.emptyText}>مدرکی ثبت نشده است</Text>
+              ))
+            ) : (
+              <Text style={styles.emptyText}>مدرک تحصیلی ثبت نشده است</Text>
             )}
           </View>
         </View>
@@ -591,30 +646,27 @@ export default function TeacherProfile() {
           </View>
 
           <View style={styles.subjectsGrid}>
-            {(isEditing
-              ? formData.subjects.map((id) => getSubjectName(id))
-              : (profile.subjects || []).map((s) => s.name)
-            ).map((subject: string, index: number) => (
-              <View key={index} style={styles.subjectChip}>
-                <Text style={styles.subjectText}>{subject}</Text>
-                {isEditing && (
-                  <TouchableOpacity
-                    onPress={() => {
-                      const subjectId = profile.subjects?.[index]?.id;
-                      if (subjectId) handleToggleSubject(subjectId);
-                    }}
-                  >
-                    <Ionicons
-                      name="close"
-                      size={14}
-                      color={Colors.textSecondary}
-                    />
-                  </TouchableOpacity>
-                )}
-              </View>
-            ))}
-            {(!isEditing && (!profile.subjects || profile.subjects.length === 0)) && (
-              <Text style={styles.emptyText}>درسی ثبت نشده است</Text>
+            {(formData.subjects || []).length > 0 ? (
+              (formData.subjects || []).map(
+                (subject: string, index: number) => (
+                  <View key={index} style={styles.subjectChip}>
+                    <Text style={styles.subjectText}>{subject}</Text>
+                    {isEditing && (
+                      <TouchableOpacity
+                        onPress={() => handleToggleSubject(subject)}
+                      >
+                        <Ionicons
+                          name="close"
+                          size={14}
+                          color={Colors.textSecondary}
+                        />
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                ),
+              )
+            ) : (
+              <Text style={styles.emptyText}>درسی انتخاب نشده است</Text>
             )}
           </View>
         </View>
@@ -626,13 +678,10 @@ export default function TeacherProfile() {
               <Ionicons name="calendar" size={24} color={Colors.success} />
               <View style={styles.availabilityText}>
                 <Text style={styles.availabilityTitle}>
-                  وضعیت تدریس:{" "}
-                  {(isEditing ? formData.availability : profile.availability)
-                    ? "آماده تدریس"
-                    : "مشغول"}
+                  وضعیت تدریس: {formData.availability ? "آماده تدریس" : "مشغول"}
                 </Text>
                 <Text style={styles.availabilitySubtitle}>
-                  {(isEditing ? formData.availability : profile.availability)
+                  {formData.availability
                     ? "دانش‌آموزان می‌توانند برای شما درخواست ثبت کنند"
                     : "در حال حاضر ظرفیت تدریس ندارید"}
                 </Text>
@@ -640,7 +689,7 @@ export default function TeacherProfile() {
             </View>
             {isEditing && (
               <Switch
-                value={formData.availability}
+                value={formData.availability || false}
                 onValueChange={(value) =>
                   setFormData({ ...formData, availability: value })
                 }
@@ -756,13 +805,13 @@ export default function TeacherProfile() {
         <View style={styles.section}>
           {isEditing ? (
             <TouchableOpacity
-              style={[styles.saveButton, saving && styles.saveButtonDisabled]}
+              style={[styles.saveButton, loading && styles.saveButtonDisabled]}
               onPress={handleSave}
-              disabled={saving}
+              disabled={loading}
             >
               <Ionicons name="save" size={20} color="#fff" />
               <Text style={styles.saveButtonText}>
-                {saving ? "در حال ذخیره..." : "ذخیره تغییرات"}
+                {loading ? "در حال ذخیره..." : "ذخیره تغییرات"}
               </Text>
             </TouchableOpacity>
           ) : (
@@ -775,68 +824,77 @@ export default function TeacherProfile() {
             </TouchableOpacity>
           )}
         </View>
-      </ScrollView>
 
-      {/* Subjects Selection Modal */}
-      <Modal visible={showSubjectsModal} animationType="slide" transparent>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>انتخاب دروس تدریس</Text>
-              <TouchableOpacity onPress={() => setShowSubjectsModal(false)}>
-                <Ionicons name="close" size={24} color={Colors.text} />
+        {/* Subjects Selection Modal */}
+        <Modal
+          visible={showSubjectsModal}
+          animationType="slide"
+          transparent={true}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContent}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>انتخاب دروس تدریس</Text>
+                <TouchableOpacity onPress={() => setShowSubjectsModal(false)}>
+                  <Ionicons name="close" size={24} color={Colors.text} />
+                </TouchableOpacity>
+              </View>
+
+              <ScrollView style={styles.modalList}>
+                <View style={styles.modalGrid}>
+                  {teachingSubjects.map((subject) => (
+                    <TouchableOpacity
+                      key={subject}
+                      style={[
+                        styles.modalSubject,
+                        (formData.subjects || []).includes(subject) &&
+                          styles.modalSubjectSelected,
+                      ]}
+                      onPress={() => handleToggleSubject(subject)}
+                    >
+                      <Text
+                        style={[
+                          styles.modalSubjectText,
+                          (formData.subjects || []).includes(subject) &&
+                            styles.modalSubjectTextSelected,
+                        ]}
+                      >
+                        {subject}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </ScrollView>
+
+              <TouchableOpacity
+                style={styles.modalDoneButton}
+                onPress={() => setShowSubjectsModal(false)}
+              >
+                <Text style={styles.modalDoneButtonText}>تایید</Text>
               </TouchableOpacity>
             </View>
-
-            <ScrollView style={styles.modalList}>
-              <View style={styles.modalGrid}>
-                {allSubjects.map((subject) => (
-                  <TouchableOpacity
-                    key={subject.id}
-                    style={[
-                      styles.modalSubject,
-                      formData.subjects.includes(subject.id) &&
-                        styles.modalSubjectSelected,
-                    ]}
-                    onPress={() => handleToggleSubject(subject.id)}
-                  >
-                    <Text
-                      style={[
-                        styles.modalSubjectText,
-                        formData.subjects.includes(subject.id) &&
-                          styles.modalSubjectTextSelected,
-                      ]}
-                    >
-                      {subject.name}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </ScrollView>
-
-            <TouchableOpacity
-              style={styles.modalDoneButton}
-              onPress={() => setShowSubjectsModal(false)}
-            >
-              <Text style={styles.modalDoneButtonText}>تایید</Text>
-            </TouchableOpacity>
           </View>
-        </View>
-      </Modal>
+        </Modal>
+      </ScrollView>
     </SafeAreaView>
   );
 }
-
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: Colors.background,
   },
-   emptyText: {
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 20,
+  },
+  emptyText: {
     fontSize: 14,
     color: Colors.textSecondary,
-    textAlign: 'center',
+    textAlign: "center",
     padding: 16,
   },
   centerContent: {

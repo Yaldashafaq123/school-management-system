@@ -1,114 +1,102 @@
+// app/(parent)/profile.tsx
 import { useAuth } from "@/contexts/AuthContext";
+import { BASE_URL } from "@/src/config/api";
+import {
+  Child,
+  parentProfileApi,
+  ParentProfile as ParentProfileType,
+} from "@/src/config/parentProfileApi";
 import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
-import { useState } from "react";
-
-
+import { useCallback, useEffect, useState } from "react";
 import {
+  ActivityIndicator,
   Alert,
   Image,
   Modal,
+  RefreshControl,
   ScrollView,
   StyleSheet,
-  Switch,
   Text,
   TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { Header } from "../../../components/Header";
 import { Colors } from "../../../constants/Colors";
-
-// Parent-specific interface
-interface ParentProfileData {
-  bio?: string;
-  occupation?: string;
-  children?: string[];
-  address?: string;
-  emergencyContact?: string;
-  relationship?: string;
-  verified?: boolean;
-  subscription?: {
-    plan: string;
-    status: "active" | "expired" | "cancelled";
-    expiryDate?: string;
-  };
-}
-
-const defaultProfileImage =
-  "https://images.unsplash.com/photo-1560250097-0b93528c311a?ixlib=rb-4.0.3&auto=format&fit=crop&w=400&q=80";
-
-const childrenGrades = [
-  "اول ابتدایی",
-  "دوم ابتدایی",
-  "سوم ابتدایی",
-  "چهارم ابتدایی",
-  "پنجم ابتدایی",
-  "ششم ابتدایی",
-  "اول متوسطه",
-  "دوم متوسطه",
-  "سوم متوسطه",
-  "چهارم متوسطه",
-];
 
 export default function ParentProfile() {
   const router = useRouter();
-  const { user, updateProfile, logout } = useAuth();
-  const [profileImage, setProfileImage] = useState(
-    user?.profile_image || defaultProfileImage,
-  );
+  const { logout } = useAuth();
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [profile, setProfile] = useState<ParentProfileType | null>(null);
+  const [profileImage, setProfileImage] = useState<string | null>(null);
   const [isEditing, setIsEditing] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [showChildrenModal, setShowChildrenModal] = useState(false);
   const [showGradeModal, setShowGradeModal] = useState(false);
   const [newChildName, setNewChildName] = useState("");
   const [newChildGrade, setNewChildGrade] = useState("");
-
-  // Parent-specific data
-  const parentData: ParentProfileData = {
-    bio:
-      (user as any)?.bio ||
-      "والدین دو دانش‌آموز فعال در سیستم آموزشی. متعهد به همراهی در تحصیل و پیشرفت فرزندانم.",
-    occupation: (user as any)?.occupation || "مهندس نرم‌افزار",
-    children: (user as any)?.children || ["سارا احمدی", "علی احمدی"],
-    address: (user as any)?.address || "تهران، خیابان ولیعصر",
-    emergencyContact: (user as any)?.emergencyContact || "09123456789",
-    relationship: (user as any)?.relationship || "مادر",
-    verified: (user as any)?.verified ?? true,
-    subscription: (user as any)?.subscription || {
-      plan: "پرمیوم",
-      status: "active",
-      expiryDate: "۱۴۰۴/۰۶/۳۰",
-    },
-  };
+  const [localChildren, setLocalChildren] = useState<Child[]>([]);
+  const [error, setError] = useState<string | null>(null);
 
   const [formData, setFormData] = useState({
-    name: user?.name || "فاطمه احمدی",
-    email: user?.email || "fateme.ahmadi@example.com",
-    phone: user?.phone || "09123456789",
-    ...parentData,
+    fullName: "",
+    email: "",
+    phone: "",
+    bio: "",
+    occupation: "",
+    address: "",
+    emergencyContact: "",
+    relationship: "",
   });
 
-  const [notifications, setNotifications] = useState({
-    childAttendance: true,
-    examResults: true,
-    teacherMessages: true,
-    homeworkReminders: true,
-    schoolEvents: true,
-    paymentReminders: true,
-    systemAnnouncements: true,
-    marketingEmails: false,
-  });
+  const loadProfile = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      console.log("Loading profile...");
+      const response = await parentProfileApi.getProfile();
+      console.log("Profile response:", response);
 
-  const [children, setChildren] = useState<
-    Array<{ name: string; grade: string }>
-  >([
-    { name: "سارا احمدی", grade: "چهارم ابتدایی" },
-    { name: "علی احمدی", grade: "دوم ابتدایی" },
-  ]);
+      if (response.success && response.data) {
+        setProfile(response.data);
+        setProfileImage(response.data.profileImage || null);
+        setLocalChildren(response.data.children || []);
+        setFormData({
+          fullName: response.data.fullName || "",
+          email: response.data.email || "",
+          phone: response.data.phone || "",
+          bio: response.data.bio || "",
+          occupation: response.data.occupation || "",
+          address: response.data.address || "",
+          emergencyContact: response.data.emergencyContact || "",
+          relationship: response.data.relationship || "والدین",
+        });
+        console.log("Children loaded:", response.data.children?.length);
+      } else {
+        setError(response.message || "خطا در دریافت اطلاعات");
+      }
+    } catch (error: any) {
+      console.error("Error loading profile:", error);
+      setError(error.message || "خطا در ارتباط با سرور");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadProfile();
+  }, [loadProfile]);
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    await loadProfile();
+    setRefreshing(false);
+  };
 
   const pickImage = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -127,33 +115,57 @@ export default function ParentProfile() {
 
     if (!result.canceled) {
       setProfileImage(result.assets[0].uri);
+      try {
+        const formData = new FormData();
+        const filename = result.assets[0].uri.split("/").pop() || "profile.jpg";
+        const match = /\.(\w+)$/.exec(filename);
+        const type = match ? `image/${match[1]}` : "image/jpeg";
+
+        formData.append("profile_image", {
+          uri: result.assets[0].uri,
+          type: type,
+          name: filename,
+        } as any);
+
+        const response = await parentProfileApi.uploadProfileImage(formData);
+        if (response.success) {
+          Alert.alert("موفقیت", "عکس پروفایل با موفقیت به‌روزرسانی شد");
+          loadProfile();
+        } else {
+          Alert.alert("خطا", response.message);
+        }
+      } catch (error) {
+        Alert.alert("خطا", "آپلود عکس با مشکل مواجه شد");
+      }
     }
   };
 
   const handleSave = async () => {
-    setLoading(true);
+    setSaving(true);
     try {
-      const updateData: any = {
-        name: formData.name,
-        email: formData.email,
+      const updateData = {
+        fullName: formData.fullName,
         phone: formData.phone,
-        profile_image: profileImage,
         bio: formData.bio,
         occupation: formData.occupation,
-        children: children.map((child) => `${child.name} (${child.grade})`),
         address: formData.address,
         emergencyContact: formData.emergencyContact,
         relationship: formData.relationship,
       };
 
-      await updateProfile(updateData);
-      Alert.alert("موفقیت", "پروفایل با موفقیت به‌روزرسانی شد.");
-      setIsEditing(false);
+      const response = await parentProfileApi.updateProfile(updateData);
+      if (response.success) {
+        Alert.alert("موفقیت", response.message);
+        setIsEditing(false);
+        loadProfile();
+      } else {
+        Alert.alert("خطا", response.message);
+      }
     } catch (error: any) {
       console.error("Profile update error:", error);
       Alert.alert("خطا", "در به‌روزرسانی پروفایل خطایی رخ داد.");
     } finally {
-      setLoading(false);
+      setSaving(false);
     }
   };
 
@@ -166,7 +178,6 @@ export default function ParentProfile() {
         onPress: async () => {
           try {
             await logout();
-            await new Promise((resolve) => setTimeout(resolve, 100));
             router.replace("/(auth)/login");
           } catch (error) {
             console.error("Logout error:", error);
@@ -183,38 +194,50 @@ export default function ParentProfile() {
       return;
     }
 
-    setChildren([...children, { name: newChildName, grade: newChildGrade }]);
+    setLocalChildren([
+      ...localChildren,
+      {
+        id: Date.now(),
+        name: newChildName,
+        grade: newChildGrade,
+        classId: 0,
+        attendanceRate: 0,
+      },
+    ]);
     setNewChildName("");
     setNewChildGrade("");
     setShowChildrenModal(false);
     setShowGradeModal(false);
   };
 
-  const handleRemoveChild = (index: number) => {
-    const newChildren = [...children];
-    newChildren.splice(index, 1);
-    setChildren(newChildren);
+  const getImageUrl = (
+    imagePath: string | null | undefined,
+  ): string | undefined => {
+    if (!imagePath) return undefined;
+    if (imagePath.startsWith("http")) return imagePath;
+    if (imagePath.startsWith("/uploads")) return `${BASE_URL}${imagePath}`;
+    return imagePath;
   };
 
   const stats = [
     {
       label: "فرزندان",
-      value: children.length,
+      value: profile?.stats?.childrenCount || 0,
       icon: "people" as const,
     },
     {
       label: "پیام‌های جدید",
-      value: 3,
+      value: profile?.stats?.unreadMessages || 0,
       icon: "chatbubble" as const,
     },
     {
-      label: "تکالیف",
-      value: 8,
+      label: "فعالیت",
+      value: profile?.stats?.pendingAssignments || 0,
       icon: "book" as const,
     },
     {
       label: "حضور و غیاب",
-      value: "۹۷٪",
+      value: `${profile?.stats?.attendanceRate || 0}٪`,
       icon: "calendar" as const,
     },
   ];
@@ -223,52 +246,73 @@ export default function ParentProfile() {
     {
       title: "پروفایل فرزندان",
       icon: "people" as const,
-      onPress: () => router.push("/(parent)/child-switch"),
+      onPress: () => router.push("/(parent)/child-switch" as any),
     },
     {
       title: "گزارش پیشرفت",
       icon: "stats-chart" as const,
-      onPress: () => router.push("/(parent)/(tabs)/progress"),
+      onPress: () => router.push("/(parent)/progress" as any),
     },
     {
       title: "پیام‌ها",
       icon: "chatbubbles" as const,
-      onPress: () => router.push("./"),
+      onPress: () => router.push("/(public)/info" as any),
     },
     {
       title: "حسابداری",
       icon: "wallet" as const,
-      onPress: () => router.push("/(parent)/(tabs)/fees"),
+      onPress: () => router.push("/(parent)/fees" as any),
     },
     {
-      title: "تقویم مدرسه",
+      title: "تقویم مکتب",
       icon: "calendar" as const,
-      onPress: () => router.push("/(parent)/events"),
+      onPress: () => router.push("/(parent)/events" as any),
     },
     {
       title: "تنظیمات",
       icon: "settings" as const,
-      onPress: () => router.push("/(public)/settings/index"),
+      onPress: () => router.push("/(parent)/settings" as any),
     },
   ];
 
-  return (
-    <SafeAreaView style={styles.container} edges={["top"]}>
-      <Header
-        title="پروفایل والدین"
-        showBack
-        rightComponent={
-          <TouchableOpacity onPress={() => setIsEditing(!isEditing)}>
-            <Ionicons
-              name={isEditing ? "close" : "create"}
-              size={24}
-              color={Colors.text}
-            />
-          </TouchableOpacity>
-        }
-      />
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.container} edges={["top"]}>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={Colors.primary} />
+          <Text style={styles.loadingText}>در حال بارگذاری...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+  if (error) {
+    return (
+      <SafeAreaView style={styles.container} edges={["top"]}>
+        <View style={styles.errorContainer}>
+          <Ionicons name="alert-circle" size={64} color={Colors.danger} />
+          <Text style={styles.errorText}>{error}</Text>
+          <TouchableOpacity style={styles.retryButton} onPress={loadProfile}>
+            <Text style={styles.retryButtonText}>تلاش مجدد</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  return (
+    <SafeAreaView style={styles.container}>
+      <ScrollView
+        style={styles.content}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            colors={[Colors.primary]}
+          />
+        }
+      >
         {/* Profile Header */}
         <LinearGradient
           colors={["#7c3aed", "#8b5cf6"]}
@@ -278,13 +322,19 @@ export default function ParentProfile() {
         >
           <TouchableOpacity onPress={isEditing ? pickImage : undefined}>
             <View style={styles.profileImageContainer}>
-              <Image
-                source={{ uri: profileImage }}
-                style={styles.profileImage}
-              />
+              {profileImage ? (
+                <Image
+                  source={{ uri: getImageUrl(profileImage) }}
+                  style={styles.profileImage}
+                />
+              ) : (
+                <View style={[styles.profileImage, styles.placeholderImage]}>
+                  <Ionicons name="person" size={50} color="#fff" />
+                </View>
+              )}
               {isEditing && (
                 <View style={styles.editImageBadge}>
-                  <Ionicons name="camera" size={16} color="#fff" />
+                  <Ionicons name="camera" size={18} color="#fff" />
                 </View>
               )}
             </View>
@@ -292,8 +342,10 @@ export default function ParentProfile() {
 
           <View style={styles.profileInfo}>
             <View style={styles.profileTitle}>
-              <Text style={styles.profileName}>{formData.name}</Text>
-              {formData.verified && (
+              <Text style={styles.profileName}>
+                {formData.fullName || "والد"}
+              </Text>
+              {profile?.verified && (
                 <View style={styles.verifiedBadge}>
                   <Ionicons name="checkmark-circle" size={16} color="#10b981" />
                   <Text style={styles.verifiedText}>تایید شده</Text>
@@ -302,13 +354,13 @@ export default function ParentProfile() {
             </View>
 
             <Text style={styles.profileTagline}>
-              {formData.relationship} {children.length} فرزند
+              {formData.relationship || "والد"} {localChildren.length} فرزند
             </Text>
 
             <View style={styles.subscriptionBadge}>
               <Ionicons name="shield-checkmark" size={14} color="#fff" />
               <Text style={styles.subscriptionText}>
-                {formData.subscription?.plan || "پرمیوم"}
+                {profile?.subscription?.plan || "پایه"}
               </Text>
             </View>
           </View>
@@ -318,11 +370,48 @@ export default function ParentProfile() {
         <View style={styles.statsGrid}>
           {stats.map((stat, index) => (
             <View key={index} style={styles.statItem}>
-              <Ionicons name={stat.icon} size={20} color={Colors.primary} />
+              <Ionicons name={stat.icon} size={24} color={Colors.primary} />
               <Text style={styles.statValue}>{stat.value}</Text>
               <Text style={styles.statLabel}>{stat.label}</Text>
             </View>
           ))}
+        </View>
+
+        {/* Contact Info (Always Visible) */}
+        <View style={styles.contactSection}>
+          <Text style={styles.sectionTitle}>اطلاعات تماس</Text>
+          <View style={styles.contactInfo}>
+            <View style={styles.contactRow}>
+              <Ionicons
+                name="call-outline"
+                size={18}
+                color={Colors.textSecondary}
+              />
+              <Text style={styles.contactText}>
+                {formData.phone || "شماره تماس ثبت نشده"}
+              </Text>
+            </View>
+            <View style={styles.contactRow}>
+              <Ionicons
+                name="mail-outline"
+                size={18}
+                color={Colors.textSecondary}
+              />
+              <Text style={styles.contactText}>{formData.email}</Text>
+            </View>
+            {formData.emergencyContact && (
+              <View style={styles.contactRow}>
+                <Ionicons
+                  name="warning-outline"
+                  size={18}
+                  color={Colors.danger}
+                />
+                <Text style={styles.contactText}>
+                  اضطراری: {formData.emergencyContact}
+                </Text>
+              </View>
+            )}
+          </View>
         </View>
 
         {/* Edit Form */}
@@ -334,23 +423,25 @@ export default function ParentProfile() {
               <Text style={styles.label}>نام و نام خانوادگی</Text>
               <TextInput
                 style={styles.input}
-                value={formData.name}
+                value={formData.fullName}
                 onChangeText={(text) =>
-                  setFormData({ ...formData, name: text })
+                  setFormData({ ...formData, fullName: text })
                 }
                 placeholder="نام و نام خانوادگی"
+                textAlign="right"
               />
             </View>
 
             <View style={styles.formGroup}>
-              <Text style={styles.label}>نسبت</Text>
+              <Text style={styles.label}>نسبت (مادر، پدر، ...)</Text>
               <TextInput
                 style={styles.input}
                 value={formData.relationship}
                 onChangeText={(text) =>
                   setFormData({ ...formData, relationship: text })
                 }
-                placeholder="مادر، پدر، ..."
+                placeholder="نسبت با فرزند"
+                textAlign="right"
               />
             </View>
 
@@ -363,6 +454,7 @@ export default function ParentProfile() {
                 placeholder="درباره خود بنویسید..."
                 multiline
                 numberOfLines={3}
+                textAlign="right"
               />
             </View>
 
@@ -375,19 +467,7 @@ export default function ParentProfile() {
                   setFormData({ ...formData, occupation: text })
                 }
                 placeholder="شغل"
-              />
-            </View>
-
-            <View style={styles.formGroup}>
-              <Text style={styles.label}>ایمیل</Text>
-              <TextInput
-                style={styles.input}
-                value={formData.email}
-                onChangeText={(text) =>
-                  setFormData({ ...formData, email: text })
-                }
-                placeholder="ایمیل"
-                keyboardType="email-address"
+                textAlign="right"
               />
             </View>
 
@@ -401,6 +481,7 @@ export default function ParentProfile() {
                 }
                 placeholder="شماره تلفن"
                 keyboardType="phone-pad"
+                textAlign="right"
               />
             </View>
 
@@ -414,6 +495,7 @@ export default function ParentProfile() {
                 }
                 placeholder="شماره تماس اضطراری"
                 keyboardType="phone-pad"
+                textAlign="right"
               />
             </View>
 
@@ -428,205 +510,171 @@ export default function ParentProfile() {
                 placeholder="آدرس محل سکونت"
                 multiline
                 numberOfLines={2}
+                textAlign="right"
               />
             </View>
           </View>
         ) : (
           <View style={styles.bioSection}>
-            <Text style={styles.bioText}>{formData.bio}</Text>
+            <Text style={styles.bioText}>
+              {formData.bio || "درباره خود چیزی بنویسید..."}
+            </Text>
             <View style={styles.bioDetails}>
-              <View style={styles.detailItem}>
-                <Ionicons
-                  name="briefcase"
-                  size={16}
-                  color={Colors.textSecondary}
-                />
-                <Text style={styles.detailText}>{formData.occupation}</Text>
-              </View>
-              <View style={styles.detailItem}>
-                <Ionicons name="home" size={16} color={Colors.textSecondary} />
-                <Text style={styles.detailText}>{formData.address}</Text>
-              </View>
-              <View style={styles.detailItem}>
-                <Ionicons name="call" size={16} color={Colors.textSecondary} />
-                <Text style={styles.detailText}>
-                  {formData.emergencyContact}
-                </Text>
-              </View>
+              {formData.occupation ? (
+                <View style={styles.detailItem}>
+                  <Ionicons
+                    name="briefcase"
+                    size={16}
+                    color={Colors.textSecondary}
+                  />
+                  <Text style={styles.detailText}>{formData.occupation}</Text>
+                </View>
+              ) : null}
+              {formData.address ? (
+                <View style={styles.detailItem}>
+                  <Ionicons
+                    name="home"
+                    size={16}
+                    color={Colors.textSecondary}
+                  />
+                  <Text style={styles.detailText}>{formData.address}</Text>
+                </View>
+              ) : null}
             </View>
           </View>
         )}
 
         {/* Children Management */}
-        {/* <View style={styles.section}>
+        <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>فرزندان من</Text>
             {isEditing && (
               <TouchableOpacity onPress={() => setShowChildrenModal(true)}>
-                <Ionicons name="add-circle" size={24} color={Colors.primary} />
+                <Ionicons name="add-circle" size={28} color={Colors.primary} />
               </TouchableOpacity>
             )}
           </View>
 
           <View style={styles.childrenList}>
-            {children.map((child, index) => (
-              <View key={index} style={styles.childCard}>
-                <View style={styles.childInfo}>
-                  <View style={styles.childAvatar}>
-                    <Ionicons name="person" size={20} color={Colors.primary} />
-                  </View>
-                  <View style={styles.childDetails}>
-                    <Text style={styles.childName}>{child.name}</Text>
-                    <Text style={styles.childGrade}>{child.grade}</Text>
-                  </View>
-                </View>
-                <View style={styles.childActions}>
+            {localChildren.length === 0 ? (
+              <View style={styles.emptyChildrenContainer}>
+                <Ionicons
+                  name="people-outline"
+                  size={48}
+                  color={Colors.textSecondary}
+                />
+                <Text style={styles.emptyText}>هیچ فرزندی ثبت نشده است</Text>
+                {isEditing && (
                   <TouchableOpacity
-                    style={styles.childActionButton}
-                    onPress={() => router.push(`/(parent)/child-switch`)}
+                    style={styles.addChildButton}
+                    onPress={() => setShowChildrenModal(true)}
                   >
-                    <Ionicons
-                      name="eye"
-                      size={18}
-                      color={Colors.textSecondary}
-                    />
+                    <Text style={styles.addChildButtonText}>
+                      افزودن فرزند جدید
+                    </Text>
                   </TouchableOpacity>
-                  {isEditing && (
+                )}
+              </View>
+            ) : (
+              localChildren.map((child, index) => (
+                <View key={child.id} style={styles.childCard}>
+                  <View style={styles.childInfo}>
+                    <View style={styles.childAvatar}>
+                      <Ionicons
+                        name="person"
+                        size={24}
+                        color={Colors.primary}
+                      />
+                    </View>
+                    <View style={styles.childDetails}>
+                      <Text style={styles.childName}>{child.name}</Text>
+                      <Text style={styles.childGrade}>{child.grade}</Text>
+                      <Text style={styles.childAttendance}>
+                        میزان حضور: {child.attendanceRate || 0}%
+                      </Text>
+                    </View>
+                  </View>
+                  <View style={styles.childActions}>
                     <TouchableOpacity
                       style={styles.childActionButton}
-                      onPress={() => handleRemoveChild(index)}
+                      onPress={() =>
+                        router.push(`/(parent)/child/${child.id}` as any)
+                      }
                     >
-                      <Ionicons name="trash" size={18} color={Colors.danger} />
+                      <Ionicons name="eye" size={20} color={Colors.primary} />
                     </TouchableOpacity>
+                    {isEditing && (
+                      <TouchableOpacity
+                        style={styles.childActionButton}
+                        onPress={() => {
+                          const newChildren = [...localChildren];
+                          newChildren.splice(index, 1);
+                          setLocalChildren(newChildren);
+                        }}
+                      >
+                        <Ionicons
+                          name="trash"
+                          size={20}
+                          color={Colors.danger}
+                        />
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                </View>
+              ))
+            )}
+          </View>
+        </View>
+
+        {/* Subscription Status */}
+        {profile?.subscription && (
+          <View style={styles.section}>
+            <View style={styles.subscriptionCard}>
+              <View style={styles.subscriptionInfo}>
+                <Ionicons
+                  name="shield-checkmark"
+                  size={28}
+                  color={Colors.success}
+                />
+                <View style={styles.subscriptionDetails}>
+                  <Text style={styles.subscriptionTitle}>
+                    اشتراک {profile.subscription.plan}
+                  </Text>
+                  <Text style={styles.subscriptionStatus}>
+                    وضعیت:{" "}
+                    <Text
+                      style={[
+                        styles.statusText,
+                        profile.subscription.status === "active"
+                          ? styles.statusActive
+                          : styles.statusExpired,
+                      ]}
+                    >
+                      {profile.subscription.status === "active"
+                        ? "فعال"
+                        : "منقضی"}
+                    </Text>
+                  </Text>
+                  {profile.subscription.expiryDate && (
+                    <Text style={styles.subscriptionExpiry}>
+                      تاریخ انقضا: {profile.subscription.expiryDate}
+                    </Text>
                   )}
                 </View>
               </View>
-            ))}
-          </View>
-        </View> */}
-
-        {/* Subscription Status */}
-        <View style={styles.section}>
-          <View style={styles.subscriptionCard}>
-            <View style={styles.subscriptionInfo}>
-              <Ionicons
-                name="shield-checkmark"
-                size={24}
-                color={Colors.success}
-              />
-              <View style={styles.subscriptionDetails}>
-                <Text style={styles.subscriptionTitle}>
-                  اشتراک {formData.subscription?.plan}
+              <TouchableOpacity
+                style={styles.upgradeButton}
+                onPress={() => router.push("/(parent)/fees" as any)}
+              >
+                <Text style={styles.upgradeButtonText}>
+                  {profile.subscription.status === "active"
+                    ? "تمدید اشتراک"
+                    : "خرید اشتراک"}
                 </Text>
-                <Text style={styles.subscriptionStatus}>
-                  وضعیت:{" "}
-                  <Text
-                    style={[
-                      styles.statusText,
-                      formData.subscription?.status === "active"
-                        ? styles.statusActive
-                        : styles.statusExpired,
-                    ]}
-                  >
-                    {formData.subscription?.status === "active"
-                      ? "فعال"
-                      : "منقضی"}
-                  </Text>
-                </Text>
-                {formData.subscription?.expiryDate && (
-                  <Text style={styles.subscriptionExpiry}>
-                    تاریخ انقضا: {formData.subscription.expiryDate}
-                  </Text>
-                )}
-              </View>
-            </View>
-            <TouchableOpacity
-              style={styles.upgradeButton}
-              onPress={() => router.push("/(parent)/(tabs)/fees")}
-            >
-              <Text style={styles.upgradeButtonText}>
-                {formData.subscription?.status === "active"
-                  ? "تمدید"
-                  : "خرید اشتراک"}
-              </Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        {/* Notifications */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>تنظیمات اطلاع‌رسانی</Text>
-          <View style={styles.notificationsList}>
-            <View style={styles.notificationItem}>
-              <View>
-                <Text style={styles.notificationTitle}>
-                  حضور و غیاب فرزندان
-                </Text>
-                <Text style={styles.notificationDesc}>
-                  اطلاع‌رسانی روزانه حضور و غیاب
-                </Text>
-              </View>
-              <Switch
-                value={notifications.childAttendance}
-                onValueChange={(value) =>
-                  setNotifications({ ...notifications, childAttendance: value })
-                }
-                trackColor={{ false: Colors.border, true: Colors.primary }}
-              />
-            </View>
-
-            <View style={styles.notificationItem}>
-              <View>
-                <Text style={styles.notificationTitle}>نتایج امتحانات</Text>
-                <Text style={styles.notificationDesc}>
-                  اطلاع‌رسانی نتایج امتحانات
-                </Text>
-              </View>
-              <Switch
-                value={notifications.examResults}
-                onValueChange={(value) =>
-                  setNotifications({ ...notifications, examResults: value })
-                }
-                trackColor={{ false: Colors.border, true: Colors.primary }}
-              />
-            </View>
-
-            <View style={styles.notificationItem}>
-              <View>
-                <Text style={styles.notificationTitle}>پیام‌های معلمان</Text>
-                <Text style={styles.notificationDesc}>
-                  دریافت پیام از معلمان
-                </Text>
-              </View>
-              <Switch
-                value={notifications.teacherMessages}
-                onValueChange={(value) =>
-                  setNotifications({ ...notifications, teacherMessages: value })
-                }
-                trackColor={{ false: Colors.border, true: Colors.primary }}
-              />
-            </View>
-
-            <View style={styles.notificationItem}>
-              <View>
-                <Text style={styles.notificationTitle}>یادآوری تکالیف</Text>
-                <Text style={styles.notificationDesc}>
-                  یادآوری زمان تحویل تکالیف
-                </Text>
-              </View>
-              <Switch
-                value={notifications.homeworkReminders}
-                onValueChange={(value) =>
-                  setNotifications({
-                    ...notifications,
-                    homeworkReminders: value,
-                  })
-                }
-                trackColor={{ false: Colors.border, true: Colors.primary }}
-              />
+              </TouchableOpacity>
             </View>
           </View>
-        </View>
+        )}
 
         {/* Parent Menu */}
         <View style={styles.section}>
@@ -639,7 +687,7 @@ export default function ParentProfile() {
                 onPress={item.onPress}
               >
                 <View style={styles.menuIcon}>
-                  <Ionicons name={item.icon} size={24} color={Colors.primary} />
+                  <Ionicons name={item.icon} size={28} color={Colors.primary} />
                 </View>
                 <Text style={styles.menuText}>{item.title}</Text>
               </TouchableOpacity>
@@ -648,16 +696,16 @@ export default function ParentProfile() {
         </View>
 
         {/* Action Buttons */}
-        <View style={styles.section}>
+        <View style={styles.actionSection}>
           {isEditing ? (
             <TouchableOpacity
-              style={[styles.saveButton, loading && styles.saveButtonDisabled]}
+              style={[styles.saveButton, saving && styles.saveButtonDisabled]}
               onPress={handleSave}
-              disabled={loading}
+              disabled={saving}
             >
-              <Ionicons name="save" size={20} color="#fff" />
+              <Ionicons name="save" size={22} color="#fff" />
               <Text style={styles.saveButtonText}>
-                {loading ? "در حال ذخیره..." : "ذخیره تغییرات"}
+                {saving ? "در حال ذخیره..." : "ذخیره تغییرات"}
               </Text>
             </TouchableOpacity>
           ) : (
@@ -665,102 +713,141 @@ export default function ParentProfile() {
               style={styles.logoutButton}
               onPress={handleLogout}
             >
-              <Ionicons name="log-out" size={20} color={Colors.danger} />
+              <Ionicons name="log-out" size={22} color={Colors.danger} />
               <Text style={styles.logoutText}>خروج از حساب</Text>
             </TouchableOpacity>
           )}
         </View>
+      </ScrollView>
 
-        {/* Add Child Modal */}
-        <Modal
-          visible={showChildrenModal}
-          animationType="slide"
-          transparent={true}
+      {/* Edit Profile Button - Fixed Position */}
+      <View style={styles.editButtonContainer}>
+        <TouchableOpacity
+          style={styles.editButton}
+          onPress={() => setIsEditing(!isEditing)}
         >
-          <View style={styles.modalOverlay}>
-            <View style={styles.modalContent}>
-              <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>افزودن فرزند</Text>
-                <TouchableOpacity onPress={() => setShowChildrenModal(false)}>
-                  <Ionicons name="close" size={24} color={Colors.text} />
-                </TouchableOpacity>
-              </View>
+          <Ionicons
+            name={isEditing ? "close" : "create"}
+            size={22}
+            color="#fff"
+          />
+          <Text style={styles.editButtonText}>
+            {isEditing ? "لغو ویرایش" : "ویرایش پروفایل"}
+          </Text>
+        </TouchableOpacity>
+      </View>
 
-              <View style={styles.modalBody}>
-                <Text style={styles.modalLabel}>نام فرزند</Text>
-                <TextInput
-                  style={styles.modalInput}
-                  value={newChildName}
-                  onChangeText={setNewChildName}
-                  placeholder="نام و نام خانوادگی فرزند"
-                />
-
-                <Text style={styles.modalLabel}>پایه تحصیلی</Text>
-                <TouchableOpacity
-                  style={styles.gradeSelector}
-                  onPress={() => setShowGradeModal(true)}
-                >
-                  <Text
-                    style={
-                      newChildGrade
-                        ? styles.gradeSelected
-                        : styles.gradePlaceholder
-                    }
-                  >
-                    {newChildGrade || "انتخاب پایه تحصیلی"}
-                  </Text>
-                  <Ionicons
-                    name="chevron-down"
-                    size={20}
-                    color={Colors.textSecondary}
-                  />
-                </TouchableOpacity>
-              </View>
-
-              <TouchableOpacity
-                style={styles.modalAddButton}
-                onPress={handleAddChild}
-                disabled={!newChildName || !newChildGrade}
-              >
-                <Text style={styles.modalAddButtonText}>افزودن فرزند</Text>
+      {/* Add Child Modal */}
+      <Modal
+        visible={showChildrenModal}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowChildrenModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>افزودن فرزند</Text>
+              <TouchableOpacity onPress={() => setShowChildrenModal(false)}>
+                <Ionicons name="close" size={26} color={Colors.text} />
               </TouchableOpacity>
             </View>
-          </View>
-        </Modal>
 
-        {/* Grade Selection Modal */}
-        <Modal
-          visible={showGradeModal}
-          animationType="slide"
-          transparent={true}
-        >
-          <View style={styles.modalOverlay}>
-            <View style={styles.modalContent}>
-              <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>انتخاب پایه تحصیلی</Text>
-                <TouchableOpacity onPress={() => setShowGradeModal(false)}>
-                  <Ionicons name="close" size={24} color={Colors.text} />
-                </TouchableOpacity>
-              </View>
+            <View style={styles.modalBody}>
+              <Text style={styles.modalLabel}>نام فرزند</Text>
+              <TextInput
+                style={styles.modalInput}
+                value={newChildName}
+                onChangeText={setNewChildName}
+                placeholder="نام و نام خانوادگی فرزند"
+                placeholderTextColor={Colors.textSecondary}
+                textAlign="right"
+              />
 
-              <ScrollView style={styles.modalList}>
-                {childrenGrades.map((grade, index) => (
-                  <TouchableOpacity
-                    key={index}
-                    style={styles.gradeItem}
-                    onPress={() => {
-                      setNewChildGrade(grade);
-                      setShowGradeModal(false);
-                    }}
-                  >
-                    <Text style={styles.gradeItemText}>{grade}</Text>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
+              <Text style={styles.modalLabel}>پایه تحصیلی</Text>
+              <TouchableOpacity
+                style={styles.gradeSelector}
+                onPress={() => setShowGradeModal(true)}
+              >
+                <Text
+                  style={
+                    newChildGrade
+                      ? styles.gradeSelected
+                      : styles.gradePlaceholder
+                  }
+                >
+                  {newChildGrade || "انتخاب پایه تحصیلی"}
+                </Text>
+                <Ionicons
+                  name="chevron-down"
+                  size={20}
+                  color={Colors.textSecondary}
+                />
+              </TouchableOpacity>
             </View>
+
+            <TouchableOpacity
+              style={[
+                styles.modalAddButton,
+                (!newChildName || !newChildGrade) &&
+                  styles.modalAddButtonDisabled,
+              ]}
+              onPress={handleAddChild}
+              disabled={!newChildName || !newChildGrade}
+            >
+              <Text style={styles.modalAddButtonText}>افزودن فرزند</Text>
+            </TouchableOpacity>
           </View>
-        </Modal>
-      </ScrollView>
+        </View>
+      </Modal>
+
+      {/* Grade Selection Modal */}
+      <Modal
+        visible={showGradeModal}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowGradeModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>انتخاب پایه تحصیلی</Text>
+              <TouchableOpacity onPress={() => setShowGradeModal(false)}>
+                <Ionicons name="close" size={26} color={Colors.text} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={styles.modalList}>
+              {[
+                "پیش دبستانی",
+                "اول ابتدایی",
+                "دوم ابتدایی",
+                "سوم ابتدایی",
+                "چهارم ابتدایی",
+                "پنجم ابتدایی",
+                "ششم ابتدایی",
+                "هفتم متوسطه اول",
+                "هشتم متوسطه اول",
+                "نهم متوسطه اول",
+                "دهم متوسطه دوم",
+                "یازدهم متوسطه دوم",
+                "دوازدهم متوسطه دوم",
+              ].map((grade) => (
+                <TouchableOpacity
+                  key={grade}
+                  style={styles.gradeItem}
+                  onPress={() => {
+                    setNewChildGrade(grade);
+                    setShowGradeModal(false);
+                  }}
+                >
+                  <Text style={styles.gradeItemText}>{grade}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -773,11 +860,72 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
   },
-  profileHeader: {
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
     padding: 20,
+  },
+  loadingText: {
+    marginTop: 16,
+    fontSize: 16,
+    color: Colors.textSecondary,
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 20,
+  },
+  errorText: {
+    marginTop: 16,
+    fontSize: 16,
+    color: Colors.danger,
+    textAlign: "center",
+  },
+  retryButton: {
+    marginTop: 20,
+    backgroundColor: Colors.primary,
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 8,
+  },
+  retryButtonText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  editButtonContainer: {
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: 20,
+    backgroundColor: Colors.background,
+  },
+  editButton: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 16,
+    justifyContent: "center",
+    backgroundColor: Colors.primary,
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 30,
+    gap: 8,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  editButtonText: {
+    color: "#fff",
+    fontSize: 15,
+    fontWeight: "600",
+  },
+  profileHeader: {
+    padding: 24,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 20,
   },
   profileImageContainer: {
     position: "relative",
@@ -788,20 +936,20 @@ const styles = StyleSheet.create({
     borderRadius: 50,
     borderWidth: 3,
     borderColor: "#fff",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 4,
+  },
+  placeholderImage: {
+    backgroundColor: "rgba(255,255,255,0.2)",
+    justifyContent: "center",
+    alignItems: "center",
   },
   editImageBadge: {
     position: "absolute",
     bottom: 0,
     right: 0,
     backgroundColor: Colors.primary,
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
     justifyContent: "center",
     alignItems: "center",
     borderWidth: 2,
@@ -814,19 +962,19 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
-    marginBottom: 4,
+    marginBottom: 6,
+    flexWrap: "wrap",
   },
   profileName: {
-    fontSize: 20,
+    fontSize: 22,
     fontWeight: "bold",
     color: "#fff",
-    flex: 1,
   },
   verifiedBadge: {
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "rgba(255,255,255,0.2)",
-    paddingHorizontal: 8,
+    paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 12,
     gap: 4,
@@ -839,7 +987,7 @@ const styles = StyleSheet.create({
   profileTagline: {
     fontSize: 14,
     color: "rgba(255,255,255,0.9)",
-    marginBottom: 8,
+    marginBottom: 10,
   },
   subscriptionBadge: {
     flexDirection: "row",
@@ -849,7 +997,7 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 16,
     alignSelf: "flex-start",
-    gap: 4,
+    gap: 6,
   },
   subscriptionText: {
     fontSize: 12,
@@ -861,8 +1009,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 20,
     backgroundColor: Colors.card,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
     gap: 16,
   },
   statItem: {
@@ -870,7 +1016,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   statValue: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: "bold",
     color: Colors.text,
     marginTop: 8,
@@ -879,6 +1025,26 @@ const styles = StyleSheet.create({
   statLabel: {
     fontSize: 12,
     color: Colors.textSecondary,
+  },
+  contactSection: {
+    padding: 20,
+    backgroundColor: Colors.card,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+  },
+  contactInfo: {
+    marginTop: 12,
+    gap: 12,
+  },
+  contactRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  contactText: {
+    fontSize: 14,
+    color: Colors.text,
+    flex: 1,
   },
   editSection: {
     padding: 20,
@@ -924,9 +1090,31 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   sectionTitle: {
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: "bold",
     color: Colors.text,
+  },
+  emptyChildrenContainer: {
+    alignItems: "center",
+    padding: 32,
+  },
+  emptyText: {
+    fontSize: 14,
+    color: Colors.textSecondary,
+    textAlign: "center",
+    marginTop: 12,
+  },
+  addChildButton: {
+    marginTop: 16,
+    backgroundColor: Colors.primary,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 8,
+  },
+  addChildButtonText: {
+    color: "#fff",
+    fontSize: 14,
+    fontWeight: "500",
   },
   formGroup: {
     marginBottom: 16,
@@ -941,9 +1129,9 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.background,
     borderWidth: 1,
     borderColor: Colors.border,
-    borderRadius: 8,
-    padding: 12,
-    fontSize: 16,
+    borderRadius: 10,
+    padding: 14,
+    fontSize: 15,
     color: Colors.text,
     textAlign: "right",
   },
@@ -968,12 +1156,12 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     flex: 1,
-    gap: 12,
+    gap: 14,
   },
   childAvatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 50,
+    height: 50,
+    borderRadius: 25,
     backgroundColor: "rgba(59, 130, 246, 0.1)",
     justifyContent: "center",
     alignItems: "center",
@@ -982,21 +1170,26 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   childName: {
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: "600",
     color: Colors.text,
     marginBottom: 4,
   },
   childGrade: {
-    fontSize: 12,
+    fontSize: 13,
     color: Colors.textSecondary,
+    marginBottom: 2,
+  },
+  childAttendance: {
+    fontSize: 12,
+    color: Colors.success,
   },
   childActions: {
     flexDirection: "row",
-    gap: 8,
+    gap: 12,
   },
   childActionButton: {
-    padding: 6,
+    padding: 8,
   },
   subscriptionCard: {
     flexDirection: "row",
@@ -1012,19 +1205,19 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     flex: 1,
-    gap: 12,
+    gap: 14,
   },
   subscriptionDetails: {
     flex: 1,
   },
   subscriptionTitle: {
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: "600",
     color: Colors.text,
     marginBottom: 4,
   },
   subscriptionStatus: {
-    fontSize: 12,
+    fontSize: 13,
     color: Colors.textSecondary,
     marginBottom: 2,
   },
@@ -1044,31 +1237,13 @@ const styles = StyleSheet.create({
   upgradeButton: {
     backgroundColor: Colors.primary,
     paddingHorizontal: 16,
-    paddingVertical: 8,
+    paddingVertical: 10,
     borderRadius: 8,
   },
   upgradeButtonText: {
     color: "#fff",
     fontSize: 14,
     fontWeight: "500",
-  },
-  notificationsList: {
-    gap: 16,
-  },
-  notificationItem: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  notificationTitle: {
-    fontSize: 14,
-    fontWeight: "500",
-    color: Colors.text,
-    marginBottom: 2,
-  },
-  notificationDesc: {
-    fontSize: 12,
-    color: Colors.textSecondary,
   },
   menuGrid: {
     flexDirection: "row",
@@ -1085,28 +1260,33 @@ const styles = StyleSheet.create({
     borderColor: Colors.border,
   },
   menuIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
     backgroundColor: "rgba(59, 130, 246, 0.1)",
     justifyContent: "center",
     alignItems: "center",
     marginBottom: 12,
   },
   menuText: {
-    fontSize: 12,
+    fontSize: 13,
     color: Colors.text,
     fontWeight: "500",
     textAlign: "center",
+  },
+  actionSection: {
+    padding: 20,
+    backgroundColor: Colors.card,
+    marginBottom: 20,
   },
   saveButton: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: Colors.primary,
-    paddingVertical: 14,
-    borderRadius: 8,
-    gap: 8,
+    paddingVertical: 16,
+    borderRadius: 12,
+    gap: 10,
   },
   saveButtonDisabled: {
     opacity: 0.7,
@@ -1121,9 +1301,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "rgba(239, 68, 68, 0.1)",
-    paddingVertical: 14,
-    borderRadius: 8,
-    gap: 8,
+    paddingVertical: 16,
+    borderRadius: 12,
+    gap: 10,
   },
   logoutText: {
     color: Colors.danger,
@@ -1137,9 +1317,9 @@ const styles = StyleSheet.create({
   },
   modalContent: {
     backgroundColor: Colors.card,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    maxHeight: "60%",
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    maxHeight: "70%",
   },
   modalHeader: {
     flexDirection: "row",
@@ -1150,7 +1330,7 @@ const styles = StyleSheet.create({
     borderBottomColor: Colors.border,
   },
   modalTitle: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: "bold",
     color: Colors.text,
   },
@@ -1158,7 +1338,7 @@ const styles = StyleSheet.create({
     padding: 20,
   },
   modalLabel: {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: "500",
     color: Colors.text,
     marginBottom: 8,
@@ -1167,9 +1347,9 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.background,
     borderWidth: 1,
     borderColor: Colors.border,
-    borderRadius: 8,
-    padding: 12,
-    fontSize: 16,
+    borderRadius: 10,
+    padding: 14,
+    fontSize: 15,
     color: Colors.text,
     textAlign: "right",
     marginBottom: 16,
@@ -1181,20 +1361,20 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.background,
     borderWidth: 1,
     borderColor: Colors.border,
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 20,
+    borderRadius: 10,
+    padding: 14,
+    marginBottom: 24,
   },
   gradePlaceholder: {
-    fontSize: 16,
+    fontSize: 15,
     color: Colors.textSecondary,
   },
   gradeSelected: {
-    fontSize: 16,
+    fontSize: 15,
     color: Colors.text,
   },
   modalList: {
-    maxHeight: 300,
+    maxHeight: 400,
   },
   gradeItem: {
     padding: 16,
@@ -1208,10 +1388,10 @@ const styles = StyleSheet.create({
   },
   modalAddButton: {
     backgroundColor: Colors.primary,
-    padding: 16,
+    padding: 18,
     alignItems: "center",
-    borderBottomLeftRadius: 20,
-    borderBottomRightRadius: 20,
+    borderBottomLeftRadius: 24,
+    borderBottomRightRadius: 24,
   },
   modalAddButtonDisabled: {
     opacity: 0.5,

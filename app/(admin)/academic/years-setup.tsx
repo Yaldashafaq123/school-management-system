@@ -1,7 +1,15 @@
-import { Calendar, Edit2, Plus, Trash2 } from 'lucide-react-native';
-import { useState } from 'react';
+// app/(admin)/academic/index.tsx
+import { Header } from "@/components/Header";
+import { Colors } from "@/constants/Colors";
+import { useAuth } from "@/contexts/AuthContext";
+import { AcademicYear, adminAcademicApi } from "@/src/config/adminAcademicApi";
+import { Calendar, Edit2, Plus, Trash2 } from "lucide-react-native";
+import { useEffect, useState } from "react";
 import {
+  ActivityIndicator,
   Alert,
+  Modal,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Switch,
@@ -9,226 +17,504 @@ import {
   TextInput,
   TouchableOpacity,
   View,
-} from 'react-native';
-
-interface Term {
-  id: string;
-  name: string;
-  start: string;
-  end: string;
-}
-
-interface Holiday {
-  id: string;
-  name: string;
-  start: string;
-  end: string;
-}
-
-interface AcademicYear {
-  id: string;
-  name: string;
-  startDate: string;
-  endDate: string;
-  isActive: boolean;
-  terms: Term[];
-  holidays: Holiday[];
-}
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 export default function AcademicYearSetup() {
-  const [academicYears, setAcademicYears] = useState<AcademicYear[]>([
-    {
-      id: '1',
-      name: '2024-2025',
-      startDate: '2024-06-01',
-      endDate: '2025-05-31',
-      isActive: true,
-      terms: [
-        { id: '1', name: 'Term 1', start: '2024-06-01', end: '2024-09-30' },
-        { id: '2', name: 'Term 2', start: '2024-10-01', end: '2025-01-31' },
-        { id: '3', name: 'Term 3', start: '2025-02-01', end: '2025-05-31' },
-      ],
-      holidays: [
-        { id: '1', name: 'Summer Break', start: '2024-05-15', end: '2024-05-31' },
-        { id: '2', name: 'Winter Break', start: '2024-12-23', end: '2025-01-05' },
-      ],
-    },
-  ]);
-
+  const { user, token } = useAuth();
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [academicYears, setAcademicYears] = useState<AcademicYear[]>([]);
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [newYear, setNewYear] = useState({
-    name: '',
-    startDate: '',
-    endDate: '',
+    name: "",
+    startDate: "",
+    endDate: "",
+    isActive: false,
   });
 
-  const addAcademicYear = () => {
+  useEffect(() => {
+    loadAcademicYears();
+  }, []);
+
+  const loadAcademicYears = async () => {
+    try {
+      setLoading(true);
+      const response = await adminAcademicApi.getAcademicYears();
+      if (response.success && response.data) {
+        setAcademicYears(response.data);
+      }
+    } catch (error) {
+      console.error("Error loading academic years:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    await loadAcademicYears();
+    setRefreshing(false);
+  };
+
+  const handleAddAcademicYear = async () => {
     if (!newYear.name || !newYear.startDate || !newYear.endDate) {
-      Alert.alert('Error', 'Please fill all fields');
+      Alert.alert("خطا", "لطفا تمام فیلدها را پر کنید");
       return;
     }
 
-    const newYearObj: AcademicYear = {
-      id: Date.now().toString(),
-      name: newYear.name,
-      startDate: newYear.startDate,
-      endDate: newYear.endDate,
-      isActive: false,
-      terms: [],
-      holidays: [],
-    };
+    // Validate date format (Jalali: 1403/01/01)
+    const dateRegex = /^\d{4}\/\d{2}\/\d{2}$/;
+    if (
+      !dateRegex.test(newYear.startDate) ||
+      !dateRegex.test(newYear.endDate)
+    ) {
+      Alert.alert("خطا", "فرمت تاریخ باید به صورت ۱۴۰۳/۰۱/۰۱ باشد");
+      return;
+    }
 
-    setAcademicYears([...academicYears, newYearObj]);
-    setNewYear({ name: '', startDate: '', endDate: '' });
+    setSubmitting(true);
+    try {
+      const response = await adminAcademicApi.createAcademicYear(newYear);
+      if (response.success) {
+        Alert.alert("موفقیت", response.message);
+        setShowAddModal(false);
+        setNewYear({ name: "", startDate: "", endDate: "", isActive: false });
+        loadAcademicYears();
+      } else {
+        Alert.alert("خطا", response.message);
+      }
+    } catch (error) {
+      Alert.alert("خطا", "خطا در ایجاد سال تحصیلی");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
-  const setActiveYear = (yearId: string) => {
-    const updatedYears = academicYears.map((year) => ({
-      ...year,
-      isActive: year.id === yearId,
-    }));
-    setAcademicYears(updatedYears);
+  const handleSetActive = async (id: number) => {
+    try {
+      const response = await adminAcademicApi.setActiveAcademicYear(id);
+      if (response.success) {
+        Alert.alert("موفقیت", response.message);
+        loadAcademicYears();
+      } else {
+        Alert.alert("خطا", response.message);
+      }
+    } catch (error) {
+      Alert.alert("خطا", "خطا در تنظیم سال تحصیلی فعال");
+    }
   };
+
+  const handleDeleteYear = async (id: number, name: string) => {
+    Alert.alert(
+      "حذف سال تحصیلی",
+      `آیا از حذف سال تحصیلی "${name}" مطمئن هستید؟`,
+      [
+        { text: "لغو", style: "cancel" },
+        {
+          text: "حذف",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              const response = await adminAcademicApi.deleteAcademicYear(id);
+              if (response.success) {
+                Alert.alert("موفقیت", response.message);
+                loadAcademicYears();
+              } else {
+                Alert.alert("خطا", response.message);
+              }
+            } catch (error) {
+              Alert.alert("خطا", "خطا در حذف سال تحصیلی");
+            }
+          },
+        },
+      ],
+    );
+  };
+
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.container} edges={["top"]}>
+        <Header title="سال‌های تحصیلی" showBack />
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={Colors.primary} />
+          <Text style={styles.loadingText}>در حال بارگذاری...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
-    <ScrollView style={styles.container}>
-      {/* Header */}
-      <View style={styles.header}>
-        <Calendar size={24} color="#007AFF" />
-        <Text style={styles.headerTitle}>Academic Year Setup</Text>
-      </View>
+    <SafeAreaView style={styles.container} edges={["top"]}>
+      <Header
+        title="سال‌های تحصیلی"
+        showBack
+        rightComponent={
+          <TouchableOpacity onPress={() => setShowAddModal(true)}>
+            <Plus size={24} color={Colors.primary} />
+          </TouchableOpacity>
+        }
+      />
 
-      {/* Add New Year Form */}
-      <View style={styles.formCard}>
-        <Text style={styles.formTitle}>Add New Academic Year</Text>
-        <TextInput
-          style={styles.input}
-          placeholder="Academic Year (e.g., 2024-2025)"
-          value={newYear.name}
-          onChangeText={(text) => setNewYear({ ...newYear, name: text })}
-        />
-        <View style={styles.dateRow}>
-          <View style={styles.dateInputContainer}>
-            <Text style={styles.dateLabel}>Start Date</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="YYYY-MM-DD"
-              value={newYear.startDate}
-              onChangeText={(text) => setNewYear({ ...newYear, startDate: text })}
-            />
-          </View>
-          <View style={styles.dateInputContainer}>
-            <Text style={styles.dateLabel}>End Date</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="YYYY-MM-DD"
-              value={newYear.endDate}
-              onChangeText={(text) => setNewYear({ ...newYear, endDate: text })}
-            />
-          </View>
+      <ScrollView
+        style={styles.content}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            colors={[Colors.primary]}
+          />
+        }
+      >
+        {/* Academic Years List */}
+        <View style={styles.listContainer}>
+          {academicYears.length === 0 ? (
+            <View style={styles.emptyState}>
+              <Calendar size={60} color={Colors.textSecondary} />
+              <Text style={styles.emptyStateTitle}>سال تحصیلی ثبت نشده</Text>
+              <Text style={styles.emptyStateText}>
+                برای افزودن سال تحصیلی جدید، روی دکمه + در بالای صفحه کلیک کنید
+              </Text>
+            </View>
+          ) : (
+            academicYears.map((year) => (
+              <View key={year.id} style={styles.yearCard}>
+                <View style={styles.yearHeader}>
+                  <View style={styles.yearInfo}>
+                    <Text style={styles.yearName}>{year.name}</Text>
+                    <Text style={styles.yearDates}>
+                      {year.startDate} تا {year.endDate}
+                    </Text>
+                    {year.stats && (
+                      <Text style={styles.yearStats}>
+                        {year.stats.totalClasses} صنف •{" "}
+                        {year.stats.totalStudents} دانش‌آموز
+                      </Text>
+                    )}
+                  </View>
+                  <View style={styles.yearActions}>
+                    <Switch
+                      value={year.isActive}
+                      onValueChange={() => handleSetActive(year.id)}
+                      trackColor={{
+                        false: Colors.border,
+                        true: Colors.primary,
+                      }}
+                    />
+                    <Text
+                      style={[
+                        styles.activeLabel,
+                        year.isActive && styles.activeLabelActive,
+                      ]}
+                    >
+                      {year.isActive ? "فعال" : "غیرفعال"}
+                    </Text>
+                  </View>
+                </View>
+
+                <View style={styles.yearFooter}>
+                  <TouchableOpacity
+                    style={styles.editButton}
+                    onPress={() => Alert.alert("ویرایش", "در حال توسعه")}
+                  >
+                    <Edit2 size={16} color={Colors.primary} />
+                    <Text style={styles.editButtonText}>ویرایش</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={styles.deleteButton}
+                    onPress={() => handleDeleteYear(year.id, year.name)}
+                  >
+                    <Trash2 size={16} color={Colors.danger} />
+                    <Text style={styles.deleteButtonText}>حذف</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ))
+          )}
         </View>
-        <TouchableOpacity style={styles.addButton} onPress={addAcademicYear}>
-          <Plus size={20} color="white" />
-          <Text style={styles.addButtonText}>Add Academic Year</Text>
-        </TouchableOpacity>
-      </View>
+      </ScrollView>
 
-      {/* Academic Years List */}
-      <View style={styles.listContainer}>
-        <Text style={styles.listTitle}>Academic Years</Text>
-        {academicYears.map((year) => (
-          <View key={year.id} style={styles.yearCard}>
-            <View style={styles.yearHeader}>
-              <View style={styles.yearInfo}>
-                <Text style={styles.yearName}>{year.name}</Text>
-                <Text style={styles.yearDates}>
-                  {year.startDate} to {year.endDate}
+      {/* Add New Year Modal */}
+      <Modal
+        visible={showAddModal}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setShowAddModal(false)}
+      >
+        <SafeAreaView style={styles.modalContainer}>
+          <View style={styles.modalHeader}>
+            <TouchableOpacity onPress={() => setShowAddModal(false)}>
+              <Text style={styles.modalCancel}>لغو</Text>
+            </TouchableOpacity>
+            <Text style={styles.modalTitle}>افزودن سال تحصیلی جدید</Text>
+            <TouchableOpacity
+              onPress={handleAddAcademicYear}
+              disabled={submitting}
+            >
+              <Text style={styles.modalSave}>
+                {submitting ? "در حال..." : "ذخیره"}
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView style={styles.modalContent}>
+            <View style={styles.form}>
+              <View style={styles.formGroup}>
+                <Text style={styles.formLabel}>نام سال تحصیلی *</Text>
+                <TextInput
+                  style={styles.formInput}
+                  placeholder="مثال: ۱۴۰۴-۱۴۰۵"
+                  value={newYear.name}
+                  onChangeText={(text) =>
+                    setNewYear({ ...newYear, name: text })
+                  }
+                  textAlign="right"
+                />
+              </View>
+
+              <View style={styles.formGroup}>
+                <Text style={styles.formLabel}>تاریخ شروع (جلالی) *</Text>
+                <TextInput
+                  style={styles.formInput}
+                  placeholder="۱۴۰۴/۰۱/۰۱"
+                  value={newYear.startDate}
+                  onChangeText={(text) =>
+                    setNewYear({ ...newYear, startDate: text })
+                  }
+                  textAlign="right"
+                />
+                <Text style={styles.formHint}>
+                  فرمت: سال/ماه/روز (مثال: ۱۴۰۴/۰۱/۰۱)
                 </Text>
               </View>
-              <View style={styles.yearActions}>
-                <Switch value={year.isActive} onValueChange={() => setActiveYear(year.id)} />
-                <Text style={styles.activeLabel}>{year.isActive ? 'Active' : 'Set Active'}</Text>
+
+              <View style={styles.formGroup}>
+                <Text style={styles.formLabel}>تاریخ پایان (جلالی) *</Text>
+                <TextInput
+                  style={styles.formInput}
+                  placeholder="۱۴۰۵/۱۲/۲۹"
+                  value={newYear.endDate}
+                  onChangeText={(text) =>
+                    setNewYear({ ...newYear, endDate: text })
+                  }
+                  textAlign="right"
+                />
+                <Text style={styles.formHint}>
+                  فرمت: سال/ماه/روز (مثال: ۱۴۰۵/۱۲/۲۹)
+                </Text>
+              </View>
+
+              <View style={styles.formGroup}>
+                <View style={styles.switchRow}>
+                  <Text style={styles.formLabel}>فعال کردن این سال تحصیلی</Text>
+                  <Switch
+                    value={newYear.isActive}
+                    onValueChange={(value) =>
+                      setNewYear({ ...newYear, isActive: value })
+                    }
+                    trackColor={{ false: Colors.border, true: Colors.primary }}
+                  />
+                </View>
+                {newYear.isActive && (
+                  <Text style={styles.switchHint}>
+                    با فعال کردن این سال، سال تحصیلی قبلی غیرفعال می‌شود
+                  </Text>
+                )}
               </View>
             </View>
-
-            {/* Terms Section */}
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Terms ({year.terms.length})</Text>
-              {year.terms.map((term) => (
-                <View key={term.id} style={styles.termItem}>
-                  <Text style={styles.termName}>{term.name}</Text>
-                  <Text style={styles.termDates}>
-                    {term.start} - {term.end}
-                  </Text>
-                  <TouchableOpacity style={styles.iconButton}>
-                    <Edit2 size={16} color="#8E8E93" />
-                  </TouchableOpacity>
-                  <TouchableOpacity style={styles.iconButton}>
-                    <Trash2 size={16} color="#FF3B30" />
-                  </TouchableOpacity>
-                </View>
-              ))}
-              <TouchableOpacity style={styles.addTermButton}>
-                <Plus size={16} color="#007AFF" />
-                <Text style={styles.addTermText}>Add Term</Text>
-              </TouchableOpacity>
-            </View>
-
-            {/* Holidays Section */}
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Holidays ({year.holidays.length})</Text>
-              {year.holidays.map((holiday) => (
-                <View key={holiday.id} style={styles.holidayItem}>
-                  <Text style={styles.holidayName}>{holiday.name}</Text>
-                  <Text style={styles.holidayDates}>
-                    {holiday.start} - {holiday.end}
-                  </Text>
-                  <TouchableOpacity style={styles.iconButton}>
-                    <Trash2 size={16} color="#FF3B30" />
-                  </TouchableOpacity>
-                </View>
-              ))}
-              <TouchableOpacity style={styles.addTermButton}>
-                <Plus size={16} color="#007AFF" />
-                <Text style={styles.addTermText}>Add Holiday</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        ))}
-      </View>
-    </ScrollView>
+          </ScrollView>
+        </SafeAreaView>
+      </Modal>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f5f5f7' },
-  header: { flexDirection: 'row', alignItems: 'center', padding: 20, backgroundColor: 'white', borderBottomWidth: 1, borderBottomColor: '#e5e5ea' },
-  headerTitle: { fontSize: 20, fontWeight: '600', marginLeft: 12, color: '#1d1d1f' },
-  formCard: { backgroundColor: 'white', margin: 16, padding: 20, borderRadius: 12, borderWidth: 1, borderColor: '#e5e5ea' },
-  formTitle: { fontSize: 18, fontWeight: '600', marginBottom: 16, color: '#1d1d1f' },
-  input: { borderWidth: 1, borderColor: '#d1d1d6', borderRadius: 8, padding: 12, marginBottom: 12, fontSize: 16 },
-  dateRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 16 },
-  dateInputContainer: { flex: 1, marginHorizontal: 4 },
-  dateLabel: { fontSize: 14, color: '#8E8E93', marginBottom: 4 },
-  addButton: { backgroundColor: '#007AFF', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 14, borderRadius: 8 },
-  addButtonText: { color: 'white', fontSize: 16, fontWeight: '600', marginLeft: 8 },
-  listContainer: { padding: 16 },
-  listTitle: { fontSize: 20, fontWeight: '600', marginBottom: 16, color: '#1d1d1f' },
-  yearCard: { backgroundColor: 'white', borderRadius: 12, padding: 16, marginBottom: 16, borderWidth: 1, borderColor: '#e5e5ea' },
-  yearHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
-  yearInfo: { flex: 1 },
-  yearName: { fontSize: 18, fontWeight: '600', color: '#1d1d1f' },
-  yearDates: { fontSize: 14, color: '#8E8E93', marginTop: 4 },
-  yearActions: { alignItems: 'center' },
-  activeLabel: { fontSize: 12, color: '#8E8E93', marginTop: 4 },
-  section: { marginTop: 16, paddingTop: 16, borderTopWidth: 1, borderTopColor: '#f2f2f7' },
-  sectionTitle: { fontSize: 16, fontWeight: '600', marginBottom: 12, color: '#1d1d1f' },
-  termItem: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#f5f5f7', padding: 12, borderRadius: 8, marginBottom: 8 },
-  termName: { flex: 1, fontSize: 14, fontWeight: '500', color: '#1d1d1f' },
-  termDates: { fontSize: 12, color: '#8E8E93', marginRight: 12 },
-  holidayItem: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff3e0', padding: 12, borderRadius: 8, marginBottom: 8 },
-  holidayName: { flex: 1, fontSize: 14, fontWeight: '500', color: '#1d1d1f' },
-  holidayDates: { fontSize: 12, color: '#8E8E93', marginRight: 12 },
-  iconButton: { padding: 4 },
-  addTermButton: { flexDirection: 'row', alignItems: 'center', padding: 12, borderRadius: 8, borderWidth: 1, borderColor: '#007AFF', borderStyle: 'dashed', justifyContent: 'center', marginTop: 8 },
-  addTermText: { color: '#007AFF', fontSize: 14, fontWeight: '500', marginLeft: 8 },
+  container: {
+    flex: 1,
+    backgroundColor: Colors.background,
+  },
+  content: {
+    flex: 1,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 20,
+  },
+  loadingText: {
+    marginTop: 16,
+    fontSize: 16,
+    color: Colors.textSecondary,
+  },
+  listContainer: {
+    padding: 16,
+  },
+  emptyState: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 60,
+  },
+  emptyStateTitle: {
+    fontSize: 18,
+    fontWeight: "bold",
+    color: Colors.text,
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  emptyStateText: {
+    fontSize: 14,
+    color: Colors.textSecondary,
+    textAlign: "center",
+  },
+  yearCard: {
+    backgroundColor: Colors.card,
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  yearHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 16,
+  },
+  yearInfo: {
+    flex: 1,
+  },
+  yearName: {
+    fontSize: 18,
+    fontWeight: "bold",
+    color: Colors.text,
+    marginBottom: 4,
+  },
+  yearDates: {
+    fontSize: 14,
+    color: Colors.textSecondary,
+    marginBottom: 4,
+  },
+  yearStats: {
+    fontSize: 12,
+    color: Colors.primary,
+  },
+  yearActions: {
+    alignItems: "center",
+  },
+  activeLabel: {
+    fontSize: 12,
+    color: Colors.textSecondary,
+    marginTop: 4,
+  },
+  activeLabelActive: {
+    color: Colors.success,
+    fontWeight: "bold",
+  },
+  yearFooter: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    gap: 16,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: Colors.border,
+  },
+  editButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    backgroundColor: "rgba(59, 130, 246, 0.1)",
+  },
+  editButtonText: {
+    fontSize: 14,
+    color: Colors.primary,
+    fontWeight: "500",
+  },
+  deleteButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    backgroundColor: "rgba(239, 68, 68, 0.1)",
+  },
+  deleteButtonText: {
+    fontSize: 14,
+    color: Colors.danger,
+    fontWeight: "500",
+  },
+  modalContainer: {
+    flex: 1,
+    backgroundColor: Colors.background,
+  },
+  modalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: "bold",
+    color: Colors.text,
+  },
+  modalCancel: {
+    fontSize: 16,
+    color: Colors.danger,
+  },
+  modalSave: {
+    fontSize: 16,
+    color: Colors.primary,
+    fontWeight: "bold",
+  },
+  modalContent: {
+    flex: 1,
+    padding: 20,
+  },
+  form: {
+    gap: 20,
+  },
+  formGroup: {
+    gap: 8,
+  },
+  formLabel: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: Colors.text,
+  },
+  formInput: {
+    backgroundColor: Colors.card,
+    borderRadius: 8,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    fontSize: 15,
+    color: Colors.text,
+    textAlign: "right",
+  },
+  formHint: {
+    fontSize: 12,
+    color: Colors.textSecondary,
+  },
+  switchRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  switchHint: {
+    fontSize: 12,
+    color: Colors.textSecondary,
+    marginTop: 4,
+  },
 });

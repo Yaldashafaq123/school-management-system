@@ -1,8 +1,16 @@
+// app/(admin)/analytics/index.tsx
+import {
+  adminAnalyticsApi,
+  AnalyticsData,
+  SystemMetrics,
+} from "@/src/config/adminAnalyticsApi";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
+  ActivityIndicator,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -12,10 +20,11 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Colors } from "../../../constants/Colors";
 
-// Simple chart component since the ProgressChart might have different props
-const SimpleChart = () => {
-  const data = [65, 78, 92, 85, 76, 94];
-  const maxValue = Math.max(...data);
+// Simple chart component
+const SimpleChart = ({ data }: { data: number[] }) => {
+  const maxValue = Math.max(...data, 1);
+
+  const months = ["حمل", "ثور", "جوزا", "سرطان", "اسد", "سنبله"];
 
   return (
     <View style={simpleChartStyles.container}>
@@ -33,9 +42,7 @@ const SimpleChart = () => {
                 ]}
               />
             </View>
-            <Text style={simpleChartStyles.label}>
-              {["حمل", "ثور", "جوزا", "سرطان", "اسد", "سنبله"][index]}
-            </Text>
+            <Text style={simpleChartStyles.label}>{months[index]}</Text>
           </View>
         ))}
       </View>
@@ -92,36 +99,93 @@ const afghanMonths = [
 
 export default function AnalyticsDashboard() {
   const router = useRouter();
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [timeRange, setTimeRange] = useState<"day" | "week" | "month" | "year">(
     "month",
   );
+  const [analyticsData, setAnalyticsData] = useState<AnalyticsData | null>(
+    null,
+  );
+  const [systemMetrics, setSystemMetrics] = useState<SystemMetrics | null>(
+    null,
+  );
+  const [topCourses, setTopCourses] = useState<
+    { id: number; title: string; students: number; rating: number }[]
+  >([]);
 
-  const stats = {
-    totalRevenue: 24500000, // ریال
-    newUsers: 142,
-    activeUsers: 856,
-    courseCompletions: 324,
-    avgSessionTime: "۲۴:۳۶",
-    bounceRate: "۳۲٪",
+  const loadData = useCallback(async () => {
+    try {
+      setLoading(true);
+      const [analyticsRes, metricsRes, coursesRes] = await Promise.all([
+        adminAnalyticsApi.getAnalytics(timeRange),
+        adminAnalyticsApi.getSystemMetrics(),
+        adminAnalyticsApi.getTopCourses(5),
+      ]);
+
+      if (analyticsRes.success && analyticsRes.data) {
+        setAnalyticsData(analyticsRes.data);
+      }
+      if (metricsRes.success && metricsRes.data) {
+        setSystemMetrics(metricsRes.data);
+      }
+      if (coursesRes.success && coursesRes.data) {
+        setTopCourses(coursesRes.data);
+      }
+    } catch (error) {
+      console.error("Error loading analytics:", error);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, [timeRange]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    await loadData();
   };
 
-  const topCourses = [
-    { id: 1, title: "ریاضی پیشرفته", students: 245, rating: 4.8 },
-    { id: 2, title: "برنامه‌نویسی پایتون", students: 198, rating: 4.9 },
-    { id: 3, title: "زبان انگلیسی", students: 176, rating: 4.7 },
-    { id: 4, title: "فیزیک مدرن", students: 154, rating: 4.6 },
-    { id: 5, title: "آمار و احتمال", students: 132, rating: 4.5 },
-  ];
+  // Extract user growth data for chart
+  const userGrowthData = analyticsData?.userGrowth.map(
+    (item) => item.users,
+  ) || [0, 0, 0, 0, 0, 0];
+  const stats = analyticsData?.stats || {
+    totalUsers: 0,
+    activeUsers: 0,
+    newUsers: 0,
+    newUsersGrowth: 0,
+    totalCourses: 0,
+    completedCourses: 0,
+    totalHours: 0,
+    averageScore: 0,
+    completionRate: 0,
+    activeRate: 0,
+  };
 
-  // User growth with Afghan Dari months
-  const userGrowth = [
-    { month: "حمل", newUsers: 120, activeUsers: 850 },
-    { month: "ثور", newUsers: 135, activeUsers: 890 },
-    { month: "جوزا", newUsers: 142, activeUsers: 920 },
-    { month: "سرطان", newUsers: 128, activeUsers: 910 },
-    { month: "اسد", newUsers: 155, activeUsers: 950 },
-    { month: "سنبله", newUsers: 162, activeUsers: 980 },
-  ];
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.headerContainer}>
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() => router.back()}
+          >
+            <Ionicons name="arrow-back" size={24} color={Colors.text} />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>تحلیل و گزارشات</Text>
+          <View style={styles.headerRightPlaceholder} />
+        </View>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={Colors.primary} />
+          <Text style={styles.loadingText}>در حال بارگذاری...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container}>
@@ -137,7 +201,17 @@ export default function AnalyticsDashboard() {
         <View style={styles.headerRightPlaceholder} />
       </View>
 
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        style={styles.content}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            colors={[Colors.primary]}
+          />
+        }
+      >
         {/* Time Range Filter */}
         <View style={styles.timeRangeContainer}>
           {(["day", "week", "month", "year"] as const).map((range) => (
@@ -171,12 +245,12 @@ export default function AnalyticsDashboard() {
             style={styles.metricCard}
           >
             <Text style={styles.metricValue}>
-              {stats.totalRevenue.toLocaleString()} ریال
+              {stats.totalRevenue?.toLocaleString() || "0"} افغانی{" "}
             </Text>
             <Text style={styles.metricLabel}>درآمد کل</Text>
             <View style={styles.metricTrend}>
               <Ionicons name="trending-up" size={16} color="#fff" />
-              <Text style={styles.trendText}>۱۲٪+</Text>
+              <Text style={styles.trendText}>+{stats.newUsersGrowth}%</Text>
             </View>
           </LinearGradient>
 
@@ -207,7 +281,7 @@ export default function AnalyticsDashboard() {
               />
             </View>
             <Text style={styles.metricValueSecondary}>
-              {stats.courseCompletions}
+              {stats.completedCourses}
             </Text>
             <Text style={styles.metricLabelSecondary}>تکمیل دوره</Text>
           </View>
@@ -224,7 +298,7 @@ export default function AnalyticsDashboard() {
             </TouchableOpacity>
           </View>
           <View style={styles.chartContainer}>
-            <SimpleChart />
+            <SimpleChart data={userGrowthData} />
             <View style={styles.chartLegend}>
               <View style={styles.legendItem}>
                 <View
@@ -234,15 +308,6 @@ export default function AnalyticsDashboard() {
                   ]}
                 />
                 <Text style={styles.legendText}>کاربران جدید</Text>
-              </View>
-              <View style={styles.legendItem}>
-                <View
-                  style={[
-                    styles.legendDot,
-                    { backgroundColor: Colors.success },
-                  ]}
-                />
-                <Text style={styles.legendText}>کاربران فعال</Text>
               </View>
             </View>
           </View>
@@ -259,49 +324,63 @@ export default function AnalyticsDashboard() {
             </TouchableOpacity>
           </View>
           <View style={styles.coursesList}>
-            {topCourses.map((course, index) => (
-              <View
-                key={course.id}
-                style={[
-                  styles.courseItem,
-                  index === topCourses.length - 1 && styles.lastItem,
-                ]}
-              >
-                <View style={styles.courseRank}>
-                  <Text style={styles.rankText}>{index + 1}</Text>
-                </View>
-                <View style={styles.courseInfo}>
-                  <Text style={styles.courseTitle}>{course.title}</Text>
-                  <View style={styles.courseStats}>
-                    <View style={styles.courseStat}>
-                      <Ionicons
-                        name="people"
-                        size={14}
-                        color={Colors.textSecondary}
-                      />
-                      <Text style={styles.courseStatText}>
-                        {course.students} دانش‌آموز
-                      </Text>
-                    </View>
-                    <View style={styles.courseStat}>
-                      <Ionicons name="star" size={14} color={Colors.warning} />
-                      <Text style={styles.courseStatText}>{course.rating}</Text>
+            {topCourses.length === 0 ? (
+              <View style={styles.emptyState}>
+                <Text style={styles.emptyStateText}>
+                  داده‌ای برای نمایش وجود ندارد
+                </Text>
+              </View>
+            ) : (
+              topCourses.map((course, index) => (
+                <View
+                  key={course.id}
+                  style={[
+                    styles.courseItem,
+                    index === topCourses.length - 1 && styles.lastItem,
+                  ]}
+                >
+                  <View style={styles.courseRank}>
+                    <Text style={styles.rankText}>{index + 1}</Text>
+                  </View>
+                  <View style={styles.courseInfo}>
+                    <Text style={styles.courseTitle}>{course.title}</Text>
+                    <View style={styles.courseStats}>
+                      <View style={styles.courseStat}>
+                        <Ionicons
+                          name="people"
+                          size={14}
+                          color={Colors.textSecondary}
+                        />
+                        <Text style={styles.courseStatText}>
+                          {course.students} دانش‌آموز
+                        </Text>
+                      </View>
+                      <View style={styles.courseStat}>
+                        <Ionicons
+                          name="star"
+                          size={14}
+                          color={Colors.warning}
+                        />
+                        <Text style={styles.courseStatText}>
+                          {course.rating}
+                        </Text>
+                      </View>
                     </View>
                   </View>
+                  <TouchableOpacity style={styles.courseButton}>
+                    <Ionicons
+                      name="chevron-forward"
+                      size={20}
+                      color={Colors.primary}
+                    />
+                  </TouchableOpacity>
                 </View>
-                <TouchableOpacity style={styles.courseButton}>
-                  <Ionicons
-                    name="chevron-forward"
-                    size={20}
-                    color={Colors.primary}
-                  />
-                </TouchableOpacity>
-              </View>
-            ))}
+              ))
+            )}
           </View>
         </View>
 
-        {/* User Growth Table - Now with Afghan Dari months */}
+        {/* User Growth Table - Afghan Dari months */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>
             آمار رشد کاربران (ماه‌های هجری شمسی)
@@ -321,35 +400,47 @@ export default function AnalyticsDashboard() {
                 رشد
               </Text>
             </View>
-            {userGrowth.map((item, index) => {
-              const growth =
-                item.newUsers - (userGrowth[index - 1]?.newUsers || 0);
-              return (
-                <View
-                  key={index}
-                  style={[
-                    styles.tableRow,
-                    index === userGrowth.length - 1 && styles.tableRowLast,
-                  ]}
-                >
-                  <Text style={[styles.tableCell, styles.tableCellFirst]}>
-                    {item.month}
-                  </Text>
-                  <Text style={styles.tableCell}>{item.newUsers}</Text>
-                  <Text style={styles.tableCell}>{item.activeUsers}</Text>
-                  <Text
+            {analyticsData?.userGrowth.length === 0 ? (
+              <View style={styles.tableRow}>
+                <Text style={[styles.tableCell, styles.tableCellFirst]}>
+                  داده‌ای موجود نیست
+                </Text>
+              </View>
+            ) : (
+              analyticsData?.userGrowth.map((item, index) => {
+                const growth =
+                  index > 0
+                    ? item.users -
+                      (analyticsData.userGrowth[index - 1]?.users || 0)
+                    : 0;
+                return (
+                  <View
+                    key={index}
                     style={[
-                      styles.tableCell,
-                      styles.growthCell,
-                      { color: growth >= 0 ? Colors.success : Colors.danger },
+                      styles.tableRow,
+                      index === (analyticsData?.userGrowth.length || 0) - 1 &&
+                        styles.tableRowLast,
                     ]}
                   >
-                    {growth >= 0 ? "+" : ""}
-                    {growth}
-                  </Text>
-                </View>
-              );
-            })}
+                    <Text style={[styles.tableCell, styles.tableCellFirst]}>
+                      {item.month}
+                    </Text>
+                    <Text style={styles.tableCell}>{item.users}</Text>
+                    <Text style={styles.tableCell}>{stats.activeUsers}</Text>
+                    <Text
+                      style={[
+                        styles.tableCell,
+                        styles.growthCell,
+                        { color: growth >= 0 ? Colors.success : Colors.danger },
+                      ]}
+                    >
+                      {growth >= 0 ? "+" : ""}
+                      {growth}
+                    </Text>
+                  </View>
+                );
+              })
+            )}
           </View>
         </View>
 
@@ -357,7 +448,10 @@ export default function AnalyticsDashboard() {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>گزارشات سریع</Text>
           <View style={styles.reportsGrid}>
-            <TouchableOpacity style={styles.reportCard}>
+            <TouchableOpacity
+              style={styles.reportCard}
+              onPress={() => router.push("/(admin)/analytics")}
+            >
               <View
                 style={[
                   styles.reportIcon,
@@ -369,7 +463,10 @@ export default function AnalyticsDashboard() {
               <Text style={styles.reportTitle}>گزارش ماهانه</Text>
               <Text style={styles.reportDesc}>گزارش کامل عملکرد ماه</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.reportCard}>
+            <TouchableOpacity
+              style={styles.reportCard}
+              onPress={() => router.push("/(admin)/analytics/users")}
+            >
               <View
                 style={[
                   styles.reportIcon,
@@ -381,7 +478,10 @@ export default function AnalyticsDashboard() {
               <Text style={styles.reportTitle}>گزارش کاربران</Text>
               <Text style={styles.reportDesc}>تحلیل رفتار کاربران</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.reportCard}>
+            <TouchableOpacity
+              style={styles.reportCard}
+              onPress={() => router.push("/(admin)/analytics/courses")}
+            >
               <View
                 style={[
                   styles.reportIcon,
@@ -393,7 +493,10 @@ export default function AnalyticsDashboard() {
               <Text style={styles.reportTitle}>گزارش دوره‌ها</Text>
               <Text style={styles.reportDesc}>آمار دوره‌های آموزشی</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.reportCard}>
+            <TouchableOpacity
+              style={styles.reportCard}
+              onPress={() => router.push("/(admin)/analytics")}
+            >
               <View
                 style={[
                   styles.reportIcon,
@@ -443,6 +546,16 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
     padding: 16,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 14,
+    color: Colors.textSecondary,
   },
   timeRangeContainer: {
     flexDirection: "row",
@@ -633,6 +746,14 @@ const styles = StyleSheet.create({
   },
   courseButton: {
     padding: 4,
+  },
+  emptyState: {
+    padding: 20,
+    alignItems: "center",
+  },
+  emptyStateText: {
+    fontSize: 14,
+    color: Colors.textSecondary,
   },
   table: {
     backgroundColor: Colors.card,

@@ -149,7 +149,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   }, []);
 
   // ========================
-  // FETCH USER PROFILE (for teachers and detailed data)
+  // FETCH USER PROFILE
   // ========================
   const fetchUserProfile = async () => {
     try {
@@ -160,9 +160,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       if (!userDataStr) return;
 
       const currentUser = JSON.parse(userDataStr);
-      const userRole = currentUser.role?.toUpperCase(); // Normalize to uppercase
+      const userRole = currentUser.role?.toUpperCase();
 
-      // Fetch appropriate profile based on role
       let endpoint = "";
       if (userRole === "TEACHER") {
         endpoint = "/teacher/profile";
@@ -171,7 +170,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       } else if (userRole === "PARENT") {
         endpoint = "/parent/profile";
       } else {
-        return; // Admin or other roles
+        return;
       }
 
       const response = await fetch(`${BASE_URL}${endpoint}`, {
@@ -182,23 +181,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
 
       if (response.ok) {
         const profileData = await response.json();
-
-        // Merge profile data with existing user data
         const updatedUser = {
           ...currentUser,
           ...profileData,
-          // Ensure teacher-specific fields are included
-          ...(userRole === "TEACHER" && {
-            bio: profileData.bio,
-            experience: profileData.experience,
-            hourlyRate: profileData.hourlyRate,
-            certification: profileData.certification,
-            availability: profileData.availability,
-            rating: profileData.rating,
-            education: profileData.education,
-            subjects: profileData.subjects,
-            stats: profileData.stats,
-          }),
         };
 
         await AsyncStorage.setItem("user_data", JSON.stringify(updatedUser));
@@ -213,138 +198,109 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   };
 
   // ========================
-  // REAL LOGIN (CONNECTED TO DB)
+  // REAL LOGIN
   // ========================
- // ========================
-// REAL LOGIN (CONNECTED TO DB) - WITH DEBUG
-// ========================
-const login = async (credentials: LoginCredentials) => {
-  try {
-    dispatch({ type: "LOGIN_REQUEST" });
+  const login = async (credentials: LoginCredentials) => {
+    try {
+      dispatch({ type: "LOGIN_REQUEST" });
 
-    console.log("Attempting login with:", credentials.email);
+      const response = await fetch(`${BASE_URL}/auth/login`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          email: credentials.email,
+          password: credentials.password,
+        }),
+      });
 
-    const response = await fetch(`${BASE_URL}/auth/login`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        email: credentials.email,
-        password: credentials.password,
-      }),
-    });
+      const data = await response.json();
 
-    const data = await response.json();
-    
-    // 🔴🔴🔴 DETAILED DEBUG LOGGING 🔴🔴🔴
-    console.log("========== FULL LOGIN RESPONSE ==========");
-    console.log("Response status:", response.status);
-    console.log("Response data:", JSON.stringify(data, null, 2));
-    
-    // Log specific paths
-    console.log("\n--- Checking specific paths ---");
-    console.log("data.user:", data.user);
-    console.log("data.user?.teacher:", data.user?.teacher);
-    console.log("data.user?.teacher?.id:", data.user?.teacher?.id);
-    console.log("data.teacher:", data.teacher);
-    console.log("data.teacher?.id:", data.teacher?.id);
-    console.log("data.teacherId:", data.teacherId);
-    console.log("data.id:", data.id);
-    console.log("data.user?.id:", data.user?.id);
-    console.log("data.role:", data.role);
-    console.log("data.user?.role:", data.user?.role);
-    console.log("==========================================");
+      if (!response.ok) {
+        throw new Error(data.message || "ایمیل یا رمز عبور اشتباه است");
+      }
 
-    if (!response.ok) {
-      throw new Error(data.message || "ایمیل یا رمز عبور اشتباه است");
+      const token = data.token;
+
+      // Create user object from login response
+      const user: User = {
+        id: data.user?.id || data.id || 0,
+        fullName:
+          data.user?.fullName ||
+          data.fullName ||
+          credentials.email.split("@")[0],
+        email: data.user?.email || data.email || credentials.email,
+        phone: data.user?.phone || data.phone || "",
+        role: (data.user?.role || data.role || "STUDENT").toLowerCase(),
+        verified: data.user?.verified || data.verified || true,
+        createdAt:
+          data.user?.createdAt || data.createdAt || new Date().toISOString(),
+        profile_image: data.user?.profileImage || data.user?.profile_image,
+        teacherId:
+          data.user?.teacher?.id || data.teacher?.id || data.teacherId || null,
+        studentId:
+          data.user?.student?.id || data.student?.id || data.studentId || null,
+        parentId:
+          data.user?.parent?.id || data.parent?.id || data.parentId || null,
+        stats: {},
+        enrolledCourses: [],
+        courseProgress: {},
+        children: [],
+        active_child_id: undefined,
+      };
+
+      await AsyncStorage.setItem("auth_token", token);
+      await AsyncStorage.setItem("user_data", JSON.stringify(user));
+
+      dispatch({
+        type: "LOGIN_SUCCESS",
+        payload: { user, token },
+      });
+
+      // Fetch full profile after login
+      setTimeout(() => {
+        fetchUserProfile();
+      }, 100);
+    } catch (error: any) {
+      console.error("Login error:", error);
+      dispatch({
+        type: "LOGIN_FAILURE",
+        payload: error.message,
+      });
+      throw error;
     }
-
-    const token = data.token;
-
-    // Try to find teacherId in multiple possible locations
-    let teacherId = null;
-    
-    if (data.user?.teacher?.id) {
-      teacherId = data.user.teacher.id;
-      console.log("✅ Found teacherId in data.user.teacher.id:", teacherId);
-    } else if (data.teacher?.id) {
-      teacherId = data.teacher.id;
-      console.log("✅ Found teacherId in data.teacher.id:", teacherId);
-    } else if (data.teacherId) {
-      teacherId = data.teacherId;
-      console.log("✅ Found teacherId in data.teacherId:", teacherId);
-    } else if (data.user?.id && data.user?.role === 'TEACHER') {
-      // If user is teacher, maybe the user.id is the teacherId
-      teacherId = data.user.id;
-      console.log("✅ Using user.id as teacherId since role is TEACHER:", teacherId);
-    } else {
-      console.log("❌ No teacherId found in any location");
-    }
-
-    // Create user object from login response
-    const user: User = {
-      id: data.user?.id || data.id || 0,
-      fullName: data.user?.fullName || data.fullName || credentials.email.split("@")[0],
-      email: data.user?.email || data.email || credentials.email,
-      phone: data.user?.phone || data.phone || "",
-      role: (data.user?.role || data.role || "STUDENT").toLowerCase(),
-      verified: data.user?.verified || data.verified || true,
-      createdAt: data.user?.createdAt || data.createdAt || new Date().toISOString(),
-      profile_image: data.user?.profileImage || data.user?.profile_image || data.profile_image,
-      teacherId: teacherId,
-      studentId: data.user?.student?.id || data.student?.id || data.studentId || null,
-      parentId: data.user?.parent?.id || data.parent?.id || data.parentId || null,
-      stats: {},
-      enrolledCourses: [],
-      courseProgress: {},
-      children: [],
-      active_child_id: undefined,
-    };
-
-    console.log("✅ Final user object created:", JSON.stringify(user, null, 2));
-
-    await AsyncStorage.setItem("auth_token", token);
-    await AsyncStorage.setItem("user_data", JSON.stringify(user));
-
-    dispatch({
-      type: "LOGIN_SUCCESS",
-      payload: { user, token },
-    });
-
-    // Fetch full profile after login
-    setTimeout(() => {
-      fetchUserProfile();
-    }, 100);
-  } catch (error: any) {
-    console.error("Login error:", error);
-    dispatch({
-      type: "LOGIN_FAILURE",
-      payload: error.message,
-    });
-    throw error;
-  }
-};
+  };
 
   // ========================
-  // REAL REGISTER (FIXED TO MATCH BACKEND)
+  // FIXED REGISTER FUNCTION (WITH CHILD EMAIL SUPPORT)
   // ========================
   const register = async (data: RegisterData) => {
     try {
       dispatch({ type: "SET_LOADING", payload: true });
 
       // Map frontend field names to backend expected names
-      const backendData = {
-        fullName: data.name, // Map 'name' to 'fullName'
+      const backendData: any = {
+        name: data.name,
         email: data.email,
         password: data.password,
-        role: data.role.toUpperCase(), // Convert to uppercase for backend
+        role: data.role.toUpperCase(),
         phone: data.phone || "",
       };
 
+      // Include class_id if role is student
+      if (data.role === "student" && data.class_id) {
+        backendData.class_id = data.class_id;
+      }
+
+      // Include child_email if role is parent
+      if (data.role === "parent" && (data as any).child_email) {
+        backendData.child_email = (data as any).child_email;
+      }
+
       console.log("Register data:", backendData);
 
-      const response = await fetch(`${BASE_URL}/auth/register`, {
+      const response = await fetch(`${BASE_URL}/public/register`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -359,61 +315,10 @@ const login = async (credentials: LoginCredentials) => {
         throw new Error(result.message || "ثبت‌نام ناموفق بود");
       }
 
-      let token, user;
-
-      if (result.token && result.user) {
-        // Format: { token: "...", user: {...} }
-        token = result.token;
-        user = result.user;
-      } else if (result.token) {
-        // Format: { token: "...", role: "...", message: "..." }
-        token = result.token;
-        // Create user object from available data
-        user = {
-          id: Date.now(), // Temporary ID
-          fullName: data.name,
-          email: data.email,
-          phone: data.phone || "",
-          role: (result.role || data.role).toLowerCase(), // Convert to lowercase
-          verified: true,
-          createdAt: new Date().toISOString(),
-        };
-      } else {
-        // Unexpected format
-        throw new Error("Invalid response format from server");
-      }
-
-      // Ensure user has all required fields with defaults
-      const fullUser: User = {
-        id: user.id,
-        fullName: user.fullName || data.name,
-        email: user.email || data.email,
-        phone: user.phone || data.phone || "",
-        role: (user.role || data.role).toLowerCase(),
-        verified: user.verified || false,
-        createdAt: user.createdAt || new Date().toISOString(),
-        profile_image: user.profile_image,
-        stats: {},
-        enrolledCourses: [],
-        courseProgress: {},
-        children: [],
-        active_child_id: undefined,
-      };
-
-      await AsyncStorage.setItem("auth_token", token);
-      await AsyncStorage.setItem("user_data", JSON.stringify(fullUser));
-
-      dispatch({
-        type: "LOGIN_SUCCESS",
-        payload: { user: fullUser, token },
-      });
-
       Alert.alert("ثبت‌نام موفق", "حساب شما با موفقیت ایجاد شد.");
 
-      // Fetch full profile after registration
-      setTimeout(() => {
-        fetchUserProfile();
-      }, 100);
+      // After registration, redirect to login (they need to login with their new account)
+      // The navigation will be handled in the screen component
     } catch (error: any) {
       console.error("Register error:", error);
       dispatch({
@@ -421,22 +326,39 @@ const login = async (credentials: LoginCredentials) => {
         payload: error.message,
       });
       throw error;
+    } finally {
+      dispatch({ type: "SET_LOADING", payload: false });
     }
   };
 
+  // ========================
+  // FIXED LOGOUT - Clear ALL storage
+  // ========================
   const logout = async () => {
-    await AsyncStorage.removeItem("auth_token");
-    await AsyncStorage.removeItem("user_data");
-    dispatch({ type: "LOGOUT" });
+    try {
+      // Clear all auth-related items
+      await AsyncStorage.removeItem("auth_token");
+      await AsyncStorage.removeItem("user_data");
+      await AsyncStorage.removeItem("userToken"); // Clear any old token formats
+
+      // Clear any other app data if needed
+      // await AsyncStorage.clear(); // Use with caution - clears EVERYTHING
+
+      dispatch({ type: "LOGOUT" });
+
+      console.log("Logout successful - all storage cleared");
+    } catch (error) {
+      console.error("Logout error:", error);
+      // Still dispatch logout even if storage removal fails
+      dispatch({ type: "LOGOUT" });
+    }
   };
 
   const updateProfile = async (profile: Partial<UserProfile>) => {
     if (!state.user) return;
 
     try {
-      // If user is teacher, update via teacher API
       if (state.user.role === "teacher") {
-        // Compare with lowercase
         const token = await AsyncStorage.getItem("auth_token");
         if (token) {
           await fetch(`${BASE_URL}/teacher/profile`, {
@@ -450,7 +372,6 @@ const login = async (credentials: LoginCredentials) => {
         }
       }
 
-      // Update local storage
       const updatedUser = { ...state.user, ...profile };
       await AsyncStorage.setItem("user_data", JSON.stringify(updatedUser));
       dispatch({ type: "UPDATE_PROFILE", payload: updatedUser });
@@ -463,7 +384,7 @@ const login = async (credentials: LoginCredentials) => {
   };
 
   // ========================
-  // KEEP YOUR EXISTING LOGIC - These now work with defaults
+  // HELPER FUNCTIONS
   // ========================
   const getUserStats = () => state.user?.stats || {};
 

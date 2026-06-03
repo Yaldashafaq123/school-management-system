@@ -1,65 +1,86 @@
-import React, { useState, useEffect } from 'react';
+// app/(teacher)/assignment/create.tsx - FIXED VERSION
+import { Ionicons } from "@expo/vector-icons";
+import DateTimePicker from "@react-native-community/datetimepicker";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import { useEffect, useState } from "react";
 import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-  TextInput,
+  ActivityIndicator,
   Alert,
-  Switch,
   Platform,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import DateTimePicker from '@react-native-community/datetimepicker';
-import { Colors } from '../../../constants/Colors';
-import { Header } from '../../../components/Header';
-
-const mockCourses = [
-  { id: 1, title: 'ریاضی هفتم', student_count: 45 },
-  { id: 2, title: 'علوم تجربی', student_count: 38 },
-  { id: 3, title: 'ادبیات فارسی', student_count: 52 },
-];
+  ScrollView,
+  StyleSheet,
+  Switch,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { Header } from "../../../components/Header";
+import { Colors } from "../../../constants/Colors";
+import { assignmentApi, Course } from "../../../src/config/classApi";
 
 const assignmentTypes = [
-  { id: 'homework', title: 'تکلیف خانگی', icon: 'home' },
-  { id: 'quiz', title: 'آزمون کوتاه', icon: 'time' },
-  { id: 'project', title: 'پروژه', icon: 'briefcase' },
-  { id: 'essay', title: 'مقاله', icon: 'document-text' },
+  { id: "homework", title: "کار خانگی", icon: "home" },
+  //  { id: "quiz", title: "آزمون کوتاه", icon: "time" },
+  { id: "project", title: "پروژه", icon: "briefcase" },
+  { id: "essay", title: "مقاله", icon: "document-text" },
 ];
 
 export default function CreateAssignment() {
-  const { course } = useLocalSearchParams();
+  const { courseId } = useLocalSearchParams<{ courseId: string }>();
   const router = useRouter();
+
   const [loading, setLoading] = useState(false);
+  const [fetchingCourses, setFetchingCourses] = useState(true);
+  const [courses, setCourses] = useState<Course[]>([]);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
-  const [dueDate, setDueDate] = useState(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)); // 7 days from now
+  const [dueDate, setDueDate] = useState(
+    new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+  ); // 7 days from now
   const [formData, setFormData] = useState({
-    title: '',
-    courseId: course || '',
-    type: 'homework',
-    description: '',
-    instructions: '',
+    title: "",
+    courseId: courseId || "",
+    type: "homework",
+    description: "",
+    instructions: "",
     attachments: [] as string[],
-    points: '20',
-    max_points: '20',
+    max_points: "20",
     allow_late_submission: false,
     allow_resubmission: false,
     notify_students: true,
     is_published: false,
   });
 
+  // Fetch courses on mount
   useEffect(() => {
-    if (course) {
-      setFormData(prev => ({ ...prev, courseId: course as string }));
+    fetchCourses();
+  }, []);
+
+  useEffect(() => {
+    if (courseId) {
+      setFormData((prev) => ({ ...prev, courseId: courseId as string }));
     }
-  }, [course]);
+  }, [courseId]);
+
+  const fetchCourses = async () => {
+    try {
+      setFetchingCourses(true);
+      const response = await assignmentApi.getTeacherCourses();
+      if (response.success) {
+        setCourses(response.data);
+      }
+    } catch (error) {
+      console.error("Error fetching courses:", error);
+      Alert.alert("خطا", "دریافت لیست دوره‌ها با مشکل مواجه شد");
+    } finally {
+      setFetchingCourses(false);
+    }
+  };
 
   const handleDateChange = (event: any, selectedDate?: Date) => {
-    setShowDatePicker(Platform.OS === 'ios');
+    setShowDatePicker(Platform.OS === "ios");
     if (selectedDate) {
       const newDate = new Date(selectedDate);
       newDate.setHours(dueDate.getHours(), dueDate.getMinutes());
@@ -68,7 +89,7 @@ export default function CreateAssignment() {
   };
 
   const handleTimeChange = (event: any, selectedTime?: Date) => {
-    setShowTimePicker(Platform.OS === 'ios');
+    setShowTimePicker(Platform.OS === "ios");
     if (selectedTime) {
       const newDate = new Date(dueDate);
       newDate.setHours(selectedTime.getHours(), selectedTime.getMinutes());
@@ -77,28 +98,30 @@ export default function CreateAssignment() {
   };
 
   const handleAddAttachment = () => {
-    Alert.alert(
-      'افزودن پیوست',
-      'نوع پیوست را انتخاب کنید:',
-      [
-        { text: 'فایل PDF', onPress: () => addAttachment('pdf') },
-        { text: 'فایل ورد', onPress: () => addAttachment('word') },
-        { text: 'عکس', onPress: () => addAttachment('image') },
-        { text: 'لینک', onPress: () => {
-          Alert.prompt('افزودن لینک', 'آدرس لینک را وارد کنید:', (url) => {
-            if (url) addAttachment('link', url);
+    Alert.alert("افزودن پیوست", "نوع پیوست را انتخاب کنید:", [
+      { text: "فایل PDF", onPress: () => addAttachment("pdf") },
+      { text: "فایل ورد", onPress: () => addAttachment("word") },
+      { text: "عکس", onPress: () => addAttachment("image") },
+      {
+        text: "لینک",
+        onPress: () => {
+          Alert.prompt("افزودن لینک", "آدرس لینک را وارد کنید:", (url) => {
+            if (url) addAttachment("link", url);
           });
-        }},
-        { text: 'لغو', style: 'cancel' },
-      ]
-    );
+        },
+      },
+      { text: "لغو", style: "cancel" },
+    ]);
   };
 
   const addAttachment = (type: string, url?: string) => {
-    const newAttachment = type === 'link' && url ? url : `attachment_${formData.attachments.length + 1}.${type}`;
+    const newAttachment =
+      type === "link" && url
+        ? url
+        : `attachment_${formData.attachments.length + 1}.${type}`;
     setFormData({
       ...formData,
-      attachments: [...formData.attachments, newAttachment]
+      attachments: [...formData.attachments, newAttachment],
     });
   };
 
@@ -110,73 +133,125 @@ export default function CreateAssignment() {
 
   const validateForm = () => {
     if (!formData.title.trim()) {
-      Alert.alert('خطا', 'عنوان تکلیف را وارد کنید.');
+      Alert.alert("خطا", "عنوان کارخانگی را وارد کنید.");
       return false;
     }
     if (!formData.courseId) {
-      Alert.alert('خطا', 'لطفاً دوره را انتخاب کنید.');
+      Alert.alert("خطا", "لطفاً دوره را انتخاب کنید.");
       return false;
     }
     if (!formData.description.trim()) {
-      Alert.alert('خطا', 'توضیحات تکلیف را وارد کنید.');
+      Alert.alert("خطا", "توضیحات کارخانگی را وارد کنید.");
       return false;
     }
     if (!formData.max_points || parseInt(formData.max_points) <= 0) {
-      Alert.alert('خطا', 'نمره کل معتبر وارد کنید.');
+      Alert.alert("خطا", "نمره کل معتبر وارد کنید.");
       return false;
     }
     return true;
   };
 
-  const handleSaveDraft = () => {
-    if (validateForm()) {
-      setLoading(true);
-      // Simulate API call
-      setTimeout(() => {
-        setLoading(false);
-        Alert.alert('موفقیت', 'تکلیف به صورت پیش‌نویس ذخیره شد.', [
-          { text: 'باشه', onPress: () => router.back() }
-        ]);
-      }, 1500);
+  const handleSaveDraft = async () => {
+    if (!validateForm()) return;
+
+    setLoading(true);
+    try {
+      await assignmentApi.saveAssignmentDraft({
+        title: formData.title,
+        courseId: parseInt(formData.courseId),
+        type: formData.type,
+        description: formData.description,
+        instructions: formData.instructions,
+        max_points: parseInt(formData.max_points),
+        dueDate: dueDate.toISOString(),
+        allow_late_submission: formData.allow_late_submission,
+        allow_resubmission: formData.allow_resubmission,
+        notify_students: formData.notify_students,
+        is_published: false,
+        attachments: formData.attachments,
+      });
+
+      Alert.alert("موفقیت", "تکلیف به صورت پیش‌نویس ذخیره شد.", [
+        { text: "باشه", onPress: () => router.back() },
+      ]);
+    } catch (error) {
+      Alert.alert("خطا", "ذخیره کارخانگی با مشکل مواجه شد.");
+    } finally {
+      setLoading(false);
     }
   };
 
-  const handlePublish = () => {
-    if (validateForm()) {
-      setLoading(true);
-      // Simulate API call
-      setTimeout(() => {
-        setLoading(false);
-        Alert.alert(
-          'موفقیت',
-          'تکلیف با موفقیت منتشر شد و به دانش‌آموزان اطلاع‌رسانی شد.',
-          [{ text: 'باشه', onPress: () => router.back() }]
-        );
-      }, 1500);
+  const handlePublish = async () => {
+    if (!validateForm()) return;
+
+    setLoading(true);
+    try {
+      await assignmentApi.createAssignment({
+        title: formData.title,
+        courseId: parseInt(formData.courseId),
+        type: formData.type,
+        description: formData.description,
+        instructions: formData.instructions,
+        max_points: parseInt(formData.max_points),
+        dueDate: dueDate.toISOString(),
+        allow_late_submission: formData.allow_late_submission,
+        allow_resubmission: formData.allow_resubmission,
+        notify_students: formData.notify_students,
+        is_published: true,
+        attachments: formData.attachments,
+      });
+
+      Alert.alert(
+        "موفقیت",
+        "تکلیف با موفقیت منتشر شد و به دانش‌آموزان اطلاع‌رسانی شد.",
+        [{ text: "باشه", onPress: () => router.back() }],
+      );
+    } catch (error) {
+      Alert.alert("خطا", "انتشار کارخانگی با مشکل مواجه شد.");
+    } finally {
+      setLoading(false);
     }
   };
 
   const formatDate = (date: Date) => {
-    return date.toLocaleDateString('fa-IR', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
+    return date.toLocaleDateString("fa-IR", {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
     });
   };
 
   const formatTime = (date: Date) => {
-    return date.toLocaleTimeString('fa-IR', {
-      hour: '2-digit',
-      minute: '2-digit',
+    return date.toLocaleTimeString("fa-IR", {
+      hour: "2-digit",
+      minute: "2-digit",
     });
   };
 
-  const selectedCourse = mockCourses.find(c => c.id.toString() === formData.courseId);
+  const selectedCourse = courses.find(
+    (c) => c.id.toString() === formData.courseId,
+  );
+
+  if (fetchingCourses) {
+    return (
+      <SafeAreaView style={styles.container} edges={["top"]}>
+        <Header
+          title="ایجاد کارخانگی جدید"
+          showBack
+          onBackPress={() => router.back()}
+        />
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={Colors.primary} />
+          <Text style={styles.loadingText}>در حال بارگذاری...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
+    <SafeAreaView style={styles.container} edges={["top"]}>
       <Header
-        title="ایجاد تکلیف جدید"
+        title="ایجاد کارخانگی جدید"
         showBack
         onBackPress={() => router.back()}
       />
@@ -185,13 +260,13 @@ export default function CreateAssignment() {
         {/* Basic Information */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>اطلاعات اصلی</Text>
-          
+
           <View style={styles.formGroup}>
-            <Text style={styles.label}>عنوان تکلیف *</Text>
+            <Text style={styles.label}>عنوان کارخانگی *</Text>
             <TextInput
               style={styles.input}
               value={formData.title}
-              onChangeText={(text) => setFormData({...formData, title: text})}
+              onChangeText={(text) => setFormData({ ...formData, title: text })}
               placeholder="مثال: تمرین فصل اول - اعداد صحیح"
               placeholderTextColor={Colors.textSecondary}
             />
@@ -200,55 +275,78 @@ export default function CreateAssignment() {
           <View style={styles.formGroup}>
             <Text style={styles.label}>دوره *</Text>
             <View style={styles.coursesGrid}>
-              {mockCourses.map((courseItem) => (
-                <TouchableOpacity
-                  key={courseItem.id}
-                  style={[
-                    styles.courseOption,
-                    formData.courseId === courseItem.id.toString() && styles.courseOptionSelected
-                  ]}
-                  onPress={() => setFormData({...formData, courseId: courseItem.id.toString()})}
-                >
-                  <View style={styles.courseOptionContent}>
-                    <Text style={[
-                      styles.courseOptionTitle,
-                      formData.courseId === courseItem.id.toString() && styles.courseOptionTitleSelected
-                    ]}>
-                      {courseItem.title}
-                    </Text>
-                    <Text style={styles.courseOptionStudents}>
-                      {courseItem.student_count} دانش‌آموز
-                    </Text>
-                  </View>
-                  {formData.courseId === courseItem.id.toString() && (
-                    <Ionicons name="checkmark-circle" size={20} color={Colors.primary} />
-                  )}
-                </TouchableOpacity>
-              ))}
+              {courses.length > 0 ? (
+                courses.map((courseItem) => (
+                  <TouchableOpacity
+                    key={courseItem.id}
+                    style={[
+                      styles.courseOption,
+                      formData.courseId === courseItem.id.toString() &&
+                        styles.courseOptionSelected,
+                    ]}
+                    onPress={() =>
+                      setFormData({
+                        ...formData,
+                        courseId: courseItem.id.toString(),
+                      })
+                    }
+                  >
+                    <View style={styles.courseOptionContent}>
+                      <Text
+                        style={[
+                          styles.courseOptionTitle,
+                          formData.courseId === courseItem.id.toString() &&
+                            styles.courseOptionTitleSelected,
+                        ]}
+                      >
+                        {courseItem.title}
+                      </Text>
+                      <Text style={styles.courseOptionStudents}>
+                        {courseItem.student_count} دانش‌آموز
+                      </Text>
+                    </View>
+                    {formData.courseId === courseItem.id.toString() && (
+                      <Ionicons
+                        name="checkmark-circle"
+                        size={20}
+                        color={Colors.primary}
+                      />
+                    )}
+                  </TouchableOpacity>
+                ))
+              ) : (
+                <View style={styles.emptyCourses}>
+                  <Text style={styles.emptyCoursesText}>
+                    هیچ دوره‌ای یافت نشد
+                  </Text>
+                </View>
+              )}
             </View>
           </View>
 
           <View style={styles.formGroup}>
-            <Text style={styles.label}>نوع تکلیف</Text>
+            <Text style={styles.label}>نوع کارخانگی</Text>
             <View style={styles.typeGrid}>
               {assignmentTypes.map((type) => (
                 <TouchableOpacity
                   key={type.id}
                   style={[
                     styles.typeOption,
-                    formData.type === type.id && styles.typeOptionSelected
+                    formData.type === type.id && styles.typeOptionSelected,
                   ]}
-                  onPress={() => setFormData({...formData, type: type.id})}
+                  onPress={() => setFormData({ ...formData, type: type.id })}
                 >
                   <Ionicons
                     name={type.icon as any}
                     size={24}
-                    color={formData.type === type.id ? '#fff' : Colors.primary}
+                    color={formData.type === type.id ? "#fff" : Colors.primary}
                   />
-                  <Text style={[
-                    styles.typeText,
-                    formData.type === type.id && styles.typeTextSelected
-                  ]}>
+                  <Text
+                    style={[
+                      styles.typeText,
+                      formData.type === type.id && styles.typeTextSelected,
+                    ]}
+                  >
                     {type.title}
                   </Text>
                 </TouchableOpacity>
@@ -260,14 +358,16 @@ export default function CreateAssignment() {
         {/* Description & Instructions */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>توضیحات و دستورالعمل</Text>
-          
+
           <View style={styles.formGroup}>
-            <Text style={styles.label}>توضیحات تکلیف *</Text>
+            <Text style={styles.label}>توضیحات کارخانگی *</Text>
             <TextInput
               style={[styles.input, styles.textArea]}
               value={formData.description}
-              onChangeText={(text) => setFormData({...formData, description: text})}
-              placeholder="توضیحات کامل تکلیف را بنویسید..."
+              onChangeText={(text) =>
+                setFormData({ ...formData, description: text })
+              }
+              placeholder="توضیحات کامل کارخانگی را بنویسید..."
               placeholderTextColor={Colors.textSecondary}
               multiline
               numberOfLines={4}
@@ -280,8 +380,10 @@ export default function CreateAssignment() {
             <TextInput
               style={[styles.input, styles.textArea]}
               value={formData.instructions}
-              onChangeText={(text) => setFormData({...formData, instructions: text})}
-              placeholder="نحوه ارسال تکلیف و فرمت مورد نیاز را مشخص کنید..."
+              onChangeText={(text) =>
+                setFormData({ ...formData, instructions: text })
+              }
+              placeholder="نحوه ارسال کارخانگی و فرمت مورد نیاز را مشخص کنید..."
               placeholderTextColor={Colors.textSecondary}
               multiline
               numberOfLines={3}
@@ -315,7 +417,11 @@ export default function CreateAssignment() {
               {formData.attachments.map((attachment, index) => (
                 <View key={index} style={styles.attachmentItem}>
                   <View style={styles.attachmentInfo}>
-                    <Ionicons name="document" size={20} color={Colors.primary} />
+                    <Ionicons
+                      name="document"
+                      size={20}
+                      color={Colors.primary}
+                    />
                     <Text style={styles.attachmentName} numberOfLines={1}>
                       {attachment}
                     </Text>
@@ -334,14 +440,16 @@ export default function CreateAssignment() {
         {/* Grading & Due Date */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>نمره‌دهی و مهلت</Text>
-          
+
           <View style={styles.formGroup}>
             <Text style={styles.label}>نمره کل *</Text>
             <View style={styles.pointsContainer}>
               <TextInput
                 style={[styles.input, styles.pointsInput]}
                 value={formData.max_points}
-                onChangeText={(text) => setFormData({...formData, max_points: text})}
+                onChangeText={(text) =>
+                  setFormData({ ...formData, max_points: text })
+                }
                 placeholder="۲۰"
                 placeholderTextColor={Colors.textSecondary}
                 keyboardType="numeric"
@@ -360,7 +468,7 @@ export default function CreateAssignment() {
                 <Ionicons name="calendar" size={20} color={Colors.primary} />
                 <Text style={styles.dateTimeText}>{formatDate(dueDate)}</Text>
               </TouchableOpacity>
-              
+
               <TouchableOpacity
                 style={styles.dateTimeButton}
                 onPress={() => setShowTimePicker(true)}
@@ -394,7 +502,7 @@ export default function CreateAssignment() {
         {/* Settings */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>تنظیمات</Text>
-          
+
           <View style={styles.settingsList}>
             <View style={styles.settingItem}>
               <View>
@@ -405,7 +513,9 @@ export default function CreateAssignment() {
               </View>
               <Switch
                 value={formData.allow_late_submission}
-                onValueChange={(value) => setFormData({...formData, allow_late_submission: value})}
+                onValueChange={(value) =>
+                  setFormData({ ...formData, allow_late_submission: value })
+                }
                 trackColor={{ false: Colors.border, true: Colors.primary }}
               />
             </View>
@@ -414,12 +524,14 @@ export default function CreateAssignment() {
               <View>
                 <Text style={styles.settingTitle}>ارسال مجدد</Text>
                 <Text style={styles.settingDescription}>
-                  اجازه ارسال مجدد تکلیف پس از تصحیح
+                  اجازه ارسال مجدد کارخانگی پس از تصحیح
                 </Text>
               </View>
               <Switch
                 value={formData.allow_resubmission}
-                onValueChange={(value) => setFormData({...formData, allow_resubmission: value})}
+                onValueChange={(value) =>
+                  setFormData({ ...formData, allow_resubmission: value })
+                }
                 trackColor={{ false: Colors.border, true: Colors.primary }}
               />
             </View>
@@ -433,7 +545,9 @@ export default function CreateAssignment() {
               </View>
               <Switch
                 value={formData.notify_students}
-                onValueChange={(value) => setFormData({...formData, notify_students: value})}
+                onValueChange={(value) =>
+                  setFormData({ ...formData, notify_students: value })
+                }
                 trackColor={{ false: Colors.border, true: Colors.primary }}
               />
             </View>
@@ -446,16 +560,19 @@ export default function CreateAssignment() {
           <View style={styles.summary}>
             <View style={styles.summaryItem}>
               <Text style={styles.summaryLabel}>عنوان:</Text>
-              <Text style={styles.summaryValue}>{formData.title || '-'}</Text>
+              <Text style={styles.summaryValue}>{formData.title || "-"}</Text>
             </View>
             <View style={styles.summaryItem}>
               <Text style={styles.summaryLabel}>دوره:</Text>
-              <Text style={styles.summaryValue}>{selectedCourse?.title || 'انتخاب نشده'}</Text>
+              <Text style={styles.summaryValue}>
+                {selectedCourse?.title || "انتخاب نشده"}
+              </Text>
             </View>
             <View style={styles.summaryItem}>
               <Text style={styles.summaryLabel}>نوع:</Text>
               <Text style={styles.summaryValue}>
-                {assignmentTypes.find(t => t.id === formData.type)?.title || '-'}
+                {assignmentTypes.find((t) => t.id === formData.type)?.title ||
+                  "-"}
               </Text>
             </View>
             <View style={styles.summaryItem}>
@@ -466,7 +583,9 @@ export default function CreateAssignment() {
             </View>
             <View style={styles.summaryItem}>
               <Text style={styles.summaryLabel}>نمره کل:</Text>
-              <Text style={styles.summaryValue}>{formData.max_points} نمره</Text>
+              <Text style={styles.summaryValue}>
+                {formData.max_points} نمره
+              </Text>
             </View>
           </View>
         </View>
@@ -475,22 +594,33 @@ export default function CreateAssignment() {
       {/* Action Buttons */}
       <View style={styles.footer}>
         <TouchableOpacity
-          style={[styles.draftButton, loading && styles.draftButtonDisabled]}
+          style={[styles.draftButton, loading && styles.buttonDisabled]}
           onPress={handleSaveDraft}
           disabled={loading}
         >
-          
+          {loading ? (
+            <ActivityIndicator size="small" color={Colors.primary} />
+          ) : (
+            <>
+              <Ionicons name="save" size={20} color={Colors.primary} />
+              <Text style={styles.draftButtonText}>ذخیره پیش‌نویس</Text>
+            </>
+          )}
         </TouchableOpacity>
-        
+
         <TouchableOpacity
-          style={[styles.publishButton, loading && styles.publishButtonDisabled]}
+          style={[styles.publishButton, loading && styles.buttonDisabled]}
           onPress={handlePublish}
           disabled={loading}
         >
-          <Ionicons name="send" size={20} color="#fff" />
-          <Text style={styles.publishButtonText}>
-            {loading ? 'در حال ذخیره...' : 'انتشار تکلیف'}
-          </Text>
+          {loading ? (
+            <ActivityIndicator size="small" color="#fff" />
+          ) : (
+            <>
+              <Ionicons name="send" size={20} color="#fff" />
+              <Text style={styles.publishButtonText}>انتشار تکلیف</Text>
+            </>
+          )}
         </TouchableOpacity>
       </View>
     </SafeAreaView>
@@ -505,6 +635,16 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
   },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 14,
+    color: Colors.textSecondary,
+  },
   section: {
     padding: 20,
     backgroundColor: Colors.card,
@@ -512,14 +652,14 @@ const styles = StyleSheet.create({
     borderBottomColor: Colors.border,
   },
   sectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     marginBottom: 16,
   },
   sectionTitle: {
     fontSize: 18,
-    fontWeight: 'bold',
+    fontWeight: "bold",
     color: Colors.text,
     marginBottom: 16,
   },
@@ -528,7 +668,7 @@ const styles = StyleSheet.create({
   },
   label: {
     fontSize: 14,
-    fontWeight: '500',
+    fontWeight: "500",
     color: Colors.text,
     marginBottom: 8,
   },
@@ -540,19 +680,27 @@ const styles = StyleSheet.create({
     padding: 12,
     fontSize: 16,
     color: Colors.text,
-    textAlign: 'right',
+    textAlign: "right",
   },
   textArea: {
     minHeight: 100,
-    textAlignVertical: 'top',
+    textAlignVertical: "top",
   },
   coursesGrid: {
     gap: 8,
   },
+  emptyCourses: {
+    padding: 20,
+    alignItems: "center",
+  },
+  emptyCoursesText: {
+    fontSize: 14,
+    color: Colors.textSecondary,
+  },
   courseOption: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     backgroundColor: Colors.background,
     padding: 16,
     borderRadius: 8,
@@ -560,7 +708,7 @@ const styles = StyleSheet.create({
     borderColor: Colors.border,
   },
   courseOptionSelected: {
-    backgroundColor: 'rgba(59, 130, 246, 0.1)',
+    backgroundColor: "rgba(59, 130, 246, 0.1)",
     borderColor: Colors.primary,
   },
   courseOptionContent: {
@@ -568,7 +716,7 @@ const styles = StyleSheet.create({
   },
   courseOptionTitle: {
     fontSize: 16,
-    fontWeight: '500',
+    fontWeight: "500",
     color: Colors.text,
     marginBottom: 4,
   },
@@ -580,13 +728,13 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
   },
   typeGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
+    flexDirection: "row",
+    flexWrap: "wrap",
     gap: 8,
   },
   typeOption: {
-    width: '48%',
-    alignItems: 'center',
+    width: "48%",
+    alignItems: "center",
     backgroundColor: Colors.background,
     padding: 16,
     borderRadius: 8,
@@ -600,16 +748,16 @@ const styles = StyleSheet.create({
   },
   typeText: {
     fontSize: 12,
-    fontWeight: '500',
+    fontWeight: "500",
     color: Colors.text,
   },
   typeTextSelected: {
-    color: '#fff',
+    color: "#fff",
   },
   addAttachmentButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(59, 130, 246, 0.1)',
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(59, 130, 246, 0.1)",
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 8,
@@ -618,17 +766,17 @@ const styles = StyleSheet.create({
   addAttachmentText: {
     fontSize: 12,
     color: Colors.primary,
-    fontWeight: '500',
+    fontWeight: "500",
   },
   emptyAttachments: {
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     padding: 20,
     backgroundColor: Colors.background,
     borderRadius: 8,
     borderWidth: 1,
     borderColor: Colors.border,
-    borderStyle: 'dashed',
+    borderStyle: "dashed",
   },
   emptyAttachmentsText: {
     fontSize: 14,
@@ -639,9 +787,9 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   attachmentItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     backgroundColor: Colors.background,
     padding: 12,
     borderRadius: 8,
@@ -649,8 +797,8 @@ const styles = StyleSheet.create({
     borderColor: Colors.border,
   },
   attachmentInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     flex: 1,
     gap: 8,
   },
@@ -660,8 +808,8 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   pointsContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 8,
   },
   pointsInput: {
@@ -672,14 +820,14 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
   },
   dateTimeContainer: {
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: 12,
   },
   dateTimeButton: {
     flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
     backgroundColor: Colors.background,
     padding: 12,
     borderRadius: 8,
@@ -690,19 +838,19 @@ const styles = StyleSheet.create({
   dateTimeText: {
     fontSize: 14,
     color: Colors.text,
-    fontWeight: '500',
+    fontWeight: "500",
   },
   settingsList: {
     gap: 16,
   },
   settingItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
   },
   settingTitle: {
     fontSize: 14,
-    fontWeight: '500',
+    fontWeight: "500",
     color: Colors.text,
     marginBottom: 2,
   },
@@ -718,9 +866,9 @@ const styles = StyleSheet.create({
     borderColor: Colors.border,
   },
   summaryItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     marginBottom: 8,
   },
   summaryLabel: {
@@ -729,11 +877,11 @@ const styles = StyleSheet.create({
   },
   summaryValue: {
     fontSize: 14,
-    fontWeight: '500',
+    fontWeight: "500",
     color: Colors.text,
   },
   footer: {
-    flexDirection: 'row',
+    flexDirection: "row",
     padding: 20,
     backgroundColor: Colors.card,
     borderTopWidth: 1,
@@ -742,38 +890,35 @@ const styles = StyleSheet.create({
   },
   draftButton: {
     flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(59, 130, 246, 0.1)',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(59, 130, 246, 0.1)",
     paddingVertical: 14,
     borderRadius: 8,
     gap: 8,
   },
-  draftButtonDisabled: {
-    opacity: 0.7,
-  },
   draftButtonText: {
     fontSize: 16,
     color: Colors.primary,
-    fontWeight: 'bold',
+    fontWeight: "bold",
   },
   publishButton: {
     flex: 2,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
     backgroundColor: Colors.primary,
     paddingVertical: 14,
     borderRadius: 8,
     gap: 8,
   },
-  publishButtonDisabled: {
-    opacity: 0.7,
-  },
   publishButtonText: {
-    color: '#fff',
+    color: "#fff",
     fontSize: 16,
-    fontWeight: 'bold',
+    fontWeight: "bold",
+  },
+  buttonDisabled: {
+    opacity: 0.5,
   },
 });

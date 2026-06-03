@@ -3,10 +3,12 @@ import { Ionicons } from "@expo/vector-icons";
 import { BlurView } from "expo-blur";
 import { Tabs } from "expo-router";
 import { Platform, StyleSheet } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 export default function StudentTabLayout() {
+  const insets = useSafeAreaInsets();
+
   return (
-    
     <Tabs
       screenOptions={{
         headerShown: false,
@@ -14,10 +16,20 @@ export default function StudentTabLayout() {
           backgroundColor: Platform.OS === "ios" ? "transparent" : Colors.card,
           borderTopColor: Colors.border,
           borderTopWidth: 1,
-          height: Platform.OS === "ios" ? 85 : 70,
-          paddingBottom: Platform.OS === "ios" ? 25 : 12,
+
+          // ✅ Correct height
+          height: 60 + insets.bottom,
+          paddingBottom: insets.bottom,
           paddingTop: 8,
+
+          // shadow
+          shadowColor: "#000",
+          shadowOffset: { width: 0, height: -2 },
+          shadowOpacity: 0.05,
+          shadowRadius: 4,
+          elevation: 5,
         },
+
         tabBarBackground:
           Platform.OS === "ios"
             ? () => (
@@ -28,16 +40,19 @@ export default function StudentTabLayout() {
                 />
               )
             : undefined,
+
         tabBarActiveTintColor: Colors.primary,
         tabBarInactiveTintColor: Colors.textSecondary,
+
         tabBarLabelStyle: {
           fontSize: 12,
           fontWeight: "500",
           marginTop: 4,
         },
+
+        tabBarHideOnKeyboard: true,
       }}
     >
-      {/* Dashboard/Home */}
       <Tabs.Screen
         name="index"
         options={{
@@ -48,17 +63,6 @@ export default function StudentTabLayout() {
         }}
       />
 
-      {/* Schedule Section
-      <Tabs.Screen 
-        name="schedule" 
-        options={{
-          title: 'برنامه امروز',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="calendar" size={size} color={color} />
-          ),
-        }}
-      />
-       */}
       <Tabs.Screen
         name="timetable"
         options={{
@@ -68,17 +72,6 @@ export default function StudentTabLayout() {
           ),
         }}
       />
-
-      {/* Academic Section */}
-      {/* <Tabs.Screen
-        name="courses"
-        options={{
-          title: "دوره‌ها",
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="book" size={size} color={color} />
-          ),
-        }}
-      /> */}
 
       <Tabs.Screen
         name="grades"
@@ -100,17 +93,6 @@ export default function StudentTabLayout() {
         }}
       />
 
-      {/* Tasks & Resources */}
-      {/* <Tabs.Screen
-        name="assignments"
-        options={{
-          title: "تکالیف",
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="document-text" size={size} color={color} />
-          ),
-        }}
-      /> */}
-
       <Tabs.Screen
         name="library"
         options={{
@@ -120,17 +102,6 @@ export default function StudentTabLayout() {
           ),
         }}
       />
-
-      {/* Search & Profile */}
-      {/* <Tabs.Screen
-        name="explore"
-        options={{
-          title: "جستجو",
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="search" size={size} color={color} />
-          ),
-        }}
-      /> */}
 
       <Tabs.Screen
         name="profile"

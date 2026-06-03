@@ -1,3 +1,10 @@
+// app/(parent)/index.tsx
+import { useAuth } from "@/contexts/AuthContext";
+import {
+  Child,
+  DashboardData,
+  parentApi
+} from "@/src/config/parentApi";
 import { useRouter } from "expo-router";
 import {
   AlertCircle,
@@ -8,7 +15,10 @@ import {
   MessageSquare,
   User,
 } from "lucide-react-native";
+import { useCallback, useEffect, useState } from "react";
 import {
+  ActivityIndicator,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -18,39 +28,80 @@ import {
 
 export default function ParentDashboard() {
   const router = useRouter();
+  const { user } = useAuth();
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [dashboardData, setDashboardData] = useState<DashboardData | null>(
+    null,
+  );
+  const [activeChild, setActiveChild] = useState<Child | null>(null);
 
-  // فرزندان
-  const children = [
-    { id: 1, name: "عمر ویلسن", class: "صنف ۵ الف", active: true },
-    { id: 2, name: "نوح ویلسن", class: "صنف ۳ ب", active: false },
-  ];
+  const loadData = useCallback(async () => {
+    try {
+      setLoading(true);
+      const response = await parentApi.getDashboard(activeChild?.id);
+      if (response.success && response.data) {
+        setDashboardData(response.data);
+        setActiveChild(response.data.activeChild);
+      }
+    } catch (error) {
+      console.error("Error loading dashboard:", error);
+    } finally {
+      setLoading(false);
+    }
+  }, [activeChild?.id]);
 
-  // اعلان‌ها
-  const notifications = [
-    {
-      id: 1,
-      title: "موعد فیس",
-      message: "فیس سهماهه ظرف ۳ روز واجب است",
-      type: "urgent",
-    },
-    {
-      id: 2,
-      title: "نشت والدین",
-      message: "برای روز جمعه برنامه‌ریزی شده",
-      type: "info",
-    },
-  ];
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
 
-  // آمار سریع
-  const quickStats = [
-    { label: "حضور", value: "۹۵٪", icon: Calendar },
-    { label: "فیس باقیمانده", value: "۴۵۰ $", icon: DollarSign },
-    { label: "پیام‌های نخوانده", value: "۳", icon: MessageSquare },
-  ];
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    await loadData();
+    setRefreshing(false);
+  };
+
+  const handleSwitchChild = (child: Child) => {
+    setActiveChild(child);
+    loadData();
+  };
+
+  const getIconComponent = (iconName: string, color: string) => {
+    const icons: Record<string, any> = {
+      calendar: Calendar,
+      "dollar-sign": DollarSign,
+      "message-square": MessageSquare,
+    };
+    const IconComponent = icons[iconName] || Calendar;
+    return <IconComponent size={24} color={color} />;
+  };
+
+  if (loading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#3b82f6" />
+        <Text style={styles.loadingText}>در حال بارگذاری...</Text>
+      </View>
+    );
+  }
+
+  const children = dashboardData?.children || [];
+  const notifications = dashboardData?.notifications || [];
+  const quickStats = dashboardData?.quickStats || [];
+  const upcomingEvents = dashboardData?.upcomingEvents || [];
 
   return (
-    <ScrollView style={styles.container}>
-      {/* سربرگ با انتخاب‌کننده فرزند */}
+    <ScrollView
+      style={styles.container}
+      refreshControl={
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={handleRefresh}
+          colors={["#3b82f6"]}
+        />
+      }
+    >
+      {/* Header with Child Selector */}
       <View style={styles.header}>
         <TouchableOpacity
           style={styles.childSelector}
@@ -59,48 +110,60 @@ export default function ParentDashboard() {
           <View style={styles.childInfo}>
             <User size={20} color="#4b5563" />
             <View style={styles.childDetails}>
-              <Text style={styles.childName}>عمر ویلسن</Text>
-              <Text style={styles.childClass}>صنف ۵ الف • فعال</Text>
+              <Text style={styles.childName}>
+                {activeChild?.name || "انتخاب فرزند"}
+              </Text>
+              <Text style={styles.childClass}>
+                {activeChild?.class || ""} {activeChild?.active ? "• فعال" : ""}
+              </Text>
             </View>
           </View>
           <ChevronRight size={20} color="#9ca3af" />
         </TouchableOpacity>
       </View>
 
-      {/* آمار سریع */}
+      {/* Quick Stats */}
       <View style={styles.statsGrid}>
         {quickStats.map((stat, index) => (
           <View key={index} style={styles.statCard}>
-            <stat.icon size={24} color="#3b82f6" />
+            {getIconComponent(stat.icon, stat.color)}
             <Text style={styles.statValue}>{stat.value}</Text>
             <Text style={styles.statLabel}>{stat.label}</Text>
           </View>
         ))}
       </View>
 
-      {/* اعلان‌ها */}
+      {/* Notifications */}
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
           <Bell size={20} color="#374151" />
           <Text style={styles.sectionTitle}>اعلان‌ها</Text>
         </View>
-        {notifications.map((notification) => (
-          <View key={notification.id} style={styles.notificationCard}>
-            <AlertCircle
-              size={20}
-              color={notification.type === "urgent" ? "#ef4444" : "#3b82f6"}
-            />
-            <View style={styles.notificationContent}>
-              <Text style={styles.notificationTitle}>{notification.title}</Text>
-              <Text style={styles.notificationMessage}>
-                {notification.message}
-              </Text>
-            </View>
+        {notifications.length === 0 ? (
+          <View style={styles.emptyContainer}>
+            <Text style={styles.emptyText}>هیچ اعلانی وجود ندارد</Text>
           </View>
-        ))}
+        ) : (
+          notifications.map((notification) => (
+            <View key={notification.id} style={styles.notificationCard}>
+              <AlertCircle
+                size={20}
+                color={notification.type === "urgent" ? "#ef4444" : "#3b82f6"}
+              />
+              <View style={styles.notificationContent}>
+                <Text style={styles.notificationTitle}>
+                  {notification.title}
+                </Text>
+                <Text style={styles.notificationMessage}>
+                  {notification.message}
+                </Text>
+              </View>
+            </View>
+          ))
+        )}
       </View>
 
-      {/* اقدامات سریع */}
+      {/* Quick Actions */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>اقدامات سریع</Text>
         <View style={styles.actionsGrid}>
@@ -122,7 +185,7 @@ export default function ParentDashboard() {
         </View>
       </View>
 
-      {/* رویدادهای آینده */}
+      {/* Upcoming Events */}
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>رویدادهای آینده</Text>
@@ -130,10 +193,20 @@ export default function ParentDashboard() {
             <Text style={styles.seeAll}>مشاهده همه</Text>
           </TouchableOpacity>
         </View>
-        <View style={styles.eventCard}>
-          <Text style={styles.eventTitle}>روز ورزش</Text>
-          <Text style={styles.eventDate}>جمعه، ساعت ۱۰:۰۰ قبل از ظهر</Text>
-        </View>
+        {upcomingEvents.length === 0 ? (
+          <View style={styles.emptyContainer}>
+            <Text style={styles.emptyText}>رویدادی در پیش رو نیست</Text>
+          </View>
+        ) : (
+          upcomingEvents.map((event) => (
+            <View key={event.id} style={styles.eventCard}>
+              <Text style={styles.eventTitle}>{event.title}</Text>
+              <Text style={styles.eventDate}>
+                {event.date} {event.time}
+              </Text>
+            </View>
+          ))
+        )}
       </View>
     </ScrollView>
   );
@@ -141,6 +214,13 @@ export default function ParentDashboard() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#f9fafb" },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#f9fafb",
+  },
+  loadingText: { marginTop: 12, fontSize: 16, color: "#6b7280" },
   header: { padding: 16, backgroundColor: "white" },
   childSelector: {
     flexDirection: "row",
@@ -156,12 +236,12 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "600",
     color: "#111827",
-    textAlign: "right", // برای راست‌چین کردن متن دری
+    textAlign: "right",
   },
   childClass: {
     fontSize: 14,
     color: "#6b7280",
-    textAlign: "right", // برای راست‌چین کردن متن دری
+    textAlign: "right",
   },
   statsGrid: {
     flexDirection: "row",
@@ -195,7 +275,7 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: "600",
     color: "#111827",
-    textAlign: "right", // برای راست‌چین کردن متن دری
+    textAlign: "right",
   },
   notificationCard: {
     flexDirection: "row",
@@ -210,12 +290,12 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "600",
     color: "#111827",
-    textAlign: "right", // برای راست‌چین کردن متن دری
+    textAlign: "right",
   },
   notificationMessage: {
     fontSize: 13,
     color: "#6b7280",
-    textAlign: "right", // برای راست‌چین کردن متن دری
+    textAlign: "right",
   },
   actionsGrid: {
     flexDirection: "row",
@@ -248,11 +328,22 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "600",
     color: "#111827",
-    textAlign: "right", // برای راست‌چین کردن متن دری
+    textAlign: "right",
   },
   eventDate: {
     fontSize: 14,
     color: "#6b7280",
-    textAlign: "right", // برای راست‌چین کردن متن دری
+    textAlign: "right",
+  },
+  emptyContainer: {
+    backgroundColor: "white",
+    padding: 32,
+    borderRadius: 12,
+    alignItems: "center",
+  },
+  emptyText: {
+    fontSize: 14,
+    color: "#9ca3af",
+    textAlign: "center",
   },
 });

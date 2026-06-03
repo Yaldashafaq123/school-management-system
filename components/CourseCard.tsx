@@ -27,7 +27,7 @@ export const CourseCard: React.FC<CourseCardProps> = ({
         />
         <View style={styles.badge}>
           <Text style={styles.badgeText}>
-            {course.is_general ? 'عمومی' : 'کلاسی'}
+            {course.is_general ? 'عمومی' : 'صنفی'}
           </Text>
         </View>
       </View>

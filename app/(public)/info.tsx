@@ -87,7 +87,7 @@ Please describe your issue below:
   };
 
   const openTelegram = () => {
-    const username = "your_username"; // Replace with your Telegram username
+    const username = "Yalda_Shafaq"; // Replace with your Telegram username
     const url = `tg://resolve?domain=${username}`;
 
     Linking.canOpenURL(url)
@@ -107,7 +107,7 @@ Please describe your issue below:
   };
 
   const openWebsite = () => {
-    const url = "https://yourappwebsite.com"; // Replace with your website
+    const url = "https://www.hoshmandasra.edu.af/"; // Replace with your website
     Linking.openURL(url).catch(() => {
       Alert.alert("خطا", "نمی‌توان وبسایت را باز کرد.");
     });
@@ -141,7 +141,7 @@ Please describe your issue below:
     {
       id: "website",
       title: "وبسایت",
-      subtitle: "yourappwebsite.com",
+      subtitle: "hoshmandasra.edu.af",
       icon: "globe",
       action: openWebsite,
       color: "#4285F4",
@@ -185,7 +185,6 @@ Please describe your issue below:
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity
           style={styles.backButton}
@@ -193,10 +192,9 @@ Please describe your issue below:
         >
           <Ionicons name="arrow-back" size={24} color="#000" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>تماس با پشتیبانی</Text>
+        <Text style={styles.headerTitle}>تماس با ما</Text>
         <View style={styles.headerPlaceholder} />
       </View>
-
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
         {/* Hero Section */}
         <View style={styles.heroSection}>
@@ -279,10 +277,6 @@ Please describe your issue below:
               </Text>
               <Ionicons name="chevron-down" size={20} color="#666" />
             </TouchableOpacity>
-            <TouchableOpacity style={styles.faqItem}>
-              <Text style={styles.faqQuestion}>چگونه پرداخت انجام دهم؟</Text>
-              <Ionicons name="chevron-down" size={20} color="#666" />
-            </TouchableOpacity>
           </View>
         </View>
 
@@ -320,7 +314,7 @@ Please describe your issue below:
         {/* Footer */}
         <View style={styles.footer}>
           <Text style={styles.footerText}>
-            © {new Date().getFullYear()} Your App Name. All rights reserved.
+            © {new Date().getFullYear()} Web Studio. All rights reserved.
           </Text>
         </View>
       </ScrollView>

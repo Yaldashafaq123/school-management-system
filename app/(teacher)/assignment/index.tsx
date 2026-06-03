@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+// app/(teacher)/assignment/index.tsx
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -8,102 +9,35 @@ import {
   TextInput,
   Alert,
   RefreshControl,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { Colors } from '../../../constants/Colors';
 import { Header } from '../../../components/Header';
-
-const mockAssignments = [
-  {
-    id: 1,
-    title: 'تمرین فصل اول - اعداد صحیح',
-    course: 'ریاضی هفتم',
-    course_id: 1,
-    due_date: '۱۴۰۲/۱۱/۱۵',
-    submissions: 38,
-    graded: 35,
-    average_grade: 17.5,
-    max_grade: 20,
-    status: 'active',
-    created_at: '۱۴۰۲/۱۱/۰۱',
-  },
-  {
-    id: 2,
-    title: 'تمرین فصل دوم - جبر',
-    course: 'ریاضی هفتم',
-    course_id: 1,
-    due_date: '۱۴۰۲/۱۱/۲۰',
-    submissions: 42,
-    graded: 30,
-    average_grade: 16.2,
-    max_grade: 20,
-    status: 'active',
-    created_at: '۱۴۰۲/۱۱/۰۵',
-  },
-  {
-    id: 3,
-    title: 'پروژه نهایی',
-    course: 'علوم تجربی',
-    course_id: 2,
-    due_date: '۱۴۰۲/۱۲/۰۱',
-    submissions: 25,
-    graded: 10,
-    average_grade: 0,
-    max_grade: 20,
-    status: 'active',
-    created_at: '۱۴۰۲/۱۱/۱۰',
-  },
-  {
-    id: 4,
-    title: 'تحقیق درباره گیاهان',
-    course: 'علوم تجربی',
-    course_id: 2,
-    due_date: '۱۴۰۲/۱۰/۳۰',
-    submissions: 40,
-    graded: 40,
-    average_grade: 18.5,
-    max_grade: 20,
-    status: 'completed',
-    created_at: '۱۴۰۲/۱۰/۱۵',
-  },
-  {
-    id: 5,
-    title: 'مقاله ادبی',
-    course: 'ادبیات فارسی',
-    course_id: 3,
-    due_date: '۱۴۰۲/۱۲/۱۵',
-    submissions: 0,
-    graded: 0,
-    average_grade: 0,
-    max_grade: 20,
-    status: 'draft',
-    created_at: '۱۴۰۲/۱۱/۱۲',
-  },
-];
-
-const mockCourses = [
-  { id: 1, title: 'ریاضی هفتم', student_count: 45 },
-  { id: 2, title: 'علوم تجربی', student_count: 38 },
-  { id: 3, title: 'ادبیات فارسی', student_count: 52 },
-];
+import { assignmentApi, Assignment, Course, AssignmentStats } from '../../../src/config/assignmentApi';
 
 export default function AssignmentsList() {
   const router = useRouter();
-  const [assignments, setAssignments] = useState(mockAssignments);
-  const [filteredAssignments, setFilteredAssignments] = useState(mockAssignments);
+  const [assignments, setAssignments] = useState<Assignment[]>([]);
+  const [filteredAssignments, setFilteredAssignments] = useState<Assignment[]>([]);
+  const [courses, setCourses] = useState<Course[]>([]);
+  const [stats, setStats] = useState<AssignmentStats>({
+    total: 0,
+    pending: 0,
+    total_submissions: 0,
+    average_grade: 0,
+  });
+  
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterCourse, setFilterCourse] = useState<string>('all');
   const [filterStatus, setFilterStatus] = useState<string>('all');
-  const [refreshing, setRefreshing] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
 
-  useEffect(() => {
-    filterAssignments();
-  }, [searchQuery, filterCourse, filterStatus, assignments]);
-
-  const filterAssignments = () => {
+  const filterAssignments = useCallback(() => {
     let filtered = [...assignments];
 
     // Apply search filter
@@ -125,14 +59,47 @@ export default function AssignmentsList() {
     }
 
     setFilteredAssignments(filtered);
+  }, [assignments, searchQuery, filterCourse, filterStatus]);
+
+  useEffect(() => {
+    filterAssignments();
+  }, [filterAssignments]);
+
+  const fetchData = async () => {
+    try {
+      setLoading(true);
+      
+      // Fetch assignments, courses, and stats in parallel
+      const [assignmentsRes, coursesRes, statsRes] = await Promise.all([
+        assignmentApi.getAssignments(),
+        assignmentApi.getCourses(),
+        assignmentApi.getAssignmentStats(),
+      ]);
+
+      if (assignmentsRes.success) {
+        setAssignments(assignmentsRes.data);
+      }
+      if (coursesRes.success) {
+        setCourses(coursesRes.data);
+      }
+      if (statsRes.success) {
+        setStats(statsRes.data);
+      }
+    } catch {
+      Alert.alert('خطا', 'دریافت اطلاعات با مشکل مواجه شد');
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
   };
+
+  useEffect(() => {
+    fetchData();
+  }, []);
 
   const onRefresh = async () => {
     setRefreshing(true);
-    // Simulate API call
-    setTimeout(() => {
-      setRefreshing(false);
-    }, 1000);
+    await fetchData();
   };
 
   const handleDeleteAssignment = (assignmentId: number) => {
@@ -144,30 +111,33 @@ export default function AssignmentsList() {
         {
           text: 'حذف',
           style: 'destructive',
-          onPress: () => {
-            setAssignments(assignments.filter(a => a.id !== assignmentId));
-            Alert.alert('موفقیت', 'تکلیف با موفقیت حذف شد.');
+          onPress: async () => {
+            try {
+              const response = await assignmentApi.deleteAssignment(assignmentId);
+              if (response.success) {
+                // Refresh data
+                await fetchData();
+                Alert.alert('موفقیت', 'تکلیف با موفقیت حذف شد.');
+              }
+            } catch {
+              Alert.alert('خطا', 'حذف تکلیف با مشکل مواجه شد.');
+            }
           },
         },
       ]
     );
   };
 
-  const handleDuplicateAssignment = (assignmentId: number) => {
-    const assignment = assignments.find(a => a.id === assignmentId);
-    if (assignment) {
-      const newAssignment = {
-        ...assignment,
-        id: assignments.length + 1,
-        title: `کپی ${assignment.title}`,
-        submissions: 0,
-        graded: 0,
-        average_grade: 0,
-        status: 'draft',
-        created_at: new Date().toLocaleDateString('fa-IR'),
-      };
-      setAssignments([...assignments, newAssignment]);
-      Alert.alert('موفقیت', 'تکلیف با موفقیت کپی شد.');
+  const handleDuplicateAssignment = async (assignmentId: number) => {
+    try {
+      const response = await assignmentApi.duplicateAssignment(assignmentId);
+      if (response.success) {
+        // Refresh data
+        await fetchData();
+        Alert.alert('موفقیت', 'تکلیف با موفقیت کپی شد.');
+      }
+    } catch {
+      Alert.alert('خطا', 'کپی کردن تکلیف با مشکل مواجه شد.');
     }
   };
 
@@ -189,10 +159,11 @@ export default function AssignmentsList() {
     }
   };
 
-  const renderAssignmentCard = (assignment: typeof mockAssignments[0]) => (
+  const renderAssignmentCard = (assignment: Assignment) => (
     <TouchableOpacity
+      key={assignment.id}
       style={styles.assignmentCard}
-      onPress={() => router.push(`./teacher/assignment/${assignment.id}`)}
+      onPress={() => router.push(`/teacher/assignment/${assignment.id}` as any)}
     >
       <View style={styles.assignmentHeader}>
         <View style={styles.assignmentTitleContainer}>
@@ -251,7 +222,7 @@ export default function AssignmentsList() {
         
         <TouchableOpacity
           style={styles.gradeButton}
-          onPress={() => router.push(`/teacher/assignment/${assignment.id}/grading`)}
+          onPress={() => router.push(`/teacher/assignment/${assignment.id}/grading` as any)}
         >
           <Ionicons name="create" size={16} color={Colors.primary} />
           <Text style={styles.gradeButtonText}>
@@ -262,20 +233,24 @@ export default function AssignmentsList() {
     </TouchableOpacity>
   );
 
-  const stats = {
-    total: assignments.length,
-    pending: assignments.filter(a => a.submissions > a.graded).length,
-    total_submissions: assignments.reduce((acc, a) => acc + a.submissions, 0),
-    average_grade: assignments.filter(a => a.average_grade > 0).reduce((acc, a) => acc + a.average_grade, 0) /
-      assignments.filter(a => a.average_grade > 0).length || 0,
-  };
+  if (loading && !refreshing) {
+    return (
+      <SafeAreaView style={styles.container} edges={['top']}>
+        <Header title="تکالیف" />
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={Colors.primary} />
+          <Text style={styles.loadingText}>در حال بارگذاری...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <Header
         title="تکالیف"
         rightComponent={
-          <TouchableOpacity onPress={() => router.push('./teacher/assignment/create')}>
+          <TouchableOpacity onPress={() => router.push('/teacher/assignment/create' as any)}>
             <Ionicons name="add" size={24} color={Colors.primary} />
           </TouchableOpacity>
         }
@@ -321,7 +296,7 @@ export default function AssignmentsList() {
                     همه دوره‌ها
                   </Text>
                 </TouchableOpacity>
-                {mockCourses.map((course) => (
+                {courses.map((course) => (
                   <TouchableOpacity
                     key={course.id}
                     style={[styles.filterOption, filterCourse === course.id.toString() && styles.filterOptionActive]}
@@ -403,7 +378,7 @@ export default function AssignmentsList() {
             </Text>
             <TouchableOpacity
               style={styles.createButton}
-              onPress={() => router.push('./teacher/assignment/create')}
+              onPress={() => router.push('/teacher/assignment/create' as any)}
             >
               <Ionicons name="add" size={20} color="#fff" />
               <Text style={styles.createButtonText}>ایجاد اولین تکلیف</Text>
@@ -436,9 +411,7 @@ export default function AssignmentsList() {
             </View>
 
             {filteredAssignments.map((assignment) => (
-              <View key={assignment.id}>
-                {renderAssignmentCard(assignment)}
-              </View>
+              renderAssignmentCard(assignment)
             ))}
           </View>
         )}
@@ -451,6 +424,16 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: Colors.background,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 14,
+    color: Colors.textSecondary,
   },
   searchContainer: {
     flexDirection: 'row',

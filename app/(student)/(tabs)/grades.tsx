@@ -1,220 +1,128 @@
-import { Header } from '@/components/Header';
-import { Colors } from '@/constants/Colors';
-import { Ionicons } from '@expo/vector-icons';
-import React, { useState } from 'react';
+// app/(student)/(tabs)/grades.tsx
+import { Header } from "@/components/Header";
+import { Colors } from "@/constants/Colors";
+import { useAuth } from "@/contexts/AuthContext";
 import {
+  getDisplayGrade,
+  getGradeColor,
+  getStatusColor,
+  getStatusText,
+  studentGradesApi,
+  SubjectGrade,
+  Term,
+  TermGrades,
+} from "@/src/config/studentGradesApi";
+import { Ionicons } from "@expo/vector-icons";
+import { useCallback, useEffect, useState } from "react";
+import {
+  ActivityIndicator,
   RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-
-type Term = {
-  id: number;
-  name: string;
-  startDate: string;
-  endDate: string;
-  isCurrent: boolean;
-};
-
-type SubjectGrade = {
-  id: number;
-  subject: string;
-  teacher: string;
-  firstExam?: number | null;
-  secondExam?: number | null;
-  finalExam?: number | null;
-  homework?: number | null;
-  project?: number | null;
-  participation?: number | null;
-  total: number;
-  average: number;
-  rank: number;
-  status: 'pass' | 'fail' | 'conditional';
-};
-
-type TermGrades = {
-  term: Term;
-  subjects: SubjectGrade[];
-  overallAverage: number;
-  classRank: number;
-  totalStudents: number;
-  attendanceRate: number;
-};
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 export default function GradesScreen() {
-  const [selectedTerm, setSelectedTerm] = useState<number>(1);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { user } = useAuth();
+  const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [selectedTerm, setSelectedTerm] = useState<number | null>(null);
   const [showDetails, setShowDetails] = useState<number | null>(null);
+  const [terms, setTerms] = useState<Term[]>([]);
+  const [termGrades, setTermGrades] = useState<Record<number, TermGrades>>({});
+  const [currentGrades, setCurrentGrades] = useState<TermGrades | null>(null);
 
-  // Mock data
-  const terms: Term[] = [
-    { id: 1, name: 'ترم اول', startDate: '۱۴۰۳/۰۷/۰۱', endDate: '۱۴۰۳/۱۰/۳۰', isCurrent: false },
-    { id: 2, name: 'ترم دوم', startDate: '۱۴۰۳/۱۱/۰۱', endDate: '۱۴۰۴/۰۳/۳۱', isCurrent: true },
-  ];
+  const loadGradesData = useCallback(async () => {
+    try {
+      const response = await studentGradesApi.getAllGrades();
+      if (response.success && response.data) {
+        setTerms(response.data.terms || []);
+        setTermGrades(response.data.allTermsGrades || {});
+        setCurrentGrades(response.data.currentTermGrades || null);
 
-  const termGrades: Record<number, TermGrades> = {
-    1: {
-      term: terms[0],
-      subjects: [
-        {
-          id: 1,
-          subject: 'ریاضی',
-          teacher: 'آقای احمدی',
-          firstExam: 18,
-          secondExam: 17,
-          finalExam: 19,
-          homework: 20,
-          project: 18,
-          total: 92,
-          average: 18.4,
-          rank: 3,
-          status: 'pass',
-        },
-        {
-          id: 2,
-          subject: 'علوم تجربی',
-          teacher: 'خانم رحیمی',
-          firstExam: 16,
-          secondExam: 15,
-          finalExam: 17,
-          homework: 18,
-          project: 16,
-          total: 82,
-          average: 16.4,
-          rank: 7,
-          status: 'pass',
-        },
-        {
-          id: 3,
-          subject: 'ادبیات فارسی',
-          teacher: 'آقای کریمی',
-          firstExam: 14,
-          secondExam: 13,
-          finalExam: 15,
-          homework: 16,
-          project: 14,
-          total: 72,
-          average: 14.4,
-          rank: 15,
-          status: 'conditional',
-        },
-        {
-          id: 4,
-          subject: 'زبان انگلیسی',
-          teacher: 'خانم محمدی',
-          firstExam: 19,
-          secondExam: 18,
-          finalExam: 20,
-          homework: 19,
-          project: 20,
-          total: 96,
-          average: 19.2,
-          rank: 1,
-          status: 'pass',
-        },
-        {
-          id: 5,
-          subject: 'مطالعات اجتماعی',
-          teacher: 'آقای حسینی',
-          firstExam: 17,
-          secondExam: 16,
-          finalExam: 18,
-          homework: 17,
-          project: 16,
-          total: 84,
-          average: 16.8,
-          rank: 5,
-          status: 'pass',
-        },
-      ],
-      overallAverage: 17.04,
-      classRank: 4,
-      totalStudents: 30,
-      attendanceRate: 95,
-    },
-    2: {
-      term: terms[1],
-      subjects: [
-        {
-          id: 1,
-          subject: 'ریاضی',
-          teacher: 'آقای احمدی',
-          firstExam: 19,
-          secondExam: 18,
-          finalExam: null,
-          homework: 19,
-          project: 20,
-          total: 76,
-          average: 19,
-          rank: 2,
-          status: 'pass',
-        },
-        {
-          id: 2,
-          subject: 'فیزیک',
-          teacher: 'آقای کریمی',
-          firstExam: 17,
-          secondExam: 16,
-          finalExam: null,
-          homework: 18,
-          project: 17,
-          total: 68,
-          average: 17,
-          rank: 8,
-          status: 'pass',
-        },
-      ],
-      overallAverage: 18,
-      classRank: 3,
-      totalStudents: 30,
-      attendanceRate: 98,
-    },
-  };
+        // Set initial selected term
+        if (response.data.terms?.length > 0) {
+          setSelectedTerm(
+            response.data.currentTermGrades?.term?.id ||
+              response.data.terms[0].id,
+          );
+        }
+      }
+    } catch (error) {
+      console.error("Error loading grades:", error);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, []);
 
-  const currentGrades = termGrades[selectedTerm];
+  useEffect(() => {
+    loadGradesData();
+  }, [loadGradesData]);
 
   const handleRefresh = async () => {
     setRefreshing(true);
-    setTimeout(() => {
-      setRefreshing(false);
-    }, 1000);
+    await loadGradesData();
   };
 
-  const getStatusColor = (status: SubjectGrade['status']) => {
-    switch (status) {
-      case 'pass': return Colors.success;
-      case 'conditional': return Colors.warning;
-      case 'fail': return Colors.danger;
-      default: return Colors.textSecondary;
+  const handleTermChange = async (termId: number) => {
+    setSelectedTerm(termId);
+
+    // If we don't have grades for this term yet, fetch them
+    if (!termGrades[termId]) {
+      try {
+        const response = await studentGradesApi.getTermGrades(termId);
+        if (response.success && response.data) {
+          // Fix: Create a new object with proper typing
+          setTermGrades((prev: Record<number, TermGrades>) => {
+            const updated = { ...prev };
+            updated[termId] = response.data as TermGrades;
+            return updated;
+          });
+        }
+      } catch (error) {
+        console.error("Error fetching term grades:", error);
+      }
     }
   };
 
-  const getStatusText = (status: SubjectGrade['status']) => {
-    switch (status) {
-      case 'pass': return 'قبول';
-      case 'conditional': return 'مشروط';
-      case 'fail': return 'مردود';
-      default: return '-';
-    }
+  const currentTermGrades =
+    selectedTerm && termGrades[selectedTerm]
+      ? termGrades[selectedTerm]
+      : currentGrades;
+
+  // Calculate term statistics
+  const calculateTermStats = (grades: SubjectGrade[]) => {
+    if (!grades || grades.length === 0)
+      return { passed: 0, failed: 0, conditional: 0 };
+
+    const passed = grades.filter((g) => (g.average || 0) >= 10).length;
+    const failed = grades.filter((g) => (g.average || 0) < 10).length;
+    const conditional = grades.filter(
+      (g) => (g.average || 0) >= 10 && (g.average || 0) < 12,
+    ).length;
+
+    return { passed, failed, conditional };
   };
 
-  const getGradeColor = (grade: number | null | undefined) => {
-    if (!grade && grade !== 0) return Colors.textSecondary;
-    if (grade >= 17) return Colors.success;
-    if (grade >= 14) return Colors.warning;
-    return Colors.danger;
-  };
-
-  const getDisplayGrade = (grade: number | null | undefined) => {
-    return grade !== null && grade !== undefined ? grade : '-';
-  };
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.container} edges={["top"]}>
+        <Header title="کارنامه" />
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={Colors.primary} />
+          <Text style={styles.loadingText}>در حال بارگذاری...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
+    <SafeAreaView style={styles.container} edges={["top"]}>
       <Header
         title="کارنامه"
         rightComponent={
@@ -235,262 +143,403 @@ export default function GradesScreen() {
         }
       >
         {/* Term Selector */}
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          style={styles.termSelector}
-          contentContainerStyle={styles.termSelectorContent}
-        >
-          {terms.map((term) => (
-            <TouchableOpacity
-              key={term.id}
-              style={[
-                styles.termChip,
-                selectedTerm === term.id && styles.termChipActive,
-                term.isCurrent && styles.currentTerm,
-              ]}
-              onPress={() => setSelectedTerm(term.id)}
-            >
-              <Text style={[
-                styles.termChipText,
-                selectedTerm === term.id && styles.termChipTextActive,
-              ]}>
-                {term.name}
-              </Text>
-              {term.isCurrent && (
-                <View style={styles.currentBadge}>
-                  <Text style={styles.currentBadgeText}>جاری</Text>
-                </View>
-              )}
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-
-        {/* Overall Stats */}
-        <View style={styles.overallStats}>
-          <View style={styles.overallStatCard}>
-            <View style={styles.statHeader}>
-              <Ionicons name="trophy" size={24} color={Colors.warning} />
-              <Text style={styles.statTitle}>میانگین کل</Text>
-            </View>
-            <Text style={styles.overallAverage}>
-              {currentGrades.overallAverage.toFixed(2)}
-            </Text>
-            <Text style={styles.statSubtitle}>از ۲۰</Text>
-          </View>
-
-          <View style={styles.overallStatCard}>
-            <View style={styles.statHeader}>
-              <Ionicons name="trending-up" size={24} color={Colors.success} />
-              <Text style={styles.statTitle}>رتبه کلاسی</Text>
-            </View>
-            <Text style={styles.classRank}>{currentGrades.classRank}</Text>
-            <Text style={styles.statSubtitle}>
-              از {currentGrades.totalStudents} نفر
-            </Text>
-          </View>
-        </View>
-
-        {/* Term Dates */}
-        <View style={styles.termDates}>
-          <Text style={styles.termDatesTitle}>دوره آموزشی</Text>
-          <View style={styles.datesRow}>
-            <View style={styles.dateItem}>
-              <Text style={styles.dateLabel}>شروع</Text>
-              <Text style={styles.dateValue}>{currentGrades.term.startDate}</Text>
-            </View>
-            <View style={styles.dateSeparator}>
-              <Ionicons name="arrow-forward" size={16} color={Colors.textSecondary} />
-            </View>
-            <View style={styles.dateItem}>
-              <Text style={styles.dateLabel}>پایان</Text>
-              <Text style={styles.dateValue}>{currentGrades.term.endDate}</Text>
-            </View>
-          </View>
-        </View>
-
-        {/* Subjects List */}
-        <View style={styles.subjectsContainer}>
-          <Text style={styles.sectionTitle}>نمرات دروس</Text>
-          
-          {currentGrades.subjects.map((subject) => (
-            <View key={subject.id} style={styles.subjectCard}>
+        {terms.length > 0 ? (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={styles.termSelector}
+            contentContainerStyle={styles.termSelectorContent}
+          >
+            {terms.map((term) => (
               <TouchableOpacity
-                style={styles.subjectHeader}
-                onPress={() => setShowDetails(showDetails === subject.id ? null : subject.id)}
+                key={term.id}
+                style={[
+                  styles.termChip,
+                  selectedTerm === term.id && styles.termChipActive,
+                  term.isCurrent && styles.currentTerm,
+                ]}
+                onPress={() => handleTermChange(term.id)}
               >
-                <View style={styles.subjectInfo}>
-                  <Text style={styles.subjectName}>{subject.subject}</Text>
-                  <Text style={styles.subjectTeacher}>{subject.teacher}</Text>
+                <Text
+                  style={[
+                    styles.termChipText,
+                    selectedTerm === term.id && styles.termChipTextActive,
+                  ]}
+                >
+                  {term.name}
+                </Text>
+                {term.isCurrent && (
+                  <View style={styles.currentBadge}>
+                    <Text style={styles.currentBadgeText}>جاری</Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        ) : (
+          <View style={styles.emptyState}>
+            <Ionicons
+              name="document-text-outline"
+              size={48}
+              color={Colors.textSecondary}
+            />
+            <Text style={styles.emptyStateText}>
+              هنوز ترمی برای نمایش وجود ندارد
+            </Text>
+          </View>
+        )}
+
+        {currentTermGrades ? (
+          <>
+            {/* Overall Stats */}
+            <View style={styles.overallStats}>
+              <View style={styles.overallStatCard}>
+                <View style={styles.statHeader}>
+                  <Ionicons name="trophy" size={24} color={Colors.warning} />
+                  <Text style={styles.statTitle}>میانگین کل</Text>
                 </View>
-                
-                <View style={styles.subjectSummary}>
-                  <View style={styles.gradeContainer}>
-                    <Text style={[
-                      styles.gradeValue,
-                      { color: getGradeColor(subject.average) }
-                    ]}>
-                      {subject.average.toFixed(1)}
-                    </Text>
-                    <Text style={styles.gradeLabel}>میانگین</Text>
-                  </View>
-                  
-                  <View style={styles.rankContainer}>
-                    <Ionicons name="stats-chart" size={16} color={Colors.textSecondary} />
-                    <Text style={styles.rankValue}>{subject.rank}</Text>
-                  </View>
-                  
-                  <View style={[
-                    styles.statusBadge,
-                    { backgroundColor: `${getStatusColor(subject.status)}20` }
-                  ]}>
-                    <Text style={[
-                      styles.statusText,
-                      { color: getStatusColor(subject.status) }
-                    ]}>
-                      {getStatusText(subject.status)}
-                    </Text>
-                  </View>
-                  
+                <Text style={styles.overallAverage}>
+                  {currentTermGrades.overallAverage?.toFixed(2) || "0.00"}
+                </Text>
+                <Text style={styles.statSubtitle}>از ۲۰</Text>
+              </View>
+
+              <View style={styles.overallStatCard}>
+                <View style={styles.statHeader}>
                   <Ionicons
-                    name={showDetails === subject.id ? 'chevron-up' : 'chevron-down'}
-                    size={20}
+                    name="trending-up"
+                    size={24}
+                    color={Colors.success}
+                  />
+                  <Text style={styles.statTitle}>رتبه کلاسی</Text>
+                </View>
+                <Text style={styles.classRank}>
+                  {currentTermGrades.classRank || "-"}
+                </Text>
+                <Text style={styles.statSubtitle}>
+                  از {currentTermGrades.totalStudents || 0} نفر
+                </Text>
+              </View>
+            </View>
+
+            {/* Term Dates */}
+            {currentTermGrades.term && (
+              <View style={styles.termDates}>
+                <Text style={styles.termDatesTitle}>دوره آموزشی</Text>
+                <View style={styles.datesRow}>
+                  <View style={styles.dateItem}>
+                    <Text style={styles.dateLabel}>شروع</Text>
+                    <Text style={styles.dateValue}>
+                      {currentTermGrades.term.startDate || "-"}
+                    </Text>
+                  </View>
+                  <View style={styles.dateSeparator}>
+                    <Ionicons
+                      name="arrow-forward"
+                      size={16}
+                      color={Colors.textSecondary}
+                    />
+                  </View>
+                  <View style={styles.dateItem}>
+                    <Text style={styles.dateLabel}>پایان</Text>
+                    <Text style={styles.dateValue}>
+                      {currentTermGrades.term.endDate || "-"}
+                    </Text>
+                  </View>
+                </View>
+              </View>
+            )}
+
+            {/* Subjects List */}
+            <View style={styles.subjectsContainer}>
+              <Text style={styles.sectionTitle}>نمرات دروس</Text>
+
+              {currentTermGrades.subjects &&
+              currentTermGrades.subjects.length > 0 ? (
+                currentTermGrades.subjects.map((subject: SubjectGrade) => (
+                  <View key={subject.id} style={styles.subjectCard}>
+                    <TouchableOpacity
+                      style={styles.subjectHeader}
+                      onPress={() =>
+                        setShowDetails(
+                          showDetails === subject.id ? null : subject.id,
+                        )
+                      }
+                    >
+                      <View style={styles.subjectInfo}>
+                        <Text style={styles.subjectName}>
+                          {subject.subject}
+                        </Text>
+                        <Text style={styles.subjectTeacher}>
+                          {subject.teacher || ""}
+                        </Text>
+                      </View>
+
+                      <View style={styles.subjectSummary}>
+                        <View style={styles.gradeContainer}>
+                          <Text
+                            style={[
+                              styles.gradeValue,
+                              { color: getGradeColor(subject.average) },
+                            ]}
+                          >
+                            {subject.average?.toFixed(1) || "0.0"}
+                          </Text>
+                          <Text style={styles.gradeLabel}>میانگین</Text>
+                        </View>
+
+                        <View style={styles.rankContainer}>
+                          <Ionicons
+                            name="stats-chart"
+                            size={16}
+                            color={Colors.textSecondary}
+                          />
+                          <Text style={styles.rankValue}>
+                            {subject.rank || "-"}
+                          </Text>
+                        </View>
+
+                        <View
+                          style={[
+                            styles.statusBadge,
+                            {
+                              backgroundColor: `${getStatusColor(subject.status)}20`,
+                            },
+                          ]}
+                        >
+                          <Text
+                            style={[
+                              styles.statusText,
+                              { color: getStatusColor(subject.status) },
+                            ]}
+                          >
+                            {getStatusText(subject.status)}
+                          </Text>
+                        </View>
+
+                        <Ionicons
+                          name={
+                            showDetails === subject.id
+                              ? "chevron-up"
+                              : "chevron-down"
+                          }
+                          size={20}
+                          color={Colors.textSecondary}
+                        />
+                      </View>
+                    </TouchableOpacity>
+
+                    {showDetails === subject.id && (
+                      <View style={styles.detailsContainer}>
+                        <View style={styles.gradesGrid}>
+                          <View style={styles.gradeItem}>
+                            <Text style={styles.gradeItemLabel}>
+                              ماهانه (۲۰ نمره)
+                            </Text>
+                            <Text
+                              style={[
+                                styles.gradeItemValue,
+                                {
+                                  color: getGradeColor(
+                                    (subject.monthly ?? 0) / 2,
+                                  ),
+                                },
+                              ]}
+                            >
+                              {getDisplayGrade(subject.monthly)}
+                            </Text>
+                          </View>
+                          <View style={styles.gradeItem}>
+                            <Text style={styles.gradeItemLabel}>
+                              نیم‌سال (۴۰ نمره)
+                            </Text>
+                            <Text
+                              style={[
+                                styles.gradeItemValue,
+                                {
+                                  color: getGradeColor(
+                                    (subject.halfYearly ?? 0) / 4,
+                                  ),
+                                },
+                              ]}
+                            >
+                              {getDisplayGrade(subject.halfYearly)}
+                            </Text>
+                          </View>
+                          <View style={styles.gradeItem}>
+                            <Text style={styles.gradeItemLabel}>
+                              پایانی (۶۰ نمره)
+                            </Text>
+                            <Text
+                              style={[
+                                styles.gradeItemValue,
+                                {
+                                  color: getGradeColor(
+                                    (subject.final ?? 0) / 6,
+                                  ),
+                                },
+                              ]}
+                            >
+                              {getDisplayGrade(subject.final)}
+                            </Text>
+                          </View>
+                          <View
+                            style={[styles.gradeItem, styles.totalGradeItem]}
+                          >
+                            <Text style={styles.gradeItemLabel}>
+                              مجموع (۱۰۰)
+                            </Text>
+                            <Text
+                              style={[
+                                styles.gradeItemValue,
+                                {
+                                  color: getGradeColor(
+                                    (subject.total || 0) / 5,
+                                  ),
+                                },
+                              ]}
+                            >
+                              {subject.total || "۰"}
+                            </Text>
+                          </View>
+                        </View>
+
+                        <View style={styles.progressContainer}>
+                          <Text style={styles.progressLabel}>پیشرفت:</Text>
+                          <View style={styles.progressBar}>
+                            <View
+                              style={[
+                                styles.progressFill,
+                                {
+                                  width: `${subject.total || 0}%`,
+                                  backgroundColor: getGradeColor(
+                                    subject.average,
+                                  ),
+                                },
+                              ]}
+                            />
+                          </View>
+                          <Text style={styles.progressValue}>
+                            {subject.total || 0} از ۱۰۰
+                          </Text>
+                        </View>
+
+                        <View style={styles.weightInfo}>
+                          <Text style={styles.weightInfoText}>
+                            <Ionicons
+                              name="information-circle"
+                              size={14}
+                              color={Colors.primary}
+                            />
+                            ماهانه: ۲۰٪ | نیم‌سال: ۴۰٪ | پایانی: ۶۰٪
+                          </Text>
+                        </View>
+                      </View>
+                    )}
+                  </View>
+                ))
+              ) : (
+                <View style={styles.emptySubjects}>
+                  <Ionicons
+                    name="document-text-outline"
+                    size={40}
                     color={Colors.textSecondary}
                   />
-                </View>
-              </TouchableOpacity>
-
-              {showDetails === subject.id && (
-                <View style={styles.detailsContainer}>
-                  <View style={styles.gradesGrid}>
-                    <View style={styles.gradeItem}>
-                      <Text style={styles.gradeItemLabel}>آزمون اول</Text>
-                      <Text style={[
-                        styles.gradeItemValue,
-                        { color: getGradeColor(subject.firstExam) }
-                      ]}>
-                        {getDisplayGrade(subject.firstExam)}
-                      </Text>
-                    </View>
-                    <View style={styles.gradeItem}>
-                      <Text style={styles.gradeItemLabel}>آزمون دوم</Text>
-                      <Text style={[
-                        styles.gradeItemValue,
-                        { color: getGradeColor(subject.secondExam) }
-                      ]}>
-                        {getDisplayGrade(subject.secondExam)}
-                      </Text>
-                    </View>
-                    <View style={styles.gradeItem}>
-                      <Text style={styles.gradeItemLabel}>آزمون پایانی</Text>
-                      <Text style={[
-                        styles.gradeItemValue,
-                        { color: getGradeColor(subject.finalExam) }
-                      ]}>
-                        {getDisplayGrade(subject.finalExam)}
-                      </Text>
-                    </View>
-                    <View style={styles.gradeItem}>
-                      <Text style={styles.gradeItemLabel}>تکالیف</Text>
-                      <Text style={[
-                        styles.gradeItemValue,
-                        { color: getGradeColor(subject.homework) }
-                      ]}>
-                        {getDisplayGrade(subject.homework)}
-                      </Text>
-                    </View>
-                    <View style={styles.gradeItem}>
-                      <Text style={styles.gradeItemLabel}>پروژه</Text>
-                      <Text style={[
-                        styles.gradeItemValue,
-                        { color: getGradeColor(subject.project) }
-                      ]}>
-                        {getDisplayGrade(subject.project)}
-                      </Text>
-                    </View>
-                    <View style={styles.gradeItem}>
-                      <Text style={styles.gradeItemLabel}>مجموع</Text>
-                      <Text style={[
-                        styles.gradeItemValue,
-                        { color: getGradeColor(subject.average) }
-                      ]}>
-                        {subject.total}
-                      </Text>
-                    </View>
-                  </View>
-                  
-                  <View style={styles.progressContainer}>
-                    <Text style={styles.progressLabel}>پیشرفت نسبت به ترم قبل:</Text>
-                    <View style={styles.progressBar}>
-                      <View
-                        style={[
-                          styles.progressFill,
-                          {
-                            width: `${(subject.average / 20) * 100}%`,
-                            backgroundColor: getGradeColor(subject.average),
-                          }
-                        ]}
-                      />
-                    </View>
-                    <Text style={styles.progressValue}>
-                      {subject.average.toFixed(1)} از ۲۰
-                    </Text>
-                  </View>
+                  <Text style={styles.emptySubjectsText}>
+                    هنوز نمره‌ای ثبت نشده است
+                  </Text>
                 </View>
               )}
             </View>
-          ))}
-        </View>
 
-        {/* Performance Summary */}
-        <View style={styles.performanceContainer}>
-          <Text style={styles.sectionTitle}>خلاصه عملکرد</Text>
-          <View style={styles.performanceGrid}>
-            <View style={styles.performanceItem}>
-              <Ionicons name="checkmark-circle" size={20} color={Colors.success} />
-              <Text style={styles.performanceValue}>
-                {currentGrades.subjects.filter(s => s.status === 'pass').length}
-              </Text>
-              <Text style={styles.performanceLabel}>دروس قبول</Text>
-            </View>
-            <View style={styles.performanceItem}>
-              <Ionicons name="alert-circle" size={20} color={Colors.warning} />
-              <Text style={styles.performanceValue}>
-                {currentGrades.subjects.filter(s => s.status === 'conditional').length}
-              </Text>
-              <Text style={styles.performanceLabel}>مشروط</Text>
-            </View>
-            <View style={styles.performanceItem}>
-              <Ionicons name="time" size={20} color={Colors.info} />
-              <Text style={styles.performanceValue}>
-                {currentGrades.attendanceRate}%
-              </Text>
-              <Text style={styles.performanceLabel}>حضور</Text>
-            </View>
-            <View style={styles.performanceItem}>
-              <Ionicons name="trending-up" size={20} color={Colors.primary} />
-              <Text style={styles.performanceValue}>
-                {currentGrades.classRank}
-              </Text>
-              <Text style={styles.performanceLabel}>رتبه</Text>
-            </View>
+            {/* Performance Summary */}
+            {currentTermGrades.subjects && (
+              <View style={styles.performanceContainer}>
+                <Text style={styles.sectionTitle}>خلاصه عملکرد</Text>
+                <View style={styles.performanceGrid}>
+                  <View style={styles.performanceItem}>
+                    <Ionicons
+                      name="checkmark-circle"
+                      size={20}
+                      color={Colors.success}
+                    />
+                    <Text style={styles.performanceValue}>
+                      {calculateTermStats(currentTermGrades.subjects).passed ||
+                        0}
+                    </Text>
+                    <Text style={styles.performanceLabel}>دروس قبول</Text>
+                  </View>
+                  <View style={styles.performanceItem}>
+                    <Ionicons
+                      name="alert-circle"
+                      size={20}
+                      color={Colors.warning}
+                    />
+                    <Text style={styles.performanceValue}>
+                      {calculateTermStats(currentTermGrades.subjects)
+                        .conditional || 0}
+                    </Text>
+                    <Text style={styles.performanceLabel}>مشروط</Text>
+                  </View>
+                  <View style={styles.performanceItem}>
+                    <Ionicons name="time" size={20} color={Colors.info} />
+                    <Text style={styles.performanceValue}>
+                      {currentTermGrades.attendanceRate || 0}%
+                    </Text>
+                    <Text style={styles.performanceLabel}>حضور</Text>
+                  </View>
+                  <View style={styles.performanceItem}>
+                    <Ionicons
+                      name="trending-up"
+                      size={20}
+                      color={Colors.primary}
+                    />
+                    <Text style={styles.performanceValue}>
+                      {currentTermGrades.classRank || "-"}
+                    </Text>
+                    <Text style={styles.performanceLabel}>رتبه</Text>
+                  </View>
+                </View>
+              </View>
+            )}
+          </>
+        ) : terms.length > 0 ? (
+          <View style={styles.emptyGrades}>
+            <Ionicons
+              name="document-text-outline"
+              size={60}
+              color={Colors.textSecondary}
+            />
+            <Text style={styles.emptyGradesTitle}>
+              هنوز نمره‌ای ثبت نشده است
+            </Text>
+            <Text style={styles.emptyGradesText}>
+              پس از ثبت نمرات توسط معلم، کارنامه شما در این بخش نمایش داده خواهد
+              شد.
+            </Text>
           </View>
-        </View>
+        ) : null}
 
         {/* Legend */}
         <View style={styles.legendContainer}>
           <Text style={styles.legendTitle}>راهنمای رنگ‌ها:</Text>
           <View style={styles.legendItems}>
             <View style={styles.legendItem}>
-              <View style={[styles.legendDot, { backgroundColor: Colors.success }]} />
+              <View
+                style={[styles.legendDot, { backgroundColor: Colors.success }]}
+              />
               <Text style={styles.legendText}>۱۷ تا ۲۰ (عالی)</Text>
             </View>
             <View style={styles.legendItem}>
-              <View style={[styles.legendDot, { backgroundColor: Colors.warning }]} />
+              <View
+                style={[styles.legendDot, { backgroundColor: Colors.warning }]}
+              />
               <Text style={styles.legendText}>۱۴ تا ۱۷ (متوسط)</Text>
             </View>
             <View style={styles.legendItem}>
-              <View style={[styles.legendDot, { backgroundColor: Colors.danger }]} />
+              <View
+                style={[styles.legendDot, { backgroundColor: Colors.danger }]}
+              />
               <Text style={styles.legendText}>زیر ۱۴ (نیاز به تلاش)</Text>
             </View>
           </View>
@@ -508,6 +557,61 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
   },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 14,
+    color: Colors.textSecondary,
+  },
+  emptyState: {
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 40,
+    marginTop: 20,
+  },
+  emptyStateText: {
+    marginTop: 12,
+    fontSize: 14,
+    color: Colors.textSecondary,
+  },
+  emptyGrades: {
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 40,
+    marginTop: 20,
+  },
+  emptyGradesTitle: {
+    fontSize: 18,
+    fontWeight: "bold",
+    color: Colors.text,
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  emptyGradesText: {
+    fontSize: 14,
+    color: Colors.textSecondary,
+    textAlign: "center",
+    lineHeight: 20,
+  },
+  emptySubjects: {
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 20,
+    backgroundColor: Colors.card,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderStyle: "dashed",
+  },
+  emptySubjectsText: {
+    marginTop: 12,
+    fontSize: 14,
+    color: Colors.textSecondary,
+  },
   termSelector: {
     marginHorizontal: 16,
     marginTop: 16,
@@ -522,8 +626,8 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     borderWidth: 1,
     borderColor: Colors.border,
-    alignItems: 'center',
-    position: 'relative',
+    alignItems: "center",
+    position: "relative",
   },
   termChipActive: {
     backgroundColor: Colors.primary,
@@ -535,13 +639,13 @@ const styles = StyleSheet.create({
   termChipText: {
     fontSize: 14,
     color: Colors.text,
-    fontWeight: '500',
+    fontWeight: "500",
   },
   termChipTextActive: {
-    color: '#fff',
+    color: "#fff",
   },
   currentBadge: {
-    position: 'absolute',
+    position: "absolute",
     top: -6,
     right: -6,
     backgroundColor: Colors.warning,
@@ -551,11 +655,11 @@ const styles = StyleSheet.create({
   },
   currentBadgeText: {
     fontSize: 10,
-    color: '#fff',
-    fontWeight: 'bold',
+    color: "#fff",
+    fontWeight: "bold",
   },
   overallStats: {
-    flexDirection: 'row',
+    flexDirection: "row",
     margin: 16,
     gap: 12,
   },
@@ -566,28 +670,28 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     borderWidth: 1,
     borderColor: Colors.border,
-    alignItems: 'center',
+    alignItems: "center",
   },
   statHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 8,
     marginBottom: 12,
   },
   statTitle: {
     fontSize: 14,
     color: Colors.text,
-    fontWeight: '500',
+    fontWeight: "500",
   },
   overallAverage: {
     fontSize: 36,
-    fontWeight: 'bold',
+    fontWeight: "bold",
     color: Colors.text,
     marginBottom: 4,
   },
   classRank: {
     fontSize: 36,
-    fontWeight: 'bold',
+    fontWeight: "bold",
     color: Colors.text,
     marginBottom: 4,
   },
@@ -606,17 +710,17 @@ const styles = StyleSheet.create({
   },
   termDatesTitle: {
     fontSize: 16,
-    fontWeight: 'bold',
+    fontWeight: "bold",
     color: Colors.text,
     marginBottom: 12,
   },
   datesRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
   },
   dateItem: {
     flex: 1,
-    alignItems: 'center',
+    alignItems: "center",
   },
   dateLabel: {
     fontSize: 12,
@@ -625,7 +729,7 @@ const styles = StyleSheet.create({
   },
   dateValue: {
     fontSize: 16,
-    fontWeight: 'bold',
+    fontWeight: "bold",
     color: Colors.text,
   },
   dateSeparator: {
@@ -637,7 +741,7 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     fontSize: 18,
-    fontWeight: 'bold',
+    fontWeight: "bold",
     color: Colors.text,
     marginBottom: 16,
   },
@@ -647,12 +751,12 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     borderWidth: 1,
     borderColor: Colors.border,
-    overflow: 'hidden',
+    overflow: "hidden",
   },
   subjectHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     padding: 16,
   },
   subjectInfo: {
@@ -660,7 +764,7 @@ const styles = StyleSheet.create({
   },
   subjectName: {
     fontSize: 16,
-    fontWeight: 'bold',
+    fontWeight: "bold",
     color: Colors.text,
     marginBottom: 4,
   },
@@ -669,16 +773,16 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
   },
   subjectSummary: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 12,
   },
   gradeContainer: {
-    alignItems: 'center',
+    alignItems: "center",
   },
   gradeValue: {
     fontSize: 18,
-    fontWeight: 'bold',
+    fontWeight: "bold",
     marginBottom: 2,
   },
   gradeLabel: {
@@ -686,13 +790,13 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
   },
   rankContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 4,
   },
   rankValue: {
     fontSize: 14,
-    fontWeight: 'bold',
+    fontWeight: "bold",
     color: Colors.text,
   },
   statusBadge: {
@@ -702,37 +806,43 @@ const styles = StyleSheet.create({
   },
   statusText: {
     fontSize: 10,
-    fontWeight: 'bold',
+    fontWeight: "bold",
   },
   detailsContainer: {
     padding: 16,
     borderTopWidth: 1,
     borderTopColor: Colors.border,
-    backgroundColor: 'rgba(0, 0, 0, 0.02)',
+    backgroundColor: "rgba(0, 0, 0, 0.02)",
   },
   gradesGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 12,
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
     marginBottom: 16,
   },
   gradeItem: {
-    width: '30%',
-    alignItems: 'center',
+    width: "48%",
+    alignItems: "center",
     backgroundColor: Colors.background,
     padding: 12,
     borderRadius: 8,
     borderWidth: 1,
     borderColor: Colors.border,
   },
+  totalGradeItem: {
+    width: "48%",
+    backgroundColor: "rgba(59, 130, 246, 0.05)",
+    borderColor: Colors.primary,
+  },
   gradeItemLabel: {
-    fontSize: 10,
+    fontSize: 11,
     color: Colors.textSecondary,
-    marginBottom: 4,
+    marginBottom: 6,
+    textAlign: "center",
   },
   gradeItemValue: {
-    fontSize: 16,
-    fontWeight: 'bold',
+    fontSize: 18,
+    fontWeight: "bold",
   },
   progressContainer: {
     backgroundColor: Colors.background,
@@ -740,6 +850,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     borderWidth: 1,
     borderColor: Colors.border,
+    marginBottom: 8,
   },
   progressLabel: {
     fontSize: 12,
@@ -751,44 +862,56 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.border,
     borderRadius: 4,
     marginBottom: 8,
-    overflow: 'hidden',
+    overflow: "hidden",
   },
   progressFill: {
-    height: '100%',
+    height: "100%",
     borderRadius: 4,
   },
   progressValue: {
     fontSize: 12,
     color: Colors.text,
-    fontWeight: '500',
+    fontWeight: "500",
+    textAlign: "right",
+  },
+  weightInfo: {
+    padding: 8,
+    backgroundColor: "rgba(59, 130, 246, 0.05)",
+    borderRadius: 6,
+  },
+  weightInfoText: {
+    fontSize: 11,
+    color: Colors.primary,
+    textAlign: "center",
   },
   performanceContainer: {
     paddingHorizontal: 16,
     marginBottom: 24,
   },
   performanceGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
+    flexDirection: "row",
+    flexWrap: "wrap",
     gap: 12,
   },
   performanceItem: {
-    width: '22%',
-    alignItems: 'center',
+    width: "22%",
+    alignItems: "center",
     backgroundColor: Colors.card,
-    padding: 16,
+    padding: 12,
     borderRadius: 12,
     borderWidth: 1,
     borderColor: Colors.border,
   },
   performanceValue: {
-    fontSize: 20,
-    fontWeight: 'bold',
+    fontSize: 18,
+    fontWeight: "bold",
     color: Colors.text,
-    marginVertical: 8,
+    marginVertical: 6,
   },
   performanceLabel: {
-    fontSize: 12,
+    fontSize: 10,
     color: Colors.textSecondary,
+    textAlign: "center",
   },
   legendContainer: {
     backgroundColor: Colors.card,
@@ -801,7 +924,7 @@ const styles = StyleSheet.create({
   },
   legendTitle: {
     fontSize: 14,
-    fontWeight: 'bold',
+    fontWeight: "bold",
     color: Colors.text,
     marginBottom: 12,
   },
@@ -809,8 +932,8 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   legendItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 8,
   },
   legendDot: {

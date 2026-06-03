@@ -1,3 +1,4 @@
+// app/(teacher)/course/[id].tsx
 import React, { useState, useEffect } from 'react';
 import {
   View,
@@ -9,64 +10,47 @@ import {
   Alert,
   Switch,
   Share,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Colors } from '../../../constants/Colors';
 import { Header } from '../../../components/Header';
-
-const mockCourse = {
-  id: 1,
-  title: 'ریاضی پایه هفتم',
-  description: 'آموزش کامل ریاضی کلاس هفتم با جدیدترین روش‌های تدریس. این دوره شامل تمام مباحث کتاب درسی به همراه تمرین‌های اضافه و نکات کنکوری می‌باشد.',
-  subject: 'ریاضی',
-  gradeLevel: 'هفتم',
-  instructor: {
-    name: 'دکتر علی رضایی',
-    rating: 4.8,
-    students: 245,
-    courses: 8,
-  },
-  price: 450000,
-  duration: '۳ ماه',
-  schedule: 'روزهای زوج ساعت ۱۶-۱۸',
-  capacity: 50,
-  enrolled: 45,
-  rating: 4.8,
-  reviews: 128,
-  isActive: true,
-  imageUrl: 'https://images.unsplash.com/photo-1509228468518-180dd4864904?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80',
-  createdAt: '۱۴۰۲/۰۹/۰۱',
-  objectives: [
-    'آشنایی با مباحث پایه ریاضی هفتم',
-    'توانایی حل مسائل مختلف',
-    'آمادگی برای آزمون‌های مدرسه',
-    'تقویت مهارت‌های حل مسئله',
-  ],
-  requirements: [
-    'آشنایی با ریاضی ششم',
-    'دسترسی به اینترنت',
-    'علاقه به ریاضی',
-  ],
-};
+import { teacherCoursesApi, Course } from '../../../src/config/teacherCoursesApi';
 
 export default function CourseDetails() {
   const { id } = useLocalSearchParams();
   const router = useRouter();
-  const [course, setCourse] = useState(mockCourse);
-  const [isActive, setIsActive] = useState(course.isActive);
+  const [loading, setLoading] = useState(true);
+  const [course, setCourse] = useState<Course | null>(null);
+  const [isActive, setIsActive] = useState(false);
 
   useEffect(() => {
-    // Fetch course data based on id
-    setCourse(mockCourse);
-    setIsActive(mockCourse.isActive);
+    fetchCourse();
   }, [id]);
 
+  const fetchCourse = async () => {
+    try {
+      setLoading(true);
+      const response = await teacherCoursesApi.getCourse(Number(id));
+      if (response.success && response.data) {
+        setCourse(response.data);
+        setIsActive(response.data.is_active);
+      }
+    } catch (error) {
+      console.error('Error fetching course:', error);
+      Alert.alert('خطا', 'مشکلی در دریافت اطلاعات دوره پیش آمد.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleShare = async () => {
+    if (!course) return;
     try {
       await Share.share({
-        message: `دوره ${course.title} - ${course.description.slice(0, 100)}...`,
+        message: `دوره ${course.title} - ${course.description?.slice(0, 100)}...`,
         url: `https://edukon.com/courses/${id}`,
         title: course.title,
       });
@@ -84,9 +68,16 @@ export default function CourseDetails() {
         {
           text: 'حذف',
           style: 'destructive',
-          onPress: () => {
-            Alert.alert('موفقیت', 'دوره با موفقیت حذف شد.');
-            router.push('./teacher/courses');
+          onPress: async () => {
+            try {
+              const response = await teacherCoursesApi.deleteCourse(Number(id));
+              if (response.success) {
+                Alert.alert('موفقیت', 'دوره با موفقیت حذف شد.');
+                router.push('/(teacher)/courses');
+              }
+            } catch (error) {
+              Alert.alert('خطا', 'مشکلی در حذف دوره پیش آمد.');
+            }
           },
         },
       ]
@@ -94,39 +85,48 @@ export default function CourseDetails() {
   };
 
   const handleEdit = () => {
-    router.push(`./teacher/course/${id}/edit`);
+    router.push(`./${id}/edit`);
+  };
+
+  const handleToggleStatus = async (value: boolean) => {
+    try {
+      const response = await teacherCoursesApi.toggleCourseStatus(Number(id));
+      if (response.success) {
+        setIsActive(value);
+        setCourse(prev => prev ? { ...prev, is_active: value } : prev);
+      }
+    } catch (error) {
+      Alert.alert('خطا', 'مشکلی در تغییر وضعیت دوره پیش آمد.');
+    }
   };
 
   const formatPrice = (price: number) => {
     return price.toLocaleString('fa-IR') + ' تومان';
   };
 
-  const renderStats = () => (
-    <View style={styles.statsGrid}>
-      <View style={styles.statCard}>
-        <Ionicons name="people" size={24} color={Colors.primary} />
-        <Text style={styles.statValue}>{course.enrolled}</Text>
-        <Text style={styles.statLabel}>دانش‌آموز</Text>
-      </View>
-      <View style={styles.statCard}>
-        <Ionicons name="star" size={24} color={Colors.warning} />
-        <Text style={styles.statValue}>{course.rating}</Text>
-        <Text style={styles.statLabel}>امتیاز</Text>
-      </View>
-      <View style={styles.statCard}>
-        <Ionicons name="chatbubble" size={24} color={Colors.success} />
-        <Text style={styles.statValue}>{course.reviews}</Text>
-        <Text style={styles.statLabel}>نظر</Text>
-      </View>
-      <View style={styles.statCard}>
-        <Ionicons name="cash" size={24} color={Colors.info} />
-        <Text style={styles.statValue}>
-          {formatPrice(course.price)}
-        </Text>
-        <Text style={styles.statLabel}>قیمت</Text>
-      </View>
-    </View>
-  );
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.container} edges={['top']}>
+        <Header title="جزئیات دوره" showBack onBackPress={() => router.back()} />
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={Colors.primary} />
+          <Text style={styles.loadingText}>در حال بارگذاری...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (!course) {
+    return (
+      <SafeAreaView style={styles.container} edges={['top']}>
+        <Header title="جزئیات دوره" showBack onBackPress={() => router.back()} />
+        <View style={styles.errorContainer}>
+          <Ionicons name="alert-circle" size={60} color={Colors.danger} />
+          <Text style={styles.errorText}>دوره یافت نشد</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -148,7 +148,10 @@ export default function CourseDetails() {
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
         {/* Course Image */}
-        <Image source={{ uri: course.imageUrl }} style={styles.courseImage} />
+        <Image 
+          source={{ uri: course.thumbnail_url || 'https://via.placeholder.com/800x400/3B82F6/FFFFFF?text=دوره' }} 
+          style={styles.courseImage} 
+        />
 
         {/* Course Header */}
         <View style={styles.courseHeader}>
@@ -172,77 +175,66 @@ export default function CourseDetails() {
           <View style={styles.courseMeta}>
             <View style={styles.metaItem}>
               <Ionicons name="book" size={16} color={Colors.textSecondary} />
-              <Text style={styles.metaText}>{course.subject}</Text>
-            </View>
-            <View style={styles.metaItem}>
-              <Ionicons name="school" size={16} color={Colors.textSecondary} />
-              <Text style={styles.metaText}>{course.gradeLevel}</Text>
+              <Text style={styles.metaText}>{course.subject || 'عمومی'}</Text>
             </View>
             <View style={styles.metaItem}>
               <Ionicons name="time" size={16} color={Colors.textSecondary} />
-              <Text style={styles.metaText}>{course.duration}</Text>
+              <Text style={styles.metaText}>{course.duration || 0} ساعت</Text>
             </View>
           </View>
         </View>
 
         {/* Stats */}
-        {renderStats()}
+        <View style={styles.statsGrid}>
+          <View style={styles.statCard}>
+            <Ionicons name="people" size={24} color={Colors.primary} />
+            <Text style={styles.statValue}>{course.student_count || 0}</Text>
+            <Text style={styles.statLabel}>دانش‌آموز</Text>
+          </View>
+          <View style={styles.statCard}>
+            <Ionicons name="star" size={24} color={Colors.warning} />
+            <Text style={styles.statValue}>{course.rating?.toFixed(1) || 0}</Text>
+            <Text style={styles.statLabel}>امتیاز</Text>
+          </View>
+        </View>
 
         {/* Course Info */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>توضیحات دوره</Text>
-          <Text style={styles.courseDescription}>{course.description}</Text>
+          <Text style={styles.courseDescription}>
+            {course.description || 'توضیحاتی برای این دوره ثبت نشده است.'}
+          </Text>
         </View>
 
         {/* Objectives */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>اهداف یادگیری</Text>
-          <View style={styles.list}>
-            {course.objectives.map((objective, index) => (
-              <View key={index} style={styles.listItem}>
-                <Ionicons name="checkmark-circle" size={16} color={Colors.success} />
-                <Text style={styles.listText}>{objective}</Text>
-              </View>
-            ))}
+        {course.objectives && course.objectives.length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>اهداف یادگیری</Text>
+            <View style={styles.list}>
+              {course.objectives.map((objective, index) => (
+                <View key={index} style={styles.listItem}>
+                  <Ionicons name="checkmark-circle" size={16} color={Colors.success} />
+                  <Text style={styles.listText}>{objective.text}</Text>
+                </View>
+              ))}
+            </View>
           </View>
-        </View>
+        )}
 
         {/* Requirements */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>پیش‌نیازها</Text>
-          <View style={styles.list}>
-            {course.requirements.map((requirement, index) => (
-              <View key={index} style={styles.listItem}>
-                <Ionicons name="alert-circle" size={16} color={Colors.warning} />
-                <Text style={styles.listText}>{requirement}</Text>
-              </View>
-            ))}
-          </View>
-        </View>
-
-        {/* Schedule & Capacity */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>زمان‌بندی و ظرفیت</Text>
-          <View style={styles.infoGrid}>
-            <View style={styles.infoItem}>
-              <Ionicons name="calendar" size={20} color={Colors.primary} />
-              <Text style={styles.infoLabel}>زمان کلاس‌ها:</Text>
-              <Text style={styles.infoValue}>{course.schedule}</Text>
-            </View>
-            <View style={styles.infoItem}>
-              <Ionicons name="people" size={20} color={Colors.success} />
-              <Text style={styles.infoLabel}>ظرفیت:</Text>
-              <Text style={styles.infoValue}>
-                {course.enrolled} / {course.capacity}
-              </Text>
-            </View>
-            <View style={styles.infoItem}>
-              <Ionicons name="create" size={20} color={Colors.info} />
-              <Text style={styles.infoLabel}>تاریخ ایجاد:</Text>
-              <Text style={styles.infoValue}>{course.createdAt}</Text>
+        {course.requirements && course.requirements.length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>پیش‌نیازها</Text>
+            <View style={styles.list}>
+              {course.requirements.map((requirement, index) => (
+                <View key={index} style={styles.listItem}>
+                  <Ionicons name="alert-circle" size={16} color={Colors.warning} />
+                  <Text style={styles.listText}>{requirement.text}</Text>
+                </View>
+              ))}
             </View>
           </View>
-        </View>
+        )}
 
         {/* Course Actions */}
         <View style={styles.section}>
@@ -252,7 +244,7 @@ export default function CourseDetails() {
               <Text style={styles.toggleLabel}>وضعیت دوره</Text>
               <Switch
                 value={isActive}
-                onValueChange={setIsActive}
+                onValueChange={handleToggleStatus}
                 trackColor={{ false: Colors.border, true: Colors.primary }}
               />
             </View>
@@ -261,7 +253,7 @@ export default function CourseDetails() {
           <View style={styles.actionsGrid}>
             <TouchableOpacity
               style={styles.actionButton}
-              onPress={() => router.push(`./teacher/course/${id}/manage`)}
+              onPress={() => router.push(`./${id}/manage`)}
             >
               <View style={[styles.actionIcon, { backgroundColor: 'rgba(59, 130, 246, 0.1)' }]}>
                 <Ionicons name="settings" size={24} color={Colors.primary} />
@@ -271,7 +263,7 @@ export default function CourseDetails() {
 
             <TouchableOpacity
               style={styles.actionButton}
-              onPress={() => router.push(`./teacher/assignment/create?course=${id}`)}
+              onPress={() => router.push(`/(teacher)/assignment/create?course=${id}`)}
             >
               <View style={[styles.actionIcon, { backgroundColor: 'rgba(16, 185, 129, 0.1)' }]}>
                 <Ionicons name="document-text" size={24} color={Colors.success} />
@@ -281,22 +273,12 @@ export default function CourseDetails() {
 
             <TouchableOpacity
               style={styles.actionButton}
-              onPress={() => router.push(`./teacher/exam/create?course=${id}`)}
+              onPress={() => router.push(`/(teacher)/exam/create?course=${id}`)}
             >
               <View style={[styles.actionIcon, { backgroundColor: 'rgba(245, 158, 11, 0.1)' }]}>
                 <Ionicons name="clipboard" size={24} color={Colors.warning} />
               </View>
               <Text style={styles.actionText}>آزمون جدید</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.actionButton}
-              onPress={() => router.push('./teacher/announcement/create')}
-            >
-              <View style={[styles.actionIcon, { backgroundColor: 'rgba(139, 92, 246, 0.1)' }]}>
-                <Ionicons name="megaphone" size={24} color={Colors.secondary} />
-              </View>
-              <Text style={styles.actionText}>اعلان جدید</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -325,6 +307,27 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: Colors.background,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 14,
+    color: Colors.textSecondary,
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 40,
+  },
+  errorText: {
+    fontSize: 18,
+    color: Colors.text,
+    marginTop: 16,
   },
   headerActions: {
     flexDirection: 'row',
@@ -381,7 +384,6 @@ const styles = StyleSheet.create({
   },
   statsGrid: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
     gap: 12,
     padding: 20,
     backgroundColor: Colors.card,
@@ -389,7 +391,7 @@ const styles = StyleSheet.create({
     borderBottomColor: Colors.border,
   },
   statCard: {
-    width: '48%',
+    flex: 1,
     backgroundColor: Colors.background,
     borderRadius: 12,
     padding: 16,
@@ -444,25 +446,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: Colors.text,
     lineHeight: 20,
-    flex: 1,
-  },
-  infoGrid: {
-    gap: 16,
-  },
-  infoItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  infoLabel: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: Colors.text,
-    minWidth: 80,
-  },
-  infoValue: {
-    fontSize: 14,
-    color: Colors.text,
     flex: 1,
   },
   toggleContainer: {

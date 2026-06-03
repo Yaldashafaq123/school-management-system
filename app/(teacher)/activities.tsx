@@ -1,253 +1,183 @@
-import React, { useState, useEffect, useCallback } from 'react';
+// app/(teacher)/activities.tsx
+import { Header } from "@/components/Header";
+import { Colors } from "@/constants/Colors";
 import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
+  Activity,
+  activityApi,
+  ActivityStats
+} from "@/src/config/activityApi";
+import { Ionicons } from "@expo/vector-icons";
+import { useRouter } from "expo-router";
+import { useCallback, useEffect, useState } from "react";
+import {
+  ActivityIndicator,
   RefreshControl,
+  ScrollView,
   SectionList,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
-import { Colors } from '../../constants/Colors';
-import { Header } from '../../components/Header';
-
-const mockActivities = [
-  {
-    title: 'امروز',
-    data: [
-      {
-        id: 1,
-        type: 'assignment',
-        title: '۵ تکلیف جدید ارسال شد',
-        description: 'تکلیف فصل دوم ریاضی هفتم',
-        course: 'ریاضی هفتم',
-        time: '۲ ساعت پیش',
-        icon: 'document-text',
-        color: Colors.primary,
-      },
-      {
-        id: 2,
-        type: 'exam',
-        title: 'آزمون میان‌ترم شروع شد',
-        description: '۴۵ دانش‌آموز در حال شرکت در آزمون',
-        course: 'علوم تجربی',
-        time: '۳ ساعت پیش',
-        icon: 'clipboard',
-        color: Colors.warning,
-      },
-      {
-        id: 3,
-        type: 'submission',
-        title: '۱۲ تحویل جدید',
-        description: 'پروژه نهایی علوم تجربی',
-        course: 'علوم تجربی',
-        time: '۵ ساعت پیش',
-        icon: 'arrow-up-circle',
-        color: Colors.success,
-      },
-    ],
-  },
-  {
-    title: 'دیروز',
-    data: [
-      {
-        id: 4,
-        type: 'grade',
-        title: 'تصحیح تکالیف کامل شد',
-        description: '۳۸ تکلیف تصحیح شد',
-        course: 'ریاضی هفتم',
-        time: 'دیروز',
-        icon: 'checkmark-done',
-        color: Colors.success,
-      },
-      {
-        id: 5,
-        type: 'announcement',
-        title: 'اعلان جدید منتشر شد',
-        description: 'تغییر زمان کلاس علوم',
-        course: 'علوم تجربی',
-        time: 'دیروز',
-        icon: 'megaphone',
-        color: Colors.secondary,
-      },
-      {
-        id: 6,
-        type: 'enrollment',
-        title: '۵ دانش‌آموز جدید',
-        description: 'ثبت‌نام در دوره ادبیات فارسی',
-        course: 'ادبیات فارسی',
-        time: 'دیروز',
-        icon: 'person-add',
-        color: Colors.info,
-      },
-    ],
-  },
-  {
-    title: 'هفته گذشته',
-    data: [
-      {
-        id: 7,
-        type: 'course',
-        title: 'دوره جدید ایجاد شد',
-        description: 'ریاضی پایه هشتم',
-        course: 'ریاضی هشتم',
-        time: '۳ روز پیش',
-        icon: 'book',
-        color: Colors.primary,
-      },
-      {
-        id: 8,
-        type: 'payment',
-        title: 'دریافت پرداخت',
-        description: '۲,۵۰۰,۰۰۰ تومان',
-        course: 'ریاضی هفتم',
-        time: '۴ روز پیش',
-        icon: 'cash',
-        color: Colors.success,
-      },
-      {
-        id: 9,
-        type: 'student',
-        title: 'پیام دانش‌آموز',
-        description: 'سوال درباره تکلیف فصل اول',
-        course: 'ریاضی هفتم',
-        time: '۵ روز پیش',
-        icon: 'chatbubble',
-        color: Colors.info,
-      },
-      {
-        id: 10,
-        type: 'report',
-        title: 'گزارش ماهانه تولید شد',
-        description: 'گزارش عملکرد نوامبر',
-        course: '',
-        time: '۶ روز پیش',
-        icon: 'stats-chart',
-        color: Colors.secondary,
-      },
-    ],
-  },
-];
-
-const activityFilters = [
-  { id: 'all', title: 'همه', icon: 'grid' },
-  { id: 'assignments', title: 'تکالیف', icon: 'document-text' },
-  { id: 'exams', title: 'آزمون‌ها', icon: 'clipboard' },
-  { id: 'grades', title: 'نمرات', icon: 'star' },
-  { id: 'announcements', title: 'اعلان‌ها', icon: 'megaphone' },
-  { id: 'payments', title: 'پرداخت‌ها', icon: 'cash' },
-];
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 export default function Activities() {
   const router = useRouter();
+  const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [filter, setFilter] = useState('all');
-  const [filteredActivities, setFilteredActivities] = useState(mockActivities);
+  const [activities, setActivities] = useState<Activity[]>([]);
+  const [stats, setStats] = useState<ActivityStats>({
+    today: 0,
+    yesterday: 0,
+    lastWeek: 0,
+    total: 0,
+  });
+  const [filter, setFilter] = useState("all");
+  const [filteredActivities, setFilteredActivities] = useState<Activity[]>([]);
 
-  const filterActivities = useCallback(() => {
-    if (filter === 'all') {
-      setFilteredActivities(mockActivities);
-    } else {
-      const filtered = mockActivities.map(section => ({
-        ...section,
-        data: section.data.filter(activity => {
-          switch (filter) {
-            case 'assignments':
-              return activity.type === 'assignment' || activity.type === 'submission';
-            case 'exams':
-              return activity.type === 'exam';
-            case 'grades':
-              return activity.type === 'grade';
-            case 'announcements':
-              return activity.type === 'announcement';
-            case 'payments':
-              return activity.type === 'payment';
-            default:
-              return true;
-          }
-        })
-      })).filter(section => section.data.length > 0);
-      
-      setFilteredActivities(filtered);
+  // Updated filters without payments
+  const teacherFilters = [
+    { id: "all", title: "همه", icon: "grid" },
+    { id: "assignments", title: "تکالیف", icon: "document-text" },
+    { id: "exams", title: "آزمون‌ها", icon: "clipboard" },
+    { id: "grades", title: "نمرات", icon: "star" },
+    { id: "announcements", title: "اعلان‌ها", icon: "megaphone" },
+  ];
+
+  const loadData = useCallback(async () => {
+    try {
+      const [activitiesRes, statsRes] = await Promise.all([
+        activityApi.getActivities(),
+        activityApi.getActivityStats(),
+      ]);
+
+      if (activitiesRes.success) {
+        setActivities(activitiesRes.data);
+      }
+      if (statsRes.success) {
+        setStats(statsRes.data);
+      }
+    } catch (error) {
+      console.error("Error loading activities:", error);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
     }
-  }, [filter]);
+  }, []);
 
   useEffect(() => {
-    filterActivities();
-  }, [filter, filterActivities]);
+    loadData();
+  }, [loadData]);
+
+  useEffect(() => {
+    if (filter === "all") {
+      setFilteredActivities(activities);
+    } else {
+      const filtered = activities.filter((activity) => {
+        switch (filter) {
+          case "assignments":
+            return (
+              activity.type === "assignment" || activity.type === "submission"
+            );
+          case "exams":
+            return activity.type === "exam";
+          case "grades":
+            return activity.type === "grade";
+          case "announcements":
+            return activity.type === "announcement";
+          default:
+            return true;
+        }
+      });
+      setFilteredActivities(filtered);
+    }
+  }, [filter, activities]);
 
   const onRefresh = async () => {
     setRefreshing(true);
-    // Simulate API call
-    setTimeout(() => {
-      setRefreshing(false);
-    }, 1000);
+    await loadData();
   };
 
-  const handleActivityPress = (activity: any) => {
+  const handleActivityPress = (activity: Activity) => {
     switch (activity.type) {
-      case 'assignment':
-        router.push('./(teacher)/assignments');
+      case "assignment":
+        router.push(`./(teacher)/assignments/${activity.data?.assignmentId}`);
         break;
-      case 'exam':
-        router.push('./(teacher)/exam/create');
+      case "exam":
+        router.push(`./(teacher)/exams/${activity.data?.examId}`);
         break;
-      case 'submission':
-        router.push('./(teacher)/grading');
+      case "submission":
+        router.push(`./(teacher)/grading/${activity.data?.submissionId}`);
         break;
-      case 'grade':
-        router.push('./(teacher)/grading');
+      case "grade":
+        router.push(`./(teacher)/grading/${activity.data?.examId}`);
         break;
-      case 'announcement':
-        router.push('./(teacher)/announcement/create');
+      case "announcement":
+        router.push(
+          `./(teacher)/announcements/${activity.data?.announcementId}`,
+        );
         break;
-      case 'enrollment':
-        router.push('./(teacher)/students');
+      case "enrollment":
+        router.push(`./(teacher)/courses/${activity.data?.courseId}`);
         break;
-      case 'course':
-        router.push('./(teacher)/courses');
+      case "course":
+        router.push(`./(teacher)/courses/${activity.data?.courseId}`);
         break;
-      case 'payment':
-        router.push('./(teacher)/revenue');
+      case "student":
+        router.push(`./(teacher)/students/${activity.data?.senderId}`);
         break;
-      case 'student':
-        router.push('./(teacher)/students');
-        break;
-      case 'report':
-        router.push('./(teacher)/analytics');
+      default:
         break;
     }
   };
 
-  const getActivityStats = () => {
-    const today = mockActivities[0].data.length;
-    const yesterday = mockActivities[1].data.length;
-    const lastWeek = mockActivities[2].data.length;
-    
-    return {
-      today,
-      yesterday,
-      lastWeek,
-      total: today + yesterday + lastWeek,
-    };
+  const groupActivitiesByDate = () => {
+    const today: Activity[] = [];
+    const yesterday: Activity[] = [];
+    const thisWeek: Activity[] = [];
+    const older: Activity[] = [];
+
+    filteredActivities.forEach((activity) => {
+      if (activity.time.includes("دقیقه") || activity.time.includes("ساعت")) {
+        today.push(activity);
+      } else if (activity.time === "دیروز") {
+        yesterday.push(activity);
+      } else if (
+        activity.time.includes("روز پیش") &&
+        parseInt(activity.time) <= 7
+      ) {
+        thisWeek.push(activity);
+      } else {
+        older.push(activity);
+      }
+    });
+
+    const sections = [];
+    if (today.length > 0) sections.push({ title: "امروز", data: today });
+    if (yesterday.length > 0)
+      sections.push({ title: "دیروز", data: yesterday });
+    if (thisWeek.length > 0)
+      sections.push({ title: "این هفته", data: thisWeek });
+    if (older.length > 0) sections.push({ title: "قبلی", data: older });
+
+    return sections;
   };
 
-  const stats = getActivityStats();
+  const sections = groupActivitiesByDate();
 
-  const renderActivityItem = ({ item }: { item: any }) => (
+  const renderActivityItem = ({ item }: { item: Activity }) => (
     <TouchableOpacity
       style={styles.activityCard}
       onPress={() => handleActivityPress(item)}
     >
       <View style={styles.activityIconContainer}>
-        <View style={[styles.activityIcon, { backgroundColor: `${item.color}20` }]}>
+        <View
+          style={[styles.activityIcon, { backgroundColor: `${item.color}20` }]}
+        >
           <Ionicons name={item.icon as any} size={20} color={item.color} />
         </View>
       </View>
-      
+
       <View style={styles.activityContent}>
         <Text style={styles.activityTitle}>{item.title}</Text>
         <Text style={styles.activityDescription}>{item.description}</Text>
@@ -261,7 +191,7 @@ export default function Activities() {
           <Text style={styles.activityTime}>{item.time}</Text>
         </View>
       </View>
-      
+
       <Ionicons name="chevron-back" size={20} color={Colors.textSecondary} />
     </TouchableOpacity>
   );
@@ -273,8 +203,20 @@ export default function Activities() {
     </View>
   );
 
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.container} edges={["top"]}>
+        <Header title="فعالیت‌ها" />
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={Colors.primary} />
+          <Text style={styles.loadingText}>در حال بارگذاری...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
+    <SafeAreaView style={styles.container} edges={["top"]}>
       <Header title="فعالیت‌ها" />
 
       {/* Stats */}
@@ -303,25 +245,33 @@ export default function Activities() {
         </View>
       </View>
 
-      {/* Filters */}
+      {/* Filters - Updated without payments */}
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
         style={styles.filtersContainer}
       >
         <View style={styles.filters}>
-          {activityFilters.map((filterItem) => (
+          {teacherFilters.map((filterItem) => (
             <TouchableOpacity
               key={filterItem.id}
-              style={[styles.filterButton, filter === filterItem.id && styles.filterButtonActive]}
+              style={[
+                styles.filterButton,
+                filter === filterItem.id && styles.filterButtonActive,
+              ]}
               onPress={() => setFilter(filterItem.id)}
             >
               <Ionicons
                 name={filterItem.icon as any}
                 size={16}
-                color={filter === filterItem.id ? '#fff' : Colors.text}
+                color={filter === filterItem.id ? "#fff" : Colors.text}
               />
-              <Text style={[styles.filterText, filter === filterItem.id && styles.filterTextActive]}>
+              <Text
+                style={[
+                  styles.filterText,
+                  filter === filterItem.id && styles.filterTextActive,
+                ]}
+              >
                 {filterItem.title}
               </Text>
             </TouchableOpacity>
@@ -331,7 +281,7 @@ export default function Activities() {
 
       {/* Activities List */}
       <SectionList
-        sections={filteredActivities}
+        sections={sections}
         keyExtractor={(item) => item.id.toString()}
         renderItem={renderActivityItem}
         renderSectionHeader={renderSectionHeader}
@@ -346,7 +296,11 @@ export default function Activities() {
         }
         ListEmptyComponent={
           <View style={styles.emptyState}>
-            <Ionicons name="notifications-off" size={60} color={Colors.textSecondary} />
+            <Ionicons
+              name="notifications-off"
+              size={60}
+              color={Colors.textSecondary}
+            />
             <Text style={styles.emptyStateTitle}>فعالیتی یافت نشد</Text>
             <Text style={styles.emptyStateText}>
               با فیلتر انتخاب شده فعالیتی وجود ندارد.
@@ -363,6 +317,16 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: Colors.background,
   },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 14,
+    color: Colors.textSecondary,
+  },
   statsContainer: {
     padding: 16,
     backgroundColor: Colors.card,
@@ -370,22 +334,22 @@ const styles = StyleSheet.create({
     borderBottomColor: Colors.border,
   },
   statsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
+    flexDirection: "row",
+    flexWrap: "wrap",
     gap: 12,
   },
   statCard: {
-    width: '48%',
+    width: "48%",
     backgroundColor: Colors.background,
     borderRadius: 12,
     padding: 16,
-    alignItems: 'center',
+    alignItems: "center",
     borderWidth: 1,
     borderColor: Colors.border,
   },
   statValue: {
     fontSize: 20,
-    fontWeight: 'bold',
+    fontWeight: "bold",
     color: Colors.text,
     marginTop: 8,
     marginBottom: 4,
@@ -400,14 +364,14 @@ const styles = StyleSheet.create({
     borderBottomColor: Colors.border,
   },
   filters: {
-    flexDirection: 'row',
+    flexDirection: "row",
     paddingHorizontal: 16,
     paddingVertical: 12,
     gap: 8,
   },
   filterButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     paddingHorizontal: 12,
     paddingVertical: 6,
     backgroundColor: Colors.background,
@@ -425,21 +389,21 @@ const styles = StyleSheet.create({
     color: Colors.text,
   },
   filterTextActive: {
-    color: '#fff',
+    color: "#fff",
   },
   content: {
     padding: 16,
   },
   sectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     marginBottom: 12,
     marginTop: 8,
   },
   sectionTitle: {
     fontSize: 16,
-    fontWeight: 'bold',
+    fontWeight: "bold",
     color: Colors.text,
   },
   sectionCount: {
@@ -447,8 +411,8 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
   },
   activityCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     backgroundColor: Colors.card,
     padding: 16,
     borderRadius: 12,
@@ -458,22 +422,22 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   activityIconContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
   },
   activityIcon: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
   },
   activityContent: {
     flex: 1,
   },
   activityTitle: {
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: "600",
     color: Colors.text,
     marginBottom: 4,
   },
@@ -483,13 +447,13 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   activityMeta: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 12,
   },
   courseBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     backgroundColor: Colors.background,
     paddingHorizontal: 6,
     paddingVertical: 2,
@@ -505,14 +469,14 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
   },
   emptyState: {
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     padding: 40,
     marginTop: 60,
   },
   emptyStateTitle: {
     fontSize: 18,
-    fontWeight: 'bold',
+    fontWeight: "bold",
     color: Colors.text,
     marginTop: 16,
     marginBottom: 8,
@@ -520,7 +484,7 @@ const styles = StyleSheet.create({
   emptyStateText: {
     fontSize: 14,
     color: Colors.textSecondary,
-    textAlign: 'center',
+    textAlign: "center",
     lineHeight: 20,
   },
 });

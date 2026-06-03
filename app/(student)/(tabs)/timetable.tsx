@@ -1,126 +1,171 @@
-import React, { useState } from 'react';
+// app/(student)/timetable/index.tsx - FIXED VERSION
+
+import { Header } from "@/components/Header";
+import { Colors } from "@/constants/Colors";
 import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-  RefreshControl,
+  PERSIAN_DAYS,
+  studentTimetableApi,
+  TIME_PERIODS,
+  TimetableData,
+} from "@/src/config/studentTimetableApi";
+import { Ionicons } from "@expo/vector-icons";
+import { useCallback, useEffect, useState } from "react";
+import {
+  ActivityIndicator,
   Dimensions,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
-import { Colors } from '@/constants/Colors';
-import { Header } from '@/components/Header';
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
-const DAYS = ['شنبه', 'یکشنبه', 'دوشنبه', 'سه‌شنبه', 'چهارشنبه', 'پنجشنبه'];
-const PERIODS = ['۸:۰۰', '۹:۰۰', '۱۰:۰۰', '۱۱:۰۰', '۱۲:۰۰', '۱۳:۰۰', '۱۴:۰۰'];
+const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
-type TimetableEntry = {
+// Define the Entry type based on your backend response
+interface TimetableEntry {
   id: number;
-  day: number; // 0-5 for Saturday to Thursday
-  period: number; // 0-6 for periods
+  day: string; // Persian day name
+  dayIndex: number; // Day index (0-5)
+  period: string; // Time range
+  periodIndex: number; // Period index (0-6)
   subject: string;
   teacher: string;
+  teacherImage?: string;
   room: string;
   color: string;
-};
+  startTime: string;
+  endTime: string;
+  teacherId?: number;
+  subjectId?: number;
+}
 
 export default function WeeklyTimetableScreen() {
-  const [currentWeek, setCurrentWeek] = useState(0);
-  const [selectedDay, setSelectedDay] = useState<number | null>(null);
+  const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [currentWeek, setCurrentWeek] = useState(0);
+  const [selectedDay, setSelectedDay] = useState<string | null>(null);
+  const [timetableData, setTimetableData] = useState<TimetableData | null>(
+    null,
+  );
 
-  // Mock data - This will come from API based on student's class
-  const timetableData: TimetableEntry[] = [
-    // Saturday
-    { id: 1, day: 0, period: 0, subject: 'ریاضی', teacher: 'احمدی', room: '۲۰۱', color: '#3B82F6' },
-    { id: 2, day: 0, period: 1, subject: 'فیزیک', teacher: 'کریمی', room: '۱۰۲', color: '#10B981' },
-    { id: 3, day: 0, period: 2, subject: 'شیمی', teacher: 'رحیمی', room: 'آزمایشگاه', color: '#F59E0B' },
-    
-    // Sunday
-    { id: 4, day: 1, period: 0, subject: 'ادبیات', teacher: 'محمدی', room: '۳۰۳', color: '#8B5CF6' },
-    { id: 5, day: 1, period: 1, subject: 'دینی', teacher: 'حسینی', room: '۱۰۱', color: '#EC4899' },
-    
-    // Monday
-    { id: 6, day: 2, period: 0, subject: 'زبان انگلیسی', teacher: 'اکبری', room: '۲۰۴', color: '#06B6D4' },
-    { id: 7, day: 2, period: 1, subject: 'ورزش', teacher: 'نوری', room: 'سالن ورزش', color: '#22C55E' },
-    
-    // Tuesday
-    { id: 8, day: 3, period: 0, subject: 'هنر', teacher: 'فرهادی', room: 'اتاق هنر', color: '#F97316' },
-    { id: 9, day: 3, period: 1, subject: 'ریاضی', teacher: 'احمدی', room: '۲۰۱', color: '#3B82F6' },
-    
-    // Wednesday
-    { id: 10, day: 4, period: 0, subject: 'علوم', teacher: 'رستمی', room: '۱۰۲', color: '#84CC16' },
-    { id: 11, day: 4, period: 1, subject: 'زبان عربی', teacher: 'صادقی', room: '۲۰۵', color: '#14B8A6' },
-    
-    // Thursday
-    { id: 12, day: 5, period: 0, subject: 'کامپیوتر', teacher: 'شریفی', room: 'کامپیوتر', color: '#6366F1' },
-    { id: 13, day: 5, period: 1, subject: 'مطالعات', teacher: 'امینی', room: '۱۰۱', color: '#A855F7' },
-  ];
+  const loadTimetable = useCallback(async () => {
+    try {
+      const response = await studentTimetableApi.getWeeklyTimetable();
+      console.log("Full response:", JSON.stringify(response, null, 2));
+
+      if (response.success && response.data) {
+        setTimetableData(response.data);
+        // Log first entry to debug
+        if (response.data.entries && response.data.entries.length > 0) {
+          console.log("First entry:", response.data.entries[0]);
+        }
+      }
+    } catch (error) {
+      console.error("Error loading timetable:", error);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadTimetable();
+  }, [loadTimetable]);
 
   const handleRefresh = async () => {
     setRefreshing(true);
-    setTimeout(() => {
-      setRefreshing(false);
-    }, 1000);
+    await loadTimetable();
   };
 
+  // FIXED: Get classes for a specific day using dayIndex
   const getClassesForDay = (dayIndex: number) => {
-    return timetableData.filter(entry => entry.day === dayIndex);
+    if (!timetableData?.entries) return [];
+    return (timetableData.entries as any[]).filter(
+      (entry: any) => entry.dayIndex === dayIndex,
+    );
   };
 
+  // FIXED: Get class for specific day and period
   const getClassesForPeriod = (dayIndex: number, periodIndex: number) => {
-    return timetableData.find(entry => entry.day === dayIndex && entry.period === periodIndex);
+    if (!timetableData?.entries) return null;
+    return (timetableData.entries as any[]).find(
+      (entry: any) =>
+        entry.dayIndex === dayIndex && entry.periodIndex === periodIndex,
+    );
   };
 
-  const DayView = ({ dayIndex }: { dayIndex: number }) => {
+  const DayView = ({
+    dayIndex,
+    dayName,
+  }: {
+    dayIndex: number;
+    dayName: string;
+  }) => {
     const dayClasses = getClassesForDay(dayIndex);
-    
-    if (selectedDay !== null && selectedDay !== dayIndex) {
+
+    if (selectedDay !== null && selectedDay !== dayName) {
       return null;
     }
 
     return (
       <View style={styles.dayViewContainer}>
         <View style={styles.dayHeader}>
-          <Text style={styles.dayHeaderText}>{DAYS[dayIndex]}</Text>
-          <Text style={styles.classesCount}>{dayClasses.length} کلاس</Text>
+          <Text style={styles.dayHeaderText}>{dayName}</Text>
+          <Text style={styles.classesCount}>{dayClasses.length} صنف</Text>
         </View>
-        
+
         {dayClasses.length === 0 ? (
           <View style={styles.emptyDay}>
-            <Ionicons name="calendar-outline" size={40} color={Colors.textSecondary} />
-            <Text style={styles.emptyDayText}>کلاسی برای این روز برنامه‌ریزی نشده</Text>
+            <Ionicons
+              name="calendar-outline"
+              size={40}
+              color={Colors.textSecondary}
+            />
+            <Text style={styles.emptyDayText}>
+              صنفی برای این روز برنامه‌ریزی نشده
+            </Text>
           </View>
         ) : (
           <ScrollView showsVerticalScrollIndicator={false}>
-            {dayClasses.map((entry) => (
+            {dayClasses.map((entry: TimetableEntry) => (
               <View
                 key={entry.id}
                 style={[
                   styles.classCard,
-                  { borderLeftColor: entry.color, borderLeftWidth: 4 }
+                  { borderLeftColor: entry.color, borderLeftWidth: 4 },
                 ]}
               >
                 <View style={styles.classHeader}>
                   <View style={styles.subjectContainer}>
                     <View
-                      style={[styles.colorDot, { backgroundColor: entry.color }]}
+                      style={[
+                        styles.colorDot,
+                        { backgroundColor: entry.color },
+                      ]}
                     />
                     <Text style={styles.subjectText}>{entry.subject}</Text>
                   </View>
-                  <Text style={styles.periodText}>ساعت {PERIODS[entry.period]}</Text>
+                  <Text style={styles.periodText}>ساعت {entry.startTime}</Text>
                 </View>
-                
+
                 <View style={styles.classDetails}>
                   <View style={styles.detailRow}>
-                    <Ionicons name="person" size={16} color={Colors.textSecondary} />
+                    <Ionicons
+                      name="person"
+                      size={16}
+                      color={Colors.textSecondary}
+                    />
                     <Text style={styles.detailText}>{entry.teacher}</Text>
                   </View>
                   <View style={styles.detailRow}>
-                    <Ionicons name="location" size={16} color={Colors.textSecondary} />
+                    <Ionicons
+                      name="location"
+                      size={16}
+                      color={Colors.textSecondary}
+                    />
                     <Text style={styles.detailText}>{entry.room}</Text>
                   </View>
                 </View>
@@ -139,7 +184,7 @@ export default function WeeklyTimetableScreen() {
           {/* Header row */}
           <View style={styles.gridHeader}>
             <View style={[styles.gridCell, styles.timeCell]} />
-            {DAYS.map((day, index) => (
+            {PERSIAN_DAYS.map((day, index) => (
               <View key={index} style={[styles.gridCell, styles.dayHeaderCell]}>
                 <Text style={styles.dayHeaderText}>{day}</Text>
               </View>
@@ -147,13 +192,13 @@ export default function WeeklyTimetableScreen() {
           </View>
 
           {/* Time slots */}
-          {PERIODS.map((time, periodIndex) => (
+          {TIME_PERIODS.map((time, periodIndex) => (
             <View key={periodIndex} style={styles.gridRow}>
               <View style={[styles.gridCell, styles.timeCell]}>
                 <Text style={styles.timeText}>{time}</Text>
               </View>
-              
-              {DAYS.map((_, dayIndex) => {
+
+              {PERSIAN_DAYS.map((_, dayIndex) => {
                 const entry = getClassesForPeriod(dayIndex, periodIndex);
                 return (
                   <TouchableOpacity
@@ -161,17 +206,26 @@ export default function WeeklyTimetableScreen() {
                     style={[
                       styles.gridCell,
                       styles.classCell,
-                      entry && { backgroundColor: `${entry.color}20` }
+                      entry && { backgroundColor: `${entry.color}20` },
                     ]}
-                    onPress={() => entry && setSelectedDay(dayIndex)}
+                    onPress={() =>
+                      entry && setSelectedDay(PERSIAN_DAYS[dayIndex])
+                    }
                   >
                     {entry ? (
                       <View style={styles.gridClassContent}>
-                        <Text style={[styles.gridSubject, { color: entry.color }]}>
+                        <Text
+                          style={[styles.gridSubject, { color: entry.color }]}
+                          numberOfLines={2}
+                        >
                           {entry.subject}
                         </Text>
-                        <Text style={styles.gridTeacher}>{entry.teacher}</Text>
-                        <Text style={styles.gridRoom}>{entry.room}</Text>
+                        <Text style={styles.gridTeacher} numberOfLines={1}>
+                          {entry.teacher}
+                        </Text>
+                        <Text style={styles.gridRoom} numberOfLines={1}>
+                          {entry.room}
+                        </Text>
                       </View>
                     ) : null}
                   </TouchableOpacity>
@@ -184,8 +238,29 @@ export default function WeeklyTimetableScreen() {
     );
   };
 
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.container} edges={["top"]}>
+        <Header title="برنامه هفتگی" />
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={Colors.primary} />
+          <Text style={styles.loadingText}>در حال بارگذاری برنامه...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  const summary = timetableData?.summary || {
+    totalClasses: 0,
+    totalMinutes: 0,
+    uniqueTeachers: 0,
+    subjectsPerDay: {},
+  };
+
+  const entries = timetableData?.entries || [];
+
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
+    <SafeAreaView style={styles.container} edges={["top"]}>
       <Header
         title="برنامه هفتگی"
         rightComponent={
@@ -205,6 +280,19 @@ export default function WeeklyTimetableScreen() {
           />
         }
       >
+        {/* Class Info */}
+        {timetableData?.classInfo?.className && (
+          <View style={styles.classInfoContainer}>
+            <Text style={styles.classInfoText}>
+              {timetableData.classInfo.className}
+              {timetableData.classInfo.section &&
+                ` - ${timetableData.classInfo.section}`}
+              {timetableData.classInfo.academicYear &&
+                ` • ${timetableData.classInfo.academicYear}`}
+            </Text>
+          </View>
+        )}
+
         {/* View Toggle */}
         <View style={styles.viewToggleContainer}>
           <TouchableOpacity
@@ -217,32 +305,40 @@ export default function WeeklyTimetableScreen() {
             <Ionicons
               name="grid"
               size={20}
-              color={selectedDay === null ? '#fff' : Colors.text}
+              color={selectedDay === null ? "#fff" : Colors.text}
             />
-            <Text style={[
-              styles.viewToggleText,
-              selectedDay === null && styles.viewToggleTextActive,
-            ]}>
+            <Text
+              style={[
+                styles.viewToggleText,
+                selectedDay === null && styles.viewToggleTextActive,
+              ]}
+            >
               جدول
             </Text>
           </TouchableOpacity>
-          
+
           <TouchableOpacity
             style={[
               styles.viewToggleButton,
               selectedDay !== null && styles.viewToggleActive,
             ]}
-            onPress={() => setSelectedDay(selectedDay !== null ? selectedDay : 0)}
+            onPress={() =>
+              setSelectedDay(
+                selectedDay !== null ? selectedDay : PERSIAN_DAYS[0],
+              )
+            }
           >
             <Ionicons
               name="list"
               size={20}
-              color={selectedDay !== null ? '#fff' : Colors.text}
+              color={selectedDay !== null ? "#fff" : Colors.text}
             />
-            <Text style={[
-              styles.viewToggleText,
-              selectedDay !== null && styles.viewToggleTextActive,
-            ]}>
+            <Text
+              style={[
+                styles.viewToggleText,
+                selectedDay !== null && styles.viewToggleTextActive,
+              ]}
+            >
               روزانه
             </Text>
           </TouchableOpacity>
@@ -255,70 +351,95 @@ export default function WeeklyTimetableScreen() {
           style={styles.daySelector}
           contentContainerStyle={styles.daySelectorContent}
         >
-          {DAYS.map((day, index) => (
-            <TouchableOpacity
-              key={index}
-              style={[
-                styles.dayChip,
-                (selectedDay === null || selectedDay === index) && styles.dayChipActive,
-              ]}
-              onPress={() => {
-                if (selectedDay === index) {
-                  setSelectedDay(null);
-                } else {
-                  setSelectedDay(index);
-                }
-              }}
-            >
-              <Text style={[
-                styles.dayChipText,
-                (selectedDay === null || selectedDay === index) && styles.dayChipTextActive,
-              ]}>
-                {day}
-              </Text>
-              {getClassesForDay(index).length > 0 && (
-                <View style={styles.classCountBadge}>
-                  <Text style={styles.classCountText}>
-                    {getClassesForDay(index).length}
-                  </Text>
-                </View>
-              )}
-            </TouchableOpacity>
-          ))}
+          {PERSIAN_DAYS.map((day, index) => {
+            const dayClasses = getClassesForDay(index);
+            return (
+              <TouchableOpacity
+                key={index}
+                style={[
+                  styles.dayChip,
+                  (selectedDay === null || selectedDay === day) &&
+                    styles.dayChipActive,
+                ]}
+                onPress={() => {
+                  if (selectedDay === day) {
+                    setSelectedDay(null);
+                  } else {
+                    setSelectedDay(day);
+                  }
+                }}
+              >
+                <Text
+                  style={[
+                    styles.dayChipText,
+                    (selectedDay === null || selectedDay === day) &&
+                      styles.dayChipTextActive,
+                  ]}
+                >
+                  {day}
+                </Text>
+                {dayClasses.length > 0 && (
+                  <View style={styles.classCountBadge}>
+                    <Text style={styles.classCountText}>
+                      {dayClasses.length}
+                    </Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+            );
+          })}
         </ScrollView>
 
         {/* Timetable Content */}
         <View style={styles.timetableContainer}>
           {selectedDay === null ? (
-            <GridView />
+            entries.length > 0 ? (
+              <GridView />
+            ) : (
+              <View style={styles.emptyState}>
+                <Ionicons
+                  name="calendar-outline"
+                  size={60}
+                  color={Colors.textSecondary}
+                />
+                <Text style={styles.emptyStateText}>
+                  برنامه هفتگی ثبت نشده است
+                </Text>
+              </View>
+            )
           ) : (
-            <DayView dayIndex={selectedDay} />
+            <DayView
+              dayIndex={PERSIAN_DAYS.indexOf(selectedDay)}
+              dayName={selectedDay}
+            />
           )}
         </View>
 
         {/* Summary */}
-        <View style={styles.summaryContainer}>
-          <Text style={styles.summaryTitle}>خلاصه هفته</Text>
-          <View style={styles.summaryStats}>
-            <View style={styles.summaryStat}>
-              <Ionicons name="book" size={20} color={Colors.primary} />
-              <Text style={styles.summaryValue}>{timetableData.length}</Text>
-              <Text style={styles.summaryLabel}>کلاس کل</Text>
-            </View>
-            <View style={styles.summaryStat}>
-              <Ionicons name="time" size={20} color={Colors.warning} />
-              <Text style={styles.summaryValue}>{timetableData.length * 45}</Text>
-              <Text style={styles.summaryLabel}>دقیقه کلاس</Text>
-            </View>
-            <View style={styles.summaryStat}>
-              <Ionicons name="school" size={20} color={Colors.success} />
-              <Text style={styles.summaryValue}>
-                {new Set(timetableData.map(t => t.teacher)).size}
-              </Text>
-              <Text style={styles.summaryLabel}>معلم</Text>
+        {entries.length > 0 && (
+          <View style={styles.summaryContainer}>
+            <Text style={styles.summaryTitle}>خلاصه هفته</Text>
+            <View style={styles.summaryStats}>
+              <View style={styles.summaryStat}>
+                <Ionicons name="book" size={20} color={Colors.primary} />
+                <Text style={styles.summaryValue}>{summary.totalClasses}</Text>
+                <Text style={styles.summaryLabel}>صنف کل</Text>
+              </View>
+              <View style={styles.summaryStat}>
+                <Ionicons name="time" size={20} color={Colors.warning} />
+                <Text style={styles.summaryValue}>{summary.totalMinutes}</Text>
+                <Text style={styles.summaryLabel}>دقیقه صنف</Text>
+              </View>
+              <View style={styles.summaryStat}>
+                <Ionicons name="school" size={20} color={Colors.success} />
+                <Text style={styles.summaryValue}>
+                  {summary.uniqueTeachers}
+                </Text>
+                <Text style={styles.summaryLabel}>معلم</Text>
+              </View>
             </View>
           </View>
-        </View>
+        )}
       </ScrollView>
     </SafeAreaView>
   );
@@ -329,11 +450,37 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: Colors.background,
   },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 14,
+    color: Colors.textSecondary,
+  },
   content: {
     flex: 1,
   },
+  classInfoContainer: {
+    backgroundColor: Colors.card,
+    marginHorizontal: 16,
+    marginTop: 16,
+    marginBottom: 8,
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  classInfoText: {
+    fontSize: 16,
+    fontWeight: "bold",
+    color: Colors.text,
+    textAlign: "center",
+  },
   viewToggleContainer: {
-    flexDirection: 'row',
+    flexDirection: "row",
     backgroundColor: Colors.card,
     margin: 16,
     padding: 4,
@@ -343,9 +490,9 @@ const styles = StyleSheet.create({
   },
   viewToggleButton: {
     flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
     paddingVertical: 12,
     borderRadius: 8,
     gap: 8,
@@ -356,10 +503,10 @@ const styles = StyleSheet.create({
   viewToggleText: {
     fontSize: 14,
     color: Colors.text,
-    fontWeight: '500',
+    fontWeight: "500",
   },
   viewToggleTextActive: {
-    color: '#fff',
+    color: "#fff",
   },
   daySelector: {
     marginHorizontal: 16,
@@ -369,8 +516,8 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   dayChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     backgroundColor: Colors.card,
     paddingHorizontal: 16,
     paddingVertical: 12,
@@ -388,32 +535,44 @@ const styles = StyleSheet.create({
     color: Colors.text,
   },
   dayChipTextActive: {
-    color: '#fff',
-    fontWeight: 'bold',
+    color: "#fff",
+    fontWeight: "bold",
   },
   classCountBadge: {
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    backgroundColor: "rgba(255, 255, 255, 0.2)",
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 10,
   },
   classCountText: {
     fontSize: 10,
-    color: '#fff',
-    fontWeight: 'bold',
+    color: "#fff",
+    fontWeight: "bold",
   },
   timetableContainer: {
     minHeight: 400,
+  },
+  emptyState: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 60,
+    paddingHorizontal: 40,
+  },
+  emptyStateText: {
+    fontSize: 16,
+    color: Colors.textSecondary,
+    marginTop: 16,
+    textAlign: "center",
   },
   gridContainer: {
     paddingHorizontal: 16,
   },
   gridHeader: {
-    flexDirection: 'row',
+    flexDirection: "row",
     marginBottom: 4,
   },
   gridRow: {
-    flexDirection: 'row',
+    flexDirection: "row",
     height: 80,
     marginBottom: 4,
   },
@@ -423,14 +582,14 @@ const styles = StyleSheet.create({
   },
   timeCell: {
     width: 60,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
     backgroundColor: Colors.card,
   },
   dayHeaderCell: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
     backgroundColor: Colors.card,
   },
   classCell: {
@@ -441,47 +600,51 @@ const styles = StyleSheet.create({
   timeText: {
     fontSize: 12,
     color: Colors.text,
-    fontWeight: '500',
+    fontWeight: "500",
   },
   dayHeaderText: {
     fontSize: 12,
     color: Colors.text,
-    fontWeight: 'bold',
+    fontWeight: "bold",
   },
   gridClassContent: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
   },
   gridSubject: {
     fontSize: 10,
-    fontWeight: 'bold',
+    fontWeight: "bold",
     marginBottom: 2,
+    textAlign: "center",
   },
   gridTeacher: {
     fontSize: 8,
     color: Colors.textSecondary,
+    textAlign: "center",
   },
   gridRoom: {
     fontSize: 8,
     color: Colors.textSecondary,
+    textAlign: "center",
   },
   dayViewContainer: {
     paddingHorizontal: 16,
   },
   dayHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     marginBottom: 16,
+    paddingHorizontal: 8,
   },
   classesCount: {
     fontSize: 14,
     color: Colors.textSecondary,
   },
   emptyDay: {
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     paddingVertical: 40,
   },
   emptyDayText: {
@@ -498,14 +661,14 @@ const styles = StyleSheet.create({
     borderColor: Colors.border,
   },
   classHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     marginBottom: 12,
   },
   subjectContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 8,
   },
   colorDot: {
@@ -515,7 +678,7 @@ const styles = StyleSheet.create({
   },
   subjectText: {
     fontSize: 16,
-    fontWeight: 'bold',
+    fontWeight: "bold",
     color: Colors.text,
   },
   periodText: {
@@ -526,8 +689,8 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   detailRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 8,
   },
   detailText: {
@@ -544,20 +707,20 @@ const styles = StyleSheet.create({
   },
   summaryTitle: {
     fontSize: 18,
-    fontWeight: 'bold',
+    fontWeight: "bold",
     color: Colors.text,
     marginBottom: 16,
   },
   summaryStats: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
+    flexDirection: "row",
+    justifyContent: "space-around",
   },
   summaryStat: {
-    alignItems: 'center',
+    alignItems: "center",
   },
   summaryValue: {
     fontSize: 24,
-    fontWeight: 'bold',
+    fontWeight: "bold",
     color: Colors.text,
     marginVertical: 8,
   },

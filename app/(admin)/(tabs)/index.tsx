@@ -2,11 +2,18 @@
 import { Header } from "@/components/Header";
 import { Colors } from "@/constants/Colors";
 import { useAuth } from "@/contexts/AuthContext";
+import {
+  adminApi,
+  DashboardStats
+} from "@/src/config/adminApi";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { Link, useRouter } from "expo-router";
 import { BookOpen, DollarSign, Settings } from "lucide-react-native";
+import { useEffect, useState } from "react";
 import {
+  ActivityIndicator,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -18,15 +25,9 @@ import { SafeAreaView } from "react-native-safe-area-context";
 export default function AdminDashboard() {
   const router = useRouter();
   const { user } = useAuth();
-
-  const stats = {
-    totalUsers: 1245,
-    activeUsers: 856,
-    totalCourses: 42,
-    totalTeachers: 28,
-    totalStudents: 1217,
-    systemHealth: 98,
-  };
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [stats, setStats] = useState<DashboardStats | null>(null);
 
   const quickActions = [
     {
@@ -45,30 +46,13 @@ export default function AdminDashboard() {
       title: "گزارشات",
       icon: "analytics",
       color: Colors.success,
-      route: "./analytics",
+      route: "/(admin)/analytics",
     },
     {
       title: "تنظیمات سیستم",
       icon: "settings",
       color: Colors.warning,
-      route: "./settings",
-    },
-  ];
-
-  const recentActivities = [
-    { id: 1, user: "علی احمدی", action: "ثبت‌نام جدید", time: "۵ دقیقه پیش" },
-    {
-      id: 2,
-      user: "محمد کریمی",
-      action: "تکمیل دوره ریاضی",
-      time: "۱ ساعت پیش",
-    },
-    { id: 3, user: "مریم رضایی", action: "آپلود کارخانگی", time: "۲ ساعت پیش" },
-    {
-      id: 4,
-      user: "رضا محمدی",
-      action: "ثبت‌نام در دوره جدید",
-      time: "۳ ساعت پیش",
+      route: "/(admin)/settings",
     },
   ];
 
@@ -94,6 +78,42 @@ export default function AdminDashboard() {
     }
   };
 
+  const loadDashboardData = async () => {
+    try {
+      setLoading(true);
+      const response = await adminApi.getDashboardStats();
+      if (response.success && response.data) {
+        setStats(response.data);
+      }
+    } catch (error) {
+      console.error("Error loading dashboard:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    await loadDashboardData();
+    setRefreshing(false);
+  };
+
+  useEffect(() => {
+    loadDashboardData();
+  }, []);
+
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.container} edges={["top"]}>
+        <Header title="داشبورد مدیریت" />
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={Colors.primary} />
+          <Text style={styles.loadingText}>در حال بارگذاری...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
       <Header
@@ -109,7 +129,17 @@ export default function AdminDashboard() {
         }
       />
 
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        style={styles.content}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            colors={[Colors.primary]}
+          />
+        }
+      >
         {/* Welcome Section */}
         <LinearGradient
           colors={[Colors.primary, Colors.primaryDark]}
@@ -117,8 +147,10 @@ export default function AdminDashboard() {
         >
           <View style={styles.welcomeContent}>
             <View>
-              <Text style={styles.welcomeTitle}>سلام مدیر سیستم </Text>
-              <Text style={styles.welcomeSubtitle}>خوش آمدید {user?.name}</Text>
+              <Text style={styles.welcomeTitle}>سلام مدیر سیستم</Text>
+              <Text style={styles.welcomeSubtitle}>
+                خوش آمدید {user?.fullName || "مدیر"}
+              </Text>
             </View>
             <Ionicons name="shield-checkmark" size={40} color="#fff" />
           </View>
@@ -136,7 +168,7 @@ export default function AdminDashboard() {
               <Ionicons name="people" size={24} color={Colors.primary} />
             </View>
             <Text style={styles.statValue}>
-              {stats.totalUsers.toLocaleString()}
+              {stats?.totalUsers?.toLocaleString() || 0}
             </Text>
             <Text style={styles.statLabel}>کاربر کل</Text>
           </View>
@@ -151,7 +183,7 @@ export default function AdminDashboard() {
               <Ionicons name="person-circle" size={24} color={Colors.success} />
             </View>
             <Text style={styles.statValue}>
-              {stats.activeUsers.toLocaleString()}
+              {stats?.activeUsers?.toLocaleString() || 0}
             </Text>
             <Text style={styles.statLabel}>کاربر فعال</Text>
           </View>
@@ -165,7 +197,7 @@ export default function AdminDashboard() {
             >
               <Ionicons name="book" size={24} color={Colors.secondary} />
             </View>
-            <Text style={styles.statValue}>{stats.totalCourses}</Text>
+            <Text style={styles.statValue}>{stats?.totalCourses || 0}</Text>
             <Text style={styles.statLabel}>دوره</Text>
           </View>
 
@@ -178,7 +210,7 @@ export default function AdminDashboard() {
             >
               <Ionicons name="school" size={24} color={Colors.warning} />
             </View>
-            <Text style={styles.statValue}>{stats.systemHealth}%</Text>
+            <Text style={styles.statValue}>{stats?.systemHealth || 98}%</Text>
             <Text style={styles.statLabel}>سلامت سیستم</Text>
           </View>
         </View>
@@ -238,6 +270,37 @@ export default function AdminDashboard() {
           </View>
         </View>
 
+        {/* Financial Summary */}
+        {/* <View style={styles.section}>
+          <Text style={styles.sectionTitle}>خلاصه مالی</Text>
+          <View style={styles.financialCard}>
+            <View style={styles.financialItem}>
+              <Text style={styles.financialLabel}>کل درآمد:</Text>
+              <Text style={styles.financialValue}>
+                {stats?.totalIncome?.toLocaleString() || 0} تومان
+              </Text>
+            </View>
+            <View style={styles.financialItem}>
+              <Text style={styles.financialLabel}>شهریه‌های معوق:</Text>
+              <Text style={[styles.financialValue, { color: Colors.warning }]}>
+                {stats?.pendingFees || 0} مورد
+              </Text>
+            </View>
+            <View style={styles.financialItem}>
+              <Text style={styles.financialLabel}>معلمان:</Text>
+              <Text style={styles.financialValue}>
+                {stats?.totalTeachers || 0} نفر
+              </Text>
+            </View>
+            <View style={styles.financialItem}>
+              <Text style={styles.financialLabel}>دانش‌آموزان:</Text>
+              <Text style={styles.financialValue}>
+                {stats?.totalStudents || 0} نفر
+              </Text>
+            </View>
+          </View>
+        </View> */}
+
         {/* System Health */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>سلامت سیستم</Text>
@@ -280,24 +343,32 @@ export default function AdminDashboard() {
             </TouchableOpacity>
           </View>
           <View style={styles.activitiesList}>
-            {recentActivities.map((activity) => (
-              <View key={activity.id} style={styles.activityItem}>
-                <View style={styles.activityIcon}>
-                  <Ionicons
-                    name="time"
-                    size={16}
-                    color={Colors.textSecondary}
-                  />
-                </View>
-                <View style={styles.activityContent}>
-                  <Text style={styles.activityText}>
-                    <Text style={styles.activityUser}>{activity.user}</Text>{" "}
-                    {activity.action}
-                  </Text>
-                  <Text style={styles.activityTime}>{activity.time}</Text>
-                </View>
+            {stats?.recentActivities?.length === 0 ? (
+              <View style={styles.emptyState}>
+                <Text style={styles.emptyStateText}>
+                  هیچ فعالیتی ثبت نشده است
+                </Text>
               </View>
-            ))}
+            ) : (
+              stats?.recentActivities?.map((activity) => (
+                <View key={activity.id} style={styles.activityItem}>
+                  <View style={styles.activityIcon}>
+                    <Ionicons
+                      name="time"
+                      size={16}
+                      color={Colors.textSecondary}
+                    />
+                  </View>
+                  <View style={styles.activityContent}>
+                    <Text style={styles.activityText}>
+                      <Text style={styles.activityUser}>{activity.user}</Text>{" "}
+                      {activity.action}
+                    </Text>
+                    <Text style={styles.activityTime}>{activity.time}</Text>
+                  </View>
+                </View>
+              ))
+            )}
           </View>
         </View>
 
@@ -349,6 +420,17 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
     padding: 16,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 20,
+  },
+  loadingText: {
+    marginTop: 16,
+    fontSize: 16,
+    color: Colors.textSecondary,
   },
   welcomeCard: {
     borderRadius: 16,
@@ -474,6 +556,28 @@ const styles = StyleSheet.create({
     fontWeight: "500",
     textAlign: "center",
   },
+  financialCard: {
+    backgroundColor: Colors.card,
+    borderRadius: 12,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  financialItem: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 12,
+  },
+  financialLabel: {
+    fontSize: 14,
+    color: Colors.textSecondary,
+  },
+  financialValue: {
+    fontSize: 16,
+    fontWeight: "bold",
+    color: Colors.text,
+  },
   healthCard: {
     backgroundColor: Colors.card,
     borderRadius: 12,
@@ -511,6 +615,18 @@ const styles = StyleSheet.create({
   },
   activitiesList: {
     gap: 12,
+  },
+  emptyState: {
+    backgroundColor: Colors.card,
+    borderRadius: 12,
+    padding: 40,
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  emptyStateText: {
+    fontSize: 14,
+    color: Colors.textSecondary,
   },
   activityItem: {
     flexDirection: "row",

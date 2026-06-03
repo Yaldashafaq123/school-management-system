@@ -1,7 +1,7 @@
 // src/config/api.js
 // Change from HTTP to HTTPS
-//export const BASE_URL = "https://asraschools.cloud/api";  // ✅ New HTTPS URL
-export const BASE_URL = "http://asraschools.cloud:3000/api";  // ❌ Old HTTP URL
+export const BASE_URL = "https://asraschools.cloud/api";  // ✅ New HTTPS URL
+// export const BASE_URL = "http://asraschools.cloud:3000/api";  // ❌ Old HTTP URL
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 

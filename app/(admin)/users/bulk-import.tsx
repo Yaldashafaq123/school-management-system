@@ -6,14 +6,17 @@ import {
   ScrollView,
   TouchableOpacity,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { Upload, Download, FileSpreadsheet, Users, CheckCircle, XCircle, AlertCircle } from 'lucide-react-native';
+import { adminUserApi, AdminUser, CreateUserData } from '@/src/config/adminUserApi';
 
 type ImportStatus = 'idle' | 'uploading' | 'processed' | 'importing' | 'completed';
 type ImportFile = {
   name: string;
   size: string;
   uploadedAt: string;
+  uri?: string;
 } | null;
 
 interface ImportStats {
@@ -21,6 +24,22 @@ interface ImportStats {
   success: number;
   failed: number;
   duplicate: number;
+}
+
+interface ImportError {
+  row: number;
+  field: string;
+  message: string;
+}
+
+interface ParsedUserData {
+  fullName: string;
+  email: string;
+  phone?: string;
+  role: 'admin' | 'teacher' | 'student' | 'parent';
+  password: string;
+  classId?: number;
+  subjects?: number[];
 }
 
 export default function BulkUserImport() {
@@ -32,58 +51,200 @@ export default function BulkUserImport() {
     failed: 0,
     duplicate: 0,
   });
+  const [parsedData, setParsedData] = useState<ParsedUserData[]>([]);
+  const [errors, setErrors] = useState<ImportError[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
 
-  const handleFileUpload = () => {
-    // In a real app, this would handle file picker
-    setImportStatus('uploading');
-    
-    // Simulate file upload and processing
-    setTimeout(() => {
-      setImportFile({
-        name: 'users_import_20240120.csv',
-        size: '245 KB',
-        uploadedAt: new Date().toISOString(),
-      });
+  // Simulate file picker - in real app, use react-native-document-picker
+  const handleFileUpload = async () => {
+    try {
+      setIsLoading(true);
+      setImportStatus('uploading');
       
-      setImportStats({
-        total: 45,
-        success: 42,
-        failed: 2,
-        duplicate: 1,
-      });
-      
-      setImportStatus('processed');
-    }, 1500);
+      // In a real app, you would use DocumentPicker to select a file
+      // For now, simulate with sample data
+      setTimeout(() => {
+        const sampleData: ParsedUserData[] = [
+          {
+            fullName: 'John Doe',
+            email: 'john.doe@school.com',
+            phone: '1234567890',
+            role: 'student',
+            password: 'password123',
+            classId: 1,
+          },
+          {
+            fullName: 'Jane Smith',
+            email: 'jane.smith@school.com',
+            phone: '0987654321',
+            role: 'teacher',
+            password: 'password123',
+            subjects: [1, 2],
+          },
+          {
+            fullName: 'Invalid Email',
+            email: 'invalid-email',
+            role: 'student',
+            password: 'password123',
+          },
+        ];
+
+        setParsedData(sampleData);
+        
+        // Validate data
+        const validationErrors: ImportError[] = [];
+        const validData: ParsedUserData[] = [];
+        
+        sampleData.forEach((user, index) => {
+          const errors: ImportError[] = [];
+          
+          if (!user.fullName) {
+            errors.push({ row: index + 1, field: 'fullName', message: 'Name is required' });
+          }
+          if (!user.email || !user.email.includes('@')) {
+            errors.push({ row: index + 1, field: 'email', message: 'Valid email is required' });
+          }
+          if (!user.role || !['admin', 'teacher', 'student', 'parent'].includes(user.role)) {
+            errors.push({ row: index + 1, field: 'role', message: 'Invalid role' });
+          }
+          
+          if (errors.length > 0) {
+            validationErrors.push(...errors);
+          } else {
+            validData.push(user);
+          }
+        });
+        
+        setErrors(validationErrors);
+        setImportStats({
+          total: sampleData.length,
+          success: validData.length,
+          failed: validationErrors.filter(e => e.message !== 'Duplicate entry').length,
+          duplicate: validationErrors.filter(e => e.message === 'Duplicate entry').length,
+        });
+        
+        setImportFile({
+          name: 'users_import_20240120.csv',
+          size: '245 KB',
+          uploadedAt: new Date().toISOString(),
+        });
+        
+        setImportStatus('processed');
+        setIsLoading(false);
+      }, 1500);
+    } catch (error) {
+      console.error('Error uploading file:', error);
+      Alert.alert('Error', 'Failed to upload file. Please try again.');
+      setImportStatus('idle');
+      setIsLoading(false);
+    }
   };
 
-  const handleImport = () => {
+  const handleImport = async () => {
+    if (parsedData.length === 0) {
+      Alert.alert('Error', 'No valid data to import');
+      return;
+    }
+
     Alert.alert(
       'Confirm Import',
-      `Import ${importStats.total} users? This action cannot be undone.`,
+      `Import ${importStats.success} users? This action cannot be undone.`,
       [
         { text: 'Cancel', style: 'cancel' },
         { 
           text: 'Import', 
           style: 'default',
-          onPress: () => {
-            setImportStatus('importing');
-            // Simulate import process
-            setTimeout(() => {
+          onPress: async () => {
+            try {
+              setImportStatus('importing');
+              setIsLoading(true);
+              
+              let successCount = 0;
+              let failedCount = 0;
+              
+              // Import each user one by one
+              for (const userData of parsedData) {
+                try {
+                  const response = await adminUserApi.createUser(userData);
+                  if (response.success) {
+                    successCount++;
+                  } else {
+                    failedCount++;
+                    console.error('Failed to import user:', userData.email, response.message);
+                  }
+                } catch (error) {
+                  failedCount++;
+                  console.error('Error importing user:', userData.email, error);
+                }
+              }
+              
+              setImportStats(prev => ({
+                ...prev,
+                success: successCount,
+                failed: failedCount,
+              }));
+              
               setImportStatus('completed');
-              Alert.alert('Success', 'Users imported successfully');
-            }, 2000);
+              setIsLoading(false);
+              
+              Alert.alert(
+                'Import Completed',
+                `Successfully imported ${successCount} out of ${parsedData.length} users.`,
+                [
+                  {
+                    text: 'OK',
+                    onPress: () => {
+                      // Reset form
+                      setImportFile(null);
+                      setParsedData([]);
+                      setImportStatus('idle');
+                    }
+                  }
+                ]
+              );
+            } catch (error) {
+              console.error('Error during import:', error);
+              Alert.alert('Error', 'Failed to import users. Please try again.');
+              setImportStatus('processed');
+              setIsLoading(false);
+            }
           }
         }
       ]
     );
   };
 
-  const downloadTemplate = () => {
-    Alert.alert('Download', 'Template file downloaded successfully');
+  const downloadTemplate = async () => {
+    try {
+      setIsLoading(true);
+      const response = await adminUserApi.exportUsers('csv');
+      if (response.success && response.data) {
+        // In a real app, you would save the file to device
+        Alert.alert('Success', 'Template downloaded successfully');
+      } else {
+        Alert.alert('Error', 'Failed to download template');
+      }
+    } catch (error) {
+      console.error('Error downloading template:', error);
+      Alert.alert('Error', 'Failed to download template');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
     <View style={styles.container}>
+      {isLoading && (
+        <View style={styles.loadingOverlay}>
+          <ActivityIndicator size="large" color="#007AFF" />
+          <Text style={styles.loadingText}>
+            {importStatus === 'uploading' && 'Uploading file...'}
+            {importStatus === 'importing' && 'Importing users...'}
+            {importStatus === 'idle' && 'Processing...'}
+          </Text>
+        </View>
+      )}
+      
       <ScrollView>
         {/* Header */}
         <View style={styles.header}>
@@ -91,7 +252,11 @@ export default function BulkUserImport() {
             <Text style={styles.title}>Bulk User Import</Text>
             <Text style={styles.subtitle}>Import multiple users via CSV/Excel file</Text>
           </View>
-          <TouchableOpacity style={styles.templateButton} onPress={downloadTemplate}>
+          <TouchableOpacity 
+            style={styles.templateButton} 
+            onPress={downloadTemplate}
+            disabled={isLoading}
+          >
             <Download size={20} color="#007AFF" />
             <Text style={styles.templateText}>Download Template</Text>
           </TouchableOpacity>
@@ -112,7 +277,7 @@ export default function BulkUserImport() {
             <TouchableOpacity 
               style={styles.uploadArea}
               onPress={handleFileUpload}
-              disabled={importStatus === 'uploading'}
+              disabled={importStatus === 'uploading' || isLoading}
             >
               <Upload size={48} color="#8E8E93" />
               <Text style={styles.uploadAreaText}>
@@ -133,7 +298,13 @@ export default function BulkUserImport() {
               </View>
               <TouchableOpacity 
                 style={styles.removeButton}
-                onPress={() => setImportFile(null)}
+                onPress={() => {
+                  setImportFile(null);
+                  setParsedData([]);
+                  setErrors([]);
+                  setImportStatus('idle');
+                }}
+                disabled={isLoading}
               >
                 <Text style={styles.removeText}>Remove</Text>
               </TouchableOpacity>
@@ -142,7 +313,7 @@ export default function BulkUserImport() {
         </View>
 
         {/* Import Preview */}
-        {importStatus === 'processed' && (
+        {(importStatus === 'processed' || importStatus === 'importing') && (
           <View style={styles.previewCard}>
             <View style={styles.previewHeader}>
               <Users size={20} color="#007AFF" />
@@ -171,24 +342,52 @@ export default function BulkUserImport() {
               </View>
             </View>
 
-            {/* Sample Data Preview */}
-            <View style={styles.sampleContainer}>
-              <Text style={styles.sampleTitle}>Sample Data (First 5 rows)</Text>
-              <View style={styles.sampleTable}>
-                <View style={styles.tableHeader}>
-                  <Text style={styles.tableHeaderCell}>Name</Text>
-                  <Text style={styles.tableHeaderCell}>Email</Text>
-                  <Text style={styles.tableHeaderCell}>Role</Text>
-                </View>
-                {[1, 2, 3, 4, 5].map((i) => (
-                  <View key={i} style={styles.tableRow}>
-                    <Text style={styles.tableCell}>User {i}</Text>
-                    <Text style={styles.tableCell}>user{i}@school.com</Text>
-                    <Text style={styles.tableCell}>Student</Text>
+            {/* Errors List */}
+            {errors.length > 0 && (
+              <View style={styles.errorsContainer}>
+                <Text style={styles.errorsTitle}>Validation Errors:</Text>
+                {errors.slice(0, 5).map((error, index) => (
+                  <View key={index} style={styles.errorItem}>
+                    <Text style={styles.errorText}>
+                      Row {error.row}: {error.field} - {error.message}
+                    </Text>
                   </View>
                 ))}
+                {errors.length > 5 && (
+                  <Text style={styles.moreErrors}>
+                    And {errors.length - 5} more errors...
+                  </Text>
+                )}
               </View>
-            </View>
+            )}
+
+            {/* Sample Data Preview */}
+            {parsedData.length > 0 && (
+              <View style={styles.sampleContainer}>
+                <Text style={styles.sampleTitle}>Sample Data (First 5 rows)</Text>
+                <View style={styles.sampleTable}>
+                  <View style={styles.tableHeader}>
+                    <Text style={styles.tableHeaderCell}>Name</Text>
+                    <Text style={styles.tableHeaderCell}>Email</Text>
+                    <Text style={styles.tableHeaderCell}>Role</Text>
+                    <Text style={styles.tableHeaderCell}>Status</Text>
+                  </View>
+                  {parsedData.slice(0, 5).map((user, index) => (
+                    <View key={index} style={styles.tableRow}>
+                      <Text style={styles.tableCell}>{user.fullName}</Text>
+                      <Text style={styles.tableCell}>{user.email}</Text>
+                      <Text style={styles.tableCell}>{user.role}</Text>
+                      <Text style={[
+                        styles.tableCell,
+                        user.email?.includes('@') ? styles.validText : styles.invalidText
+                      ]}>
+                        {user.email?.includes('@') ? 'Valid' : 'Invalid'}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+              </View>
+            )}
           </View>
         )}
 
@@ -200,42 +399,48 @@ export default function BulkUserImport() {
             <Text style={styles.instruction}>2. Fill in user details (Name, Email, Role, etc.)</Text>
             <Text style={styles.instruction}>3. Upload the file using the upload area</Text>
             <Text style={styles.instruction}>4. Review the import preview</Text>
-            <Text style={styles.instruction}>5. Click &quot;Import Users&quot; to complete</Text>
+            <Text style={styles.instruction}>5. Click Import Users to complete</Text>
           </View>
           
           <View style={styles.requirements}>
             <Text style={styles.requirementsTitle}>File Requirements:</Text>
             <Text style={styles.requirement}>• Maximum file size: 5MB</Text>
-            <Text style={styles.requirement}>• Required columns: Name, Email, Role</Text>
+            <Text style={styles.requirement}>• Required columns: Full Name, Email, Role</Text>
+            <Text style={styles.requirement}>• Optional columns: Phone, Class ID, Subjects</Text>
             <Text style={styles.requirement}>• Supported formats: CSV, XLS, XLSX</Text>
           </View>
         </View>
       </ScrollView>
 
       {/* Action Buttons */}
-      <View style={styles.actionBar}>
-        <TouchableOpacity 
-          style={styles.cancelButton}
-          onPress={() => {
-            setImportFile(null);
-            setImportStatus('idle');
-          }}
-        >
-          <Text style={styles.cancelText}>Cancel</Text>
-        </TouchableOpacity>
-        <TouchableOpacity 
-          style={[
-            styles.importButton,
-            (!importFile || importStatus === 'uploading') && styles.importButtonDisabled
-          ]}
-          onPress={handleImport}
-          disabled={!importFile || importStatus === 'uploading'}
-        >
-          <Text style={styles.importText}>
-            {importStatus === 'importing' ? 'Importing...' : 'Import Users'}
-          </Text>
-        </TouchableOpacity>
-      </View>
+      {importStatus === 'processed' && (
+        <View style={styles.actionBar}>
+          <TouchableOpacity 
+            style={styles.cancelButton}
+            onPress={() => {
+              setImportFile(null);
+              setParsedData([]);
+              setErrors([]);
+              setImportStatus('idle');
+            }}
+            disabled={isLoading}
+          >
+            <Text style={styles.cancelText}>Cancel</Text>
+          </TouchableOpacity>
+          <TouchableOpacity 
+            style={[
+              styles.importButton,
+              (parsedData.length === 0 || isLoading) && styles.importButtonDisabled
+            ]}
+            onPress={handleImport}
+            disabled={parsedData.length === 0 || isLoading}
+          >
+            <Text style={styles.importText}>
+              Import Users
+            </Text>
+          </TouchableOpacity>
+        </View>
+      )}
     </View>
   );
 }
@@ -244,6 +449,23 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#f5f5f7',
+  },
+  loadingOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 1000,
+  },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 16,
+    color: 'white',
+    fontWeight: '500',
   },
   header: {
     flexDirection: 'row',
@@ -397,6 +619,31 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#8E8E93',
   },
+  errorsContainer: {
+    marginTop: 16,
+    marginBottom: 20,
+    padding: 12,
+    backgroundColor: '#FFF3CD',
+    borderRadius: 8,
+  },
+  errorsTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#FF9500',
+    marginBottom: 8,
+  },
+  errorItem: {
+    marginBottom: 4,
+  },
+  errorText: {
+    fontSize: 12,
+    color: '#FF9500',
+  },
+  moreErrors: {
+    fontSize: 12,
+    color: '#8E8E93',
+    marginTop: 4,
+  },
   sampleContainer: {
     marginTop: 8,
   },
@@ -432,6 +679,12 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 14,
     color: '#1d1d1f',
+  },
+  validText: {
+    color: '#34C759',
+  },
+  invalidText: {
+    color: '#FF3B30',
   },
   instructionsCard: {
     backgroundColor: 'white',

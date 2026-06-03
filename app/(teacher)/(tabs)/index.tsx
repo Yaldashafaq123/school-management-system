@@ -2,21 +2,20 @@ import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import {
+  ActivityIndicator,
+  Alert,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
-  Alert,
-  RefreshControl,
-  ActivityIndicator,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Header } from "../../../components/Header";
 import { Colors } from "../../../constants/Colors";
 import { useAuth } from "../../../contexts/AuthContext";
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import { BASE_URL } from "../../../src/config/api";
+import { apiRequest } from "../../../src/config/api";
 
 // Safe default dashboard data
 const defaultDashboard = {
@@ -40,14 +39,14 @@ const defaultDashboard = {
     },
     {
       id: 2,
-      title: "تکلیف جدید",
+      title: "کارخانگی جدید",
       icon: "document-text",
       color: Colors.success,
       route: "/(teacher)/assignment/create",
     },
     {
       id: 3,
-      title: "کلاس‌های من",
+      title: "صنف های من",
       icon: "school",
       color: Colors.info,
       route: "/(teacher)/classes",
@@ -68,65 +67,61 @@ const defaultDashboard = {
     },
     {
       id: 6,
-      title: "تصحیح تکالیف",
+      title: "تصحیح کارخانگی",
       icon: "create",
       color: Colors.primary,
-      route: "/(teacher)/grading",
+      route: "/(teacher)/grading1",
     },
     {
       id: 7,
       title: "ورود نمرات",
       icon: "stats-chart",
       color: Colors.info,
-      route: "/(teacher)/grading/entry",
+      route: "/(teacher)/grades",
     },
   ],
 };
 
 export default function TeacherDashboardTab() {
   const router = useRouter();
-  const { user, token } = useAuth();
+  const { user } = useAuth();
   const [dashboard, setDashboard] = useState(defaultDashboard);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
+  // Updated fetchDashboard function using apiFetch
   const fetchDashboard = async () => {
     try {
-      const token = await AsyncStorage.getItem("auth_token");
-      if (!token) {
-        setLoading(false);
-        return;
-      }
+      setLoading(true);
 
-      const response = await fetch(`${BASE_URL}/teacher/dashboard`, {
-        method: "GET",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-      });
+      // Use apiFetch which automatically handles:
+      // - Getting token from AsyncStorage
+      // - Adding Authorization header
+      // - Parsing JSON response
+      const data = await apiRequest("/teacher/dashboard");
 
-      const data = await response.json();
-
-      if (response.ok) {
-        // Merge with defaults to ensure all fields exist
+      // Check if data has the expected structure
+      if (data && data.stats) {
         setDashboard({
           stats: {
-            total_classes: data.stats?.total_classes || 0,
-            total_students: data.stats?.total_students || 0,
-            attendance_today: data.stats?.attendance_today?.toString() || "0",
-            pending_assignments: data.stats?.pending_assignments || 0,
-            total_courses: data.stats?.total_courses || 0,
-            revenue: data.stats?.revenue || 0,
-            rating: data.stats?.rating || 0,
+            total_classes: data.stats.total_classes || 0,
+            total_students: data.stats.total_students || 0,
+            attendance_today: data.stats.attendance_today?.toString() || "0",
+            pending_assignments: data.stats.pending_assignments || 0,
+            total_courses: data.stats.total_courses || 0,
+            revenue: data.stats.revenue || 0,
+            rating: data.stats.rating || 0,
           },
           recentActivities: data.recentActivities || [],
-          quickActions: data.quickActions || defaultDashboard.quickActions,
+          quickActions: defaultDashboard.quickActions, // Keep default quick actions
         });
+      } else {
+        console.log("Unexpected data format:", data);
+        // Keep using defaults if data format is wrong
       }
     } catch (error) {
-      console.log("Dashboard error, using defaults:", error);
-      // Keep using defaultDashboard
+      console.log("Dashboard API error:", error);
+      // Keep using defaultDashboard on error
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -150,18 +145,20 @@ export default function TeacherDashboardTab() {
     }
   };
 
-  const formatPrice = (price: number) => {
-    return price.toLocaleString("fa-IR") + " afghani";
-  };
-
   const getActivityIcon = (type: string) => {
     switch (type) {
-      case "assignment": return "document-text";
-      case "exam": return "clipboard";
-      case "submission": return "arrow-up-circle";
-      case "attendance": return "calendar";
-      case "lesson": return "book";
-      default: return "notifications";
+      case "assignment":
+        return "document-text";
+      case "exam":
+        return "clipboard";
+      case "submission":
+        return "arrow-up-circle";
+      case "attendance":
+        return "calendar";
+      case "lesson":
+        return "book";
+      default:
+        return "notifications";
     }
   };
 
@@ -185,20 +182,28 @@ export default function TeacherDashboardTab() {
               onPress={() => handleNavigation("/(public)/notifications")}
               style={styles.headerButton}
             >
-              <Ionicons name="notifications-outline" size={24} color={Colors.text} />
+              <Ionicons
+                name="notifications-outline"
+                size={24}
+                color={Colors.text}
+              />
             </TouchableOpacity>
             <TouchableOpacity
               onPress={() => handleNavigation("/(teacher)/profile")}
               style={styles.headerButton}
             >
-              <Ionicons name="person-circle-outline" size={24} color={Colors.text} />
+              <Ionicons
+                name="person-circle-outline"
+                size={24}
+                color={Colors.text}
+              />
             </TouchableOpacity>
           </View>
         }
       />
 
-      <ScrollView 
-        style={styles.content} 
+      <ScrollView
+        style={styles.content}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
@@ -211,8 +216,8 @@ export default function TeacherDashboardTab() {
               سلام، {user?.fullName || "استاد"}
             </Text>
             <Text style={styles.welcomeText}>
-              {dashboard.stats.pending_assignments > 0 
-                ? `${dashboard.stats.pending_assignments} تکلیف برای تصحیح دارید`
+              {dashboard.stats.pending_assignments > 0
+                ? `${dashboard.stats.pending_assignments} کارخانگی برای تصحیح دارید`
                 : "خوش آمدید! هیچ فعالیتی در انتظار نیست"}
             </Text>
           </View>
@@ -228,7 +233,9 @@ export default function TeacherDashboardTab() {
             onPress={() => handleNavigation("/(teacher)/classes")}
           >
             <Ionicons name="school-outline" size={20} color={Colors.primary} />
-            <Text style={styles.statValue}>{dashboard.stats.total_classes}</Text>
+            <Text style={styles.statValue}>
+              {dashboard.stats.total_classes}
+            </Text>
             <Text style={styles.statLabel}>صنوف درسی</Text>
           </TouchableOpacity>
 
@@ -237,7 +244,9 @@ export default function TeacherDashboardTab() {
             onPress={() => handleNavigation("/(teacher)/(tabs)/students")}
           >
             <Ionicons name="people-outline" size={20} color={Colors.success} />
-            <Text style={styles.statValue}>{dashboard.stats.total_students}</Text>
+            <Text style={styles.statValue}>
+              {dashboard.stats.total_students}
+            </Text>
             <Text style={styles.statLabel}>دانش‌آموز</Text>
           </TouchableOpacity>
 
@@ -245,8 +254,14 @@ export default function TeacherDashboardTab() {
             style={styles.statCard}
             onPress={() => handleNavigation("/(teacher)/attendance/take")}
           >
-            <Ionicons name="calendar-outline" size={20} color={Colors.warning} />
-            <Text style={styles.statValue}>{dashboard.stats.attendance_today}</Text>
+            <Ionicons
+              name="calendar-outline"
+              size={20}
+              color={Colors.warning}
+            />
+            <Text style={styles.statValue}>
+              {dashboard.stats.attendance_today}
+            </Text>
             <Text style={styles.statLabel}>حضور امروز</Text>
           </TouchableOpacity>
 
@@ -254,8 +269,14 @@ export default function TeacherDashboardTab() {
             style={styles.statCard}
             onPress={() => handleNavigation("/(teacher)/grading")}
           >
-            <Ionicons name="document-text-outline" size={20} color={Colors.danger} />
-            <Text style={styles.statValue}>{dashboard.stats.pending_assignments}</Text>
+            <Ionicons
+              name="document-text-outline"
+              size={20}
+              color={Colors.danger}
+            />
+            <Text style={styles.statValue}>
+              {dashboard.stats.pending_assignments}
+            </Text>
             <Text style={styles.statLabel}>کارخانگی</Text>
           </TouchableOpacity>
         </View>
@@ -293,7 +314,9 @@ export default function TeacherDashboardTab() {
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionTitle}>فعالیت‌های اخیر</Text>
-              <TouchableOpacity onPress={() => handleNavigation("/(teacher)/activities")}>
+              <TouchableOpacity
+                onPress={() => handleNavigation("/(teacher)/activities")}
+              >
                 <Text style={styles.viewAllText}>مشاهده همه</Text>
               </TouchableOpacity>
             </View>
@@ -302,7 +325,7 @@ export default function TeacherDashboardTab() {
                 <TouchableOpacity
                   key={activity.id}
                   style={styles.activityCard}
-                  onPress={() => handleNavigation(activity.route)}
+                  onPress={() => handleNavigation(activity.route || "#")}
                 >
                   <View
                     style={[

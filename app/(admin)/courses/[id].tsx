@@ -1,127 +1,57 @@
-import React, { useState, useEffect, useCallback } from 'react';
+// app/(admin)/courses/[id].tsx
 import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-  TextInput,
-  Alert,
+  adminCourseApi,
+  CourseDetailType,
+  Lesson,
+} from "@/src/config/adminCourseApi";
+import { Ionicons } from "@expo/vector-icons";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import { useCallback, useEffect, useState } from "react";
+import {
   ActivityIndicator,
+  Alert,
   Image,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
-import { useLocalSearchParams } from 'expo-router';
-import { Colors } from '../../../constants/Colors';
-import { Header } from '../../../components/Header';
-
-interface CourseDetailType {
-  id: number;
-  title: string;
-  description: string;
-  long_description: string;
-  thumbnail_url: string;
-  teacher_id: number;
-  teacher_name: string;
-  teacher_email: string;
-  price: number;
-  is_free: boolean;
-  discount_price?: number;
-  category: string;
-  subcategory: string;
-  level: 'beginner' | 'intermediate' | 'advanced';
-  duration: number; // in hours
-  lectures_count: number;
-  quizzes_count: number;
-  assignments_count: number;
-  status: 'published' | 'draft' | 'archived';
-  featured: boolean;
-  certificate_available: boolean;
-  created_at: string;
-  updated_at: string;
-  enrolled_students: number;
-  completion_rate: number;
-  avg_rating: number;
-  reviews_count: number;
-  requirements: string[];
-  learning_outcomes: string[];
-}
-
-interface Lesson {
-  id: number;
-  title: string;
-  description: string;
-  duration: number;
-  type: 'video' | 'text' | 'quiz' | 'assignment';
-  preview: boolean;
-  order_no: number;
-}
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { Header } from "../../../components/Header";
+import { Colors } from "../../../constants/Colors";
 
 export default function CourseDetail() {
+  const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
   const [course, setCourse] = useState<CourseDetailType | null>(null);
   const [lessons, setLessons] = useState<Lesson[]>([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
   const [formData, setFormData] = useState<Partial<CourseDetailType>>({});
-  const [activeTab, setActiveTab] = useState<'overview' | 'curriculum' | 'stats' | 'reviews'>('overview');
+  const [activeTab, setActiveTab] = useState<
+    "overview" | "curriculum" | "stats"
+  >("overview");
 
   const fetchCourseDetail = useCallback(async () => {
     try {
       setLoading(true);
-      // TODO: Replace with actual API call
-      const mockCourse: CourseDetailType = {
-        id: parseInt(id || '1'),
-        title: 'ریاضی پیشرفته پایه هفتم',
-        description: 'آموزش کامل ریاضیات پیشرفته برای پایه هفتم',
-        long_description: 'این دوره شامل آموزش کامل مباحث ریاضی پایه هفتم به همراه تمرینات و مثال‌های متعدد است.',
-        thumbnail_url: 'https://via.placeholder.com/400x300',
-        teacher_id: 1,
-        teacher_name: 'دکتر علی محمدی',
-        teacher_email: 'ali@example.com',
-        price: 500000,
-        is_free: false,
-        discount_price: 450000,
-        category: 'ریاضی',
-        subcategory: 'متوسطه اول',
-        level: 'intermediate',
-        duration: 48,
-        lectures_count: 24,
-        quizzes_count: 6,
-        assignments_count: 3,
-        status: 'published',
-        featured: true,
-        certificate_available: true,
-        created_at: '۱۴۰۳/۰۱/۱۵',
-        updated_at: '۱۴۰۳/۰۶/۲۰',
-        enrolled_students: 245,
-        completion_rate: 78,
-        avg_rating: 4.8,
-        reviews_count: 45,
-        requirements: [
-          'آشنایی با مبانی ریاضی ابتدایی',
-          'دسترسی به کامپیوتر یا موبایل',
-        ],
-        learning_outcomes: [
-          'حل مسائل پیچیده ریاضی',
-          'درک مفاهیم پایه‌ای هندسه',
-          'توانایی حل مسئله',
-        ],
-      };
+      const [courseRes, lessonsRes] = await Promise.all([
+        adminCourseApi.getCourseDetail(parseInt(id)),
+        adminCourseApi.getCourseLessons(parseInt(id)),
+      ]);
 
-      const mockLessons: Lesson[] = [
-        { id: 1, title: 'معرفی دوره', description: 'آشنایی با دوره و مباحث', duration: 30, type: 'video', preview: true, order_no: 1 },
-        { id: 2, title: 'اعداد طبیعی', description: 'آشنایی با اعداد طبیعی', duration: 45, type: 'video', preview: false, order_no: 2 },
-        { id: 3, title: 'تمرین فصل اول', description: 'تمرینات اعداد طبیعی', duration: 20, type: 'assignment', preview: false, order_no: 3 },
-        { id: 4, title: 'آزمون کوتاه', description: 'آزمون فصل اول', duration: 15, type: 'quiz', preview: false, order_no: 4 },
-      ];
-
-      setCourse(mockCourse);
-      setFormData(mockCourse);
-      setLessons(mockLessons);
+      if (courseRes.success && courseRes.data) {
+        setCourse(courseRes.data);
+        setFormData(courseRes.data);
+      }
+      if (lessonsRes.success && lessonsRes.data) {
+        setLessons(lessonsRes.data);
+      }
     } catch (error) {
-      Alert.alert('خطا', 'در دریافت اطلاعات دوره مشکلی پیش آمده');
+      console.error("Error fetching course detail:", error);
+      Alert.alert("خطا", "در دریافت اطلاعات دوره مشکلی پیش آمده");
     } finally {
       setLoading(false);
     }
@@ -133,40 +63,92 @@ export default function CourseDetail() {
 
   const handleSave = async () => {
     try {
-      // TODO: Implement update API
-      Alert.alert('موفقیت', 'اطلاعات دوره با موفقیت بروزرسانی شد');
-      setEditing(false);
-      fetchCourseDetail();
-    } catch {
-      Alert.alert('خطا', 'در بروزرسانی اطلاعات مشکلی پیش آمده');
+      const response = await adminCourseApi.updateCourse(
+        parseInt(id),
+        formData,
+      );
+      if (response.success) {
+        Alert.alert("موفقیت", "اطلاعات دوره با موفقیت بروزرسانی شد");
+        setEditing(false);
+        fetchCourseDetail();
+      } else {
+        Alert.alert("خطا", response.message);
+      }
+    } catch (error) {
+      Alert.alert("خطا", "در بروزرسانی اطلاعات مشکلی پیش آمده");
     }
   };
 
-  const handleStatusChange = (newStatus: CourseDetailType['status']) => {
+  const handleStatusChange = (newStatus: CourseDetailType["status"]) => {
+    const statusText = {
+      published: "منتشر شده",
+      draft: "پیش‌نویس",
+      archived: "آرشیو شده",
+    };
+
     Alert.alert(
-      'تغییر وضعیت',
-      `آیا از تغییر وضعیت دوره به "${newStatus === 'published' ? 'منتشر شده' : newStatus === 'draft' ? 'پیش‌نویس' : 'آرشیو شده'}" اطمینان دارید؟`,
+      "تغییر وضعیت",
+      `آیا از تغییر وضعیت دوره به "${statusText[newStatus]}" اطمینان دارید؟`,
       [
-        { text: 'لغو', style: 'cancel' },
+        { text: "لغو", style: "cancel" },
         {
-          text: 'تغییر',
-          style: 'destructive',
-          onPress: () => {
-            // TODO: Implement status change API
-            setCourse(prev => prev ? { ...prev, status: newStatus } : null);
-            Alert.alert('موفقیت', 'وضعیت دوره با موفقیت تغییر یافت');
+          text: "تغییر",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              const response = await adminCourseApi.updateCourseStatus(
+                parseInt(id),
+                newStatus,
+              );
+              if (response.success) {
+                Alert.alert("موفقیت", response.message);
+                fetchCourseDetail();
+              } else {
+                Alert.alert("خطا", response.message);
+              }
+            } catch (error) {
+              Alert.alert("خطا", "خطا در تغییر وضعیت دوره");
+            }
           },
         },
-      ]
+      ],
+    );
+  };
+
+  const handleDeleteCourse = () => {
+    Alert.alert(
+      "حذف دوره",
+      "آیا از حذف این دوره اطمینان دارید؟ این عمل غیرقابل بازگشت است.",
+      [
+        { text: "لغو", style: "cancel" },
+        {
+          text: "حذف",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              const response = await adminCourseApi.deleteCourse(parseInt(id));
+              if (response.success) {
+                Alert.alert("موفقیت", response.message);
+                router.back();
+              } else {
+                Alert.alert("خطا", response.message);
+              }
+            } catch (error) {
+              Alert.alert("خطا", "خطا در حذف دوره");
+            }
+          },
+        },
+      ],
     );
   };
 
   if (loading) {
     return (
       <SafeAreaView style={styles.container}>
-        <Header title="جزئیات دوره" />
+        <Header title="جزئیات دوره" showBack />
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={Colors.primary} />
+          <Text style={styles.loadingText}>در حال بارگذاری...</Text>
         </View>
       </SafeAreaView>
     );
@@ -175,7 +157,7 @@ export default function CourseDetail() {
   if (!course) {
     return (
       <SafeAreaView style={styles.container}>
-        <Header title="جزئیات دوره" />
+        <Header title="جزئیات دوره" showBack />
         <View style={styles.errorContainer}>
           <Ionicons name="book-outline" size={64} color={Colors.danger} />
           <Text style={styles.errorText}>دوره یافت نشد</Text>
@@ -186,33 +168,46 @@ export default function CourseDetail() {
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'published': return Colors.success;
-      case 'draft': return Colors.warning;
-      case 'archived': return Colors.textSecondary;
-      default: return Colors.textSecondary;
+      case "published":
+        return Colors.success;
+      case "draft":
+        return Colors.warning;
+      case "archived":
+        return Colors.textSecondary;
+      default:
+        return Colors.textSecondary;
     }
   };
 
   const getLevelText = (level: string) => {
     switch (level) {
-      case 'beginner': return 'مبتدی';
-      case 'intermediate': return 'متوسط';
-      case 'advanced': return 'پیشرفته';
-      default: return level;
+      case "beginner":
+        return "مبتدی";
+      case "intermediate":
+        return "متوسط";
+      case "advanced":
+        return "پیشرفته";
+      default:
+        return level;
     }
+  };
+
+  const formatPrice = (price: number) => {
+    return price.toLocaleString() + " تومان";
   };
 
   return (
     <SafeAreaView style={styles.container}>
       <Header
         title="جزئیات دوره"
+        showBack
         rightComponent={
           <TouchableOpacity
             style={styles.editButton}
             onPress={() => setEditing(!editing)}
           >
             <Ionicons
-              name={editing ? 'close' : 'create'}
+              name={editing ? "close" : "create"}
               size={24}
               color={editing ? Colors.danger : Colors.primary}
             />
@@ -224,7 +219,10 @@ export default function CourseDetail() {
         {/* Course Header */}
         <View style={styles.courseHeader}>
           <Image
-            source={{ uri: course.thumbnail_url }}
+            source={{
+              uri:
+                course.thumbnail_url || "https://via.placeholder.com/400x300",
+            }}
             style={styles.courseImage}
           />
           <View style={styles.courseHeaderContent}>
@@ -232,20 +230,39 @@ export default function CourseDetail() {
               <TextInput
                 style={styles.editTitle}
                 value={formData.title}
-                onChangeText={(text) => setFormData({ ...formData, title: text })}
+                onChangeText={(text) =>
+                  setFormData({ ...formData, title: text })
+                }
+                placeholder="عنوان دوره"
+                textAlign="right"
               />
             ) : (
               <Text style={styles.courseTitle}>{course.title}</Text>
             )}
             <View style={styles.courseMeta}>
-              <View style={[styles.statusBadge, { backgroundColor: `${getStatusColor(course.status)}20` }]}>
-                <Text style={[styles.statusText, { color: getStatusColor(course.status) }]}>
-                  {course.status === 'published' ? 'منتشر شده' :
-                   course.status === 'draft' ? 'پیش‌نویس' : 'آرشیو شده'}
+              <View
+                style={[
+                  styles.statusBadge,
+                  { backgroundColor: `${getStatusColor(course.status)}20` },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.statusText,
+                    { color: getStatusColor(course.status) },
+                  ]}
+                >
+                  {course.status === "published"
+                    ? "منتشر شده"
+                    : course.status === "draft"
+                      ? "پیش‌نویس"
+                      : "آرشیو شده"}
                 </Text>
               </View>
               <View style={styles.levelBadge}>
-                <Text style={styles.levelText}>{getLevelText(course.level)}</Text>
+                <Text style={styles.levelText}>
+                  {getLevelText(course.level)}
+                </Text>
               </View>
               {course.featured && (
                 <View style={styles.featuredBadge}>
@@ -260,47 +277,70 @@ export default function CourseDetail() {
         {/* Tabs */}
         <View style={styles.tabsContainer}>
           <TouchableOpacity
-            style={[styles.tab, activeTab === 'overview' && styles.activeTab]}
-            onPress={() => setActiveTab('overview')}
+            style={[styles.tab, activeTab === "overview" && styles.activeTab]}
+            onPress={() => setActiveTab("overview")}
           >
             <Ionicons
               name="information-circle"
               size={20}
-              color={activeTab === 'overview' ? Colors.primary : Colors.textSecondary}
+              color={
+                activeTab === "overview" ? Colors.primary : Colors.textSecondary
+              }
             />
-            <Text style={[styles.tabText, activeTab === 'overview' && styles.activeTabText]}>
+            <Text
+              style={[
+                styles.tabText,
+                activeTab === "overview" && styles.activeTabText,
+              ]}
+            >
               اطلاعات کلی
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.tab, activeTab === 'curriculum' && styles.activeTab]}
-            onPress={() => setActiveTab('curriculum')}
+            style={[styles.tab, activeTab === "curriculum" && styles.activeTab]}
+            onPress={() => setActiveTab("curriculum")}
           >
             <Ionicons
               name="list"
               size={20}
-              color={activeTab === 'curriculum' ? Colors.primary : Colors.textSecondary}
+              color={
+                activeTab === "curriculum"
+                  ? Colors.primary
+                  : Colors.textSecondary
+              }
             />
-            <Text style={[styles.tabText, activeTab === 'curriculum' && styles.activeTabText]}>
+            <Text
+              style={[
+                styles.tabText,
+                activeTab === "curriculum" && styles.activeTabText,
+              ]}
+            >
               محتوای دوره
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.tab, activeTab === 'stats' && styles.activeTab]}
-            onPress={() => setActiveTab('stats')}
+            style={[styles.tab, activeTab === "stats" && styles.activeTab]}
+            onPress={() => setActiveTab("stats")}
           >
             <Ionicons
               name="stats-chart"
               size={20}
-              color={activeTab === 'stats' ? Colors.primary : Colors.textSecondary}
+              color={
+                activeTab === "stats" ? Colors.primary : Colors.textSecondary
+              }
             />
-            <Text style={[styles.tabText, activeTab === 'stats' && styles.activeTabText]}>
+            <Text
+              style={[
+                styles.tabText,
+                activeTab === "stats" && styles.activeTabText,
+              ]}
+            >
               آمار و ارقام
             </Text>
           </TouchableOpacity>
         </View>
 
-        {activeTab === 'overview' && (
+        {activeTab === "overview" && (
           <View>
             {/* Course Stats */}
             <View style={styles.statsContainer}>
@@ -316,11 +356,17 @@ export default function CourseDetail() {
               </View>
               <View style={styles.statItem}>
                 <Ionicons name="star" size={24} color={Colors.warning} />
-                <Text style={styles.statValue}>{course.avg_rating.toFixed(1)}</Text>
+                <Text style={styles.statValue}>
+                  {course.avg_rating.toFixed(1)}
+                </Text>
                 <Text style={styles.statLabel}>امتیاز</Text>
               </View>
               <View style={styles.statItem}>
-                <Ionicons name="checkmark-circle" size={24} color={Colors.success} />
+                <Ionicons
+                  name="checkmark-circle"
+                  size={24}
+                  color={Colors.success}
+                />
                 <Text style={styles.statValue}>{course.completion_rate}%</Text>
                 <Text style={styles.statLabel}>تکمیل</Text>
               </View>
@@ -333,14 +379,19 @@ export default function CourseDetail() {
                 <TextInput
                   style={[styles.infoCard, styles.editDescription]}
                   value={formData.long_description}
-                  onChangeText={(text) => setFormData({ ...formData, long_description: text })}
+                  onChangeText={(text) =>
+                    setFormData({ ...formData, long_description: text })
+                  }
                   multiline
                   numberOfLines={6}
                   placeholder="توضیحات دوره..."
+                  textAlign="right"
                 />
               ) : (
                 <View style={styles.infoCard}>
-                  <Text style={styles.descriptionText}>{course.long_description}</Text>
+                  <Text style={styles.descriptionText}>
+                    {course.long_description}
+                  </Text>
                 </View>
               )}
             </View>
@@ -350,15 +401,20 @@ export default function CourseDetail() {
               <Text style={styles.sectionTitle}>مدرس دوره</Text>
               <View style={styles.teacherCard}>
                 <View style={styles.teacherInfo}>
-                  <Ionicons name="person-circle" size={48} color={Colors.primary} />
+                  <Ionicons
+                    name="person-circle"
+                    size={48}
+                    color={Colors.primary}
+                  />
                   <View style={styles.teacherDetails}>
-                    <Text style={styles.teacherName}>{course.teacher_name}</Text>
-                    <Text style={styles.teacherEmail}>{course.teacher_email}</Text>
+                    <Text style={styles.teacherName}>
+                      {course.teacher_name}
+                    </Text>
+                    <Text style={styles.teacherEmail}>
+                      {course.teacher_email}
+                    </Text>
                   </View>
                 </View>
-                <TouchableOpacity style={styles.teacherButton}>
-                  <Text style={styles.teacherButtonText}>مشاهده پروفایل</Text>
-                </TouchableOpacity>
               </View>
             </View>
 
@@ -369,7 +425,11 @@ export default function CourseDetail() {
                 <View style={styles.infoCard}>
                   {course.requirements.map((req, index) => (
                     <View key={index} style={styles.requirementItem}>
-                      <Ionicons name="checkmark" size={16} color={Colors.success} />
+                      <Ionicons
+                        name="checkmark"
+                        size={16}
+                        color={Colors.success}
+                      />
                       <Text style={styles.requirementText}>{req}</Text>
                     </View>
                   ))}
@@ -378,101 +438,171 @@ export default function CourseDetail() {
             )}
 
             {/* Learning Outcomes */}
-            {course.learning_outcomes && course.learning_outcomes.length > 0 && (
-              <View style={styles.section}>
-                <Text style={styles.sectionTitle}>آنچه یاد خواهید گرفت</Text>
-                <View style={styles.infoCard}>
-                  {course.learning_outcomes.map((outcome, index) => (
-                    <View key={index} style={styles.outcomeItem}>
-                      <Ionicons name="arrow-forward" size={16} color={Colors.primary} />
-                      <Text style={styles.outcomeText}>{outcome}</Text>
-                    </View>
-                  ))}
+            {course.learning_outcomes &&
+              course.learning_outcomes.length > 0 && (
+                <View style={styles.section}>
+                  <Text style={styles.sectionTitle}>آنچه یاد خواهید گرفت</Text>
+                  <View style={styles.infoCard}>
+                    {course.learning_outcomes.map((outcome, index) => (
+                      <View key={index} style={styles.outcomeItem}>
+                        <Ionicons
+                          name="arrow-forward"
+                          size={16}
+                          color={Colors.primary}
+                        />
+                        <Text style={styles.outcomeText}>{outcome}</Text>
+                      </View>
+                    ))}
+                  </View>
                 </View>
-              </View>
-            )}
+              )}
 
             {/* Course Details */}
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>جزئیات دوره</Text>
               <View style={styles.detailsGrid}>
                 <View style={styles.detailItem}>
-                  <Ionicons name="calendar" size={20} color={Colors.textSecondary} />
+                  <Ionicons
+                    name="calendar"
+                    size={20}
+                    color={Colors.textSecondary}
+                  />
                   <Text style={styles.detailLabel}>تاریخ ایجاد</Text>
-                  <Text style={styles.detailValue}>{course.created_at}</Text>
-                </View>
-                <View style={styles.detailItem}>
-                  <Ionicons name="refresh" size={20} color={Colors.textSecondary} />
-                  <Text style={styles.detailLabel}>آخرین بروزرسانی</Text>
-                  <Text style={styles.detailValue}>{course.updated_at}</Text>
-                </View>
-                <View style={styles.detailItem}>
-                  <Ionicons name="school" size={20} color={Colors.textSecondary} />
-                  <Text style={styles.detailLabel}>دسترسی گواهینامه</Text>
                   <Text style={styles.detailValue}>
-                    {course.certificate_available ? 'دارد' : 'ندارد'}
+                    {new Date(course.created_at).toLocaleDateString("fa-IR")}
                   </Text>
                 </View>
                 <View style={styles.detailItem}>
-                  <Ionicons name="book" size={20} color={Colors.textSecondary} />
+                  <Ionicons
+                    name="refresh"
+                    size={20}
+                    color={Colors.textSecondary}
+                  />
+                  <Text style={styles.detailLabel}>آخرین بروزرسانی</Text>
+                  <Text style={styles.detailValue}>
+                    {new Date(course.updated_at).toLocaleDateString("fa-IR")}
+                  </Text>
+                </View>
+                <View style={styles.detailItem}>
+                  <Ionicons
+                    name="school"
+                    size={20}
+                    color={Colors.textSecondary}
+                  />
+                  <Text style={styles.detailLabel}>دسترسی گواهینامه</Text>
+                  <Text style={styles.detailValue}>
+                    {course.certificate_available ? "دارد" : "ندارد"}
+                  </Text>
+                </View>
+                <View style={styles.detailItem}>
+                  <Ionicons
+                    name="book"
+                    size={20}
+                    color={Colors.textSecondary}
+                  />
                   <Text style={styles.detailLabel}>تعداد دروس</Text>
-                  <Text style={styles.detailValue}>{course.lectures_count}</Text>
+                  <Text style={styles.detailValue}>
+                    {course.lectures_count}
+                  </Text>
+                </View>
+              </View>
+            </View>
+
+            {/* Pricing */}
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>قیمت‌گذاری</Text>
+              <View style={styles.infoCard}>
+                <View style={styles.priceRow}>
+                  <Text style={styles.priceLabel}>قیمت دوره:</Text>
+                  <Text style={styles.priceValue}>
+                    {course.is_free ? "رایگان" : formatPrice(course.price)}
+                  </Text>
                 </View>
               </View>
             </View>
           </View>
         )}
 
-        {activeTab === 'curriculum' && (
+        {activeTab === "curriculum" && (
           <View style={styles.section}>
             <View style={styles.curriculumHeader}>
               <Text style={styles.sectionTitle}>محتوای دوره</Text>
-              <TouchableOpacity style={styles.addLessonButton}>
+              <TouchableOpacity
+                style={styles.addLessonButton}
+                onPress={() =>
+                  Alert.alert("در حال توسعه", "افزودن درس به زودی اضافه می‌شود")
+                }
+              >
                 <Ionicons name="add" size={20} color="#fff" />
                 <Text style={styles.addLessonText}>افزودن درس</Text>
               </TouchableOpacity>
             </View>
 
             <View style={styles.lessonsList}>
-              {lessons.map((lesson, index) => (
-                <TouchableOpacity key={lesson.id} style={styles.lessonItem}>
-                  <View style={styles.lessonHeader}>
-                    <View style={styles.lessonNumber}>
-                      <Text style={styles.lessonNumberText}>{index + 1}</Text>
-                    </View>
-                    <View style={styles.lessonInfo}>
-                      <Text style={styles.lessonTitle}>{lesson.title}</Text>
-                      <View style={styles.lessonMeta}>
-                        <Text style={styles.lessonType}>
-                          {lesson.type === 'video' ? 'ویدیو' :
-                           lesson.type === 'quiz' ? 'آزمون' :
-                           lesson.type === 'assignment' ? 'تکلیف' : 'مقاله'}
-                        </Text>
-                        <Text style={styles.lessonDuration}>{lesson.duration} دقیقه</Text>
-                        {lesson.preview && (
-                          <View style={styles.previewBadge}>
-                            <Text style={styles.previewText}>پیش‌نمایش</Text>
-                          </View>
-                        )}
+              {lessons.length === 0 ? (
+                <View style={styles.emptyLessons}>
+                  <Ionicons
+                    name="book-outline"
+                    size={48}
+                    color={Colors.textSecondary}
+                  />
+                  <Text style={styles.emptyLessonsText}>
+                    هنوز درسی برای این دوره تعریف نشده است
+                  </Text>
+                </View>
+              ) : (
+                lessons.map((lesson, index) => (
+                  <TouchableOpacity key={lesson.id} style={styles.lessonItem}>
+                    <View style={styles.lessonHeader}>
+                      <View style={styles.lessonNumber}>
+                        <Text style={styles.lessonNumberText}>{index + 1}</Text>
                       </View>
+                      <View style={styles.lessonInfo}>
+                        <Text style={styles.lessonTitle}>{lesson.title}</Text>
+                        <View style={styles.lessonMeta}>
+                          <Text style={styles.lessonType}>
+                            {lesson.type === "video"
+                              ? "ویدیو"
+                              : lesson.type === "quiz"
+                                ? "آزمون"
+                                : lesson.type === "assignment"
+                                  ? "تکلیف"
+                                  : "مقاله"}
+                          </Text>
+                          <Text style={styles.lessonDuration}>
+                            {lesson.duration} دقیقه
+                          </Text>
+                          {lesson.preview && (
+                            <View style={styles.previewBadge}>
+                              <Text style={styles.previewText}>پیش‌نمایش</Text>
+                            </View>
+                          )}
+                        </View>
+                      </View>
+                      <TouchableOpacity style={styles.lessonAction}>
+                        <Ionicons
+                          name="ellipsis-vertical"
+                          size={20}
+                          color={Colors.textSecondary}
+                        />
+                      </TouchableOpacity>
                     </View>
-                    <TouchableOpacity style={styles.lessonAction}>
-                      <Ionicons name="ellipsis-vertical" size={20} color={Colors.textSecondary} />
-                    </TouchableOpacity>
-                  </View>
-                  {lesson.description && (
-                    <Text style={styles.lessonDescription}>{lesson.description}</Text>
-                  )}
-                </TouchableOpacity>
-              ))}
+                    {lesson.description && (
+                      <Text style={styles.lessonDescription}>
+                        {lesson.description}
+                      </Text>
+                    )}
+                  </TouchableOpacity>
+                ))
+              )}
             </View>
           </View>
         )}
 
-        {activeTab === 'stats' && (
+        {activeTab === "stats" && (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>آمار دوره</Text>
-            
+
             {/* Enrollment Stats */}
             <View style={styles.statsCard}>
               <View style={styles.statsHeader}>
@@ -481,112 +611,117 @@ export default function CourseDetail() {
               </View>
               <View style={styles.statsRow}>
                 <View style={styles.statsItem}>
-                  <Text style={styles.statsValue}>{course.enrolled_students}</Text>
+                  <Text style={styles.statsValue}>
+                    {course.enrolled_students}
+                  </Text>
                   <Text style={styles.statsLabel}>ثبت‌نامی کل</Text>
                 </View>
                 <View style={styles.statsItem}>
-                  <Text style={styles.statsValue}>{Math.round(course.enrolled_students * 0.3)}</Text>
+                  <Text style={styles.statsValue}>
+                    {Math.round(course.enrolled_students * 0.3)}
+                  </Text>
                   <Text style={styles.statsLabel}>ثبت‌نامی فعال</Text>
                 </View>
                 <View style={styles.statsItem}>
-                  <Text style={styles.statsValue}>{course.completion_rate}%</Text>
+                  <Text style={styles.statsValue}>
+                    {course.completion_rate}%
+                  </Text>
                   <Text style={styles.statsLabel}>نرخ تکمیل</Text>
                 </View>
               </View>
             </View>
 
             {/* Revenue Stats */}
-            <View style={styles.statsCard}>
-              <View style={styles.statsHeader}>
-                <Ionicons name="cash" size={24} color={Colors.success} />
-                <Text style={styles.statsTitle}>آمار درآمد</Text>
-              </View>
-              <View style={styles.statsRow}>
-                <View style={styles.statsItem}>
-                  <Text style={styles.statsValue}>
-                    {(course.price * course.enrolled_students).toLocaleString()}
-                  </Text>
-                  <Text style={styles.statsLabel}>درآمد کل (تومان)</Text>
+            {!course.is_free && (
+              <View style={styles.statsCard}>
+                <View style={styles.statsHeader}>
+                  <Ionicons name="cash" size={24} color={Colors.success} />
+                  <Text style={styles.statsTitle}>آمار درآمد</Text>
                 </View>
-                <View style={styles.statsItem}>
-                  <Text style={styles.statsValue}>
-                    {Math.round(course.price * course.enrolled_students * 0.7).toLocaleString()}
-                  </Text>
-                  <Text style={styles.statsLabel}>درآمد خالص</Text>
-                </View>
-                <View style={styles.statsItem}>
-                  <Text style={styles.statsValue}>
-                    {course.is_free ? 'رایگان' : course.price.toLocaleString()}
-                  </Text>
-                  <Text style={styles.statsLabel}>قیمت دوره</Text>
-                </View>
-              </View>
-            </View>
-
-            {/* Rating Stats */}
-            <View style={styles.statsCard}>
-              <View style={styles.statsHeader}>
-                <Ionicons name="star" size={24} color={Colors.warning} />
-                <Text style={styles.statsTitle}>امتیازها</Text>
-              </View>
-              <View style={styles.statsRow}>
-                <View style={styles.statsItem}>
-                  <Text style={styles.statsValue}>{course.avg_rating.toFixed(1)}</Text>
-                  <Text style={styles.statsLabel}>میانگین امتیاز</Text>
-                </View>
-                <View style={styles.statsItem}>
-                  <Text style={styles.statsValue}>{course.reviews_count}</Text>
-                  <Text style={styles.statsLabel}>تعداد نظرات</Text>
-                </View>
-                <View style={styles.statsItem}>
-                  <View style={styles.ratingDistribution}>
-                    <Ionicons name="star" size={16} color={Colors.warning} />
-                    <Ionicons name="star" size={16} color={Colors.warning} />
-                    <Ionicons name="star" size={16} color={Colors.warning} />
-                    <Ionicons name="star" size={16} color={Colors.warning} />
-                    <Ionicons name="star-half" size={16} color={Colors.warning} />
+                <View style={styles.statsRow}>
+                  <View style={styles.statsItem}>
+                    <Text style={styles.statsValue}>
+                      {(
+                        course.price * course.enrolled_students
+                      ).toLocaleString()}
+                    </Text>
+                    <Text style={styles.statsLabel}>درآمد کل (تومان)</Text>
                   </View>
-                  <Text style={styles.statsLabel}>توزیع امتیاز</Text>
+                  <View style={styles.statsItem}>
+                    <Text style={styles.statsValue}>
+                      {Math.round(
+                        course.price * course.enrolled_students * 0.7,
+                      ).toLocaleString()}
+                    </Text>
+                    <Text style={styles.statsLabel}>درآمد خالص</Text>
+                  </View>
+                  <View style={styles.statsItem}>
+                    <Text style={styles.statsValue}>
+                      {course.is_free
+                        ? "رایگان"
+                        : course.price.toLocaleString()}
+                    </Text>
+                    <Text style={styles.statsLabel}>قیمت دوره</Text>
+                  </View>
                 </View>
               </View>
-            </View>
+            )}
           </View>
         )}
 
-        {/* Status Actions */}
+        {/* Management Actions */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>مدیریت دوره</Text>
           <View style={styles.managementActions}>
             <TouchableOpacity
-              style={[styles.managementButton, { backgroundColor: Colors.primary + '20' }]}
-              onPress={() => handleStatusChange(course.status === 'published' ? 'draft' : 'published')}
+              style={[
+                styles.managementButton,
+                { backgroundColor: Colors.primary + "20" },
+              ]}
+              onPress={() =>
+                handleStatusChange(
+                  course.status === "published" ? "draft" : "published",
+                )
+              }
             >
               <Ionicons
-                name={course.status === 'published' ? 'eye-off' : 'eye'}
+                name={course.status === "published" ? "eye-off" : "eye"}
                 size={20}
                 color={Colors.primary}
               />
-              <Text style={[styles.managementButtonText, { color: Colors.primary }]}>
-                {course.status === 'published' ? 'عدم انتشار' : 'انتشار'}
+              <Text
+                style={[styles.managementButtonText, { color: Colors.primary }]}
+              >
+                {course.status === "published" ? "عدم انتشار" : "انتشار"}
               </Text>
             </TouchableOpacity>
-            
+
             <TouchableOpacity
-              style={[styles.managementButton, { backgroundColor: Colors.warning + '20' }]}
+              style={[
+                styles.managementButton,
+                { backgroundColor: Colors.warning + "20" },
+              ]}
               onPress={() => setEditing(!editing)}
             >
               <Ionicons name="create" size={20} color={Colors.warning} />
-              <Text style={[styles.managementButtonText, { color: Colors.warning }]}>
+              <Text
+                style={[styles.managementButtonText, { color: Colors.warning }]}
+              >
                 ویرایش
               </Text>
             </TouchableOpacity>
-            
+
             <TouchableOpacity
-              style={[styles.managementButton, { backgroundColor: Colors.danger + '20' }]}
-              onPress={() => Alert.alert('حذف دوره', 'آیا از حذف دوره اطمینان دارید؟')}
+              style={[
+                styles.managementButton,
+                { backgroundColor: Colors.danger + "20" },
+              ]}
+              onPress={handleDeleteCourse}
             >
               <Ionicons name="trash" size={20} color={Colors.danger} />
-              <Text style={[styles.managementButtonText, { color: Colors.danger }]}>
+              <Text
+                style={[styles.managementButtonText, { color: Colors.danger }]}
+              >
                 حذف
               </Text>
             </TouchableOpacity>
@@ -629,13 +764,18 @@ const styles = StyleSheet.create({
   },
   loadingContainer: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 14,
+    color: Colors.textSecondary,
   },
   errorContainer: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
   },
   errorText: {
     fontSize: 18,
@@ -646,20 +786,20 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
     backgroundColor: Colors.background,
   },
   courseHeader: {
     backgroundColor: Colors.card,
     borderRadius: 16,
-    overflow: 'hidden',
+    overflow: "hidden",
     marginBottom: 20,
     borderWidth: 1,
     borderColor: Colors.border,
   },
   courseImage: {
-    width: '100%',
+    width: "100%",
     height: 200,
   },
   courseHeaderContent: {
@@ -667,14 +807,14 @@ const styles = StyleSheet.create({
   },
   courseTitle: {
     fontSize: 24,
-    fontWeight: 'bold',
+    fontWeight: "bold",
     color: Colors.text,
     marginBottom: 12,
-    textAlign: 'right',
+    textAlign: "right",
   },
   editTitle: {
     fontSize: 24,
-    fontWeight: 'bold',
+    fontWeight: "bold",
     color: Colors.text,
     borderWidth: 1,
     borderColor: Colors.primary,
@@ -682,12 +822,12 @@ const styles = StyleSheet.create({
     padding: 12,
     marginBottom: 12,
     backgroundColor: Colors.background,
-    textAlign: 'right',
+    textAlign: "right",
   },
   courseMeta: {
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: 8,
-    flexWrap: 'wrap',
+    flexWrap: "wrap",
   },
   statusBadge: {
     paddingHorizontal: 12,
@@ -696,7 +836,7 @@ const styles = StyleSheet.create({
   },
   statusText: {
     fontSize: 14,
-    fontWeight: 'bold',
+    fontWeight: "bold",
   },
   levelBadge: {
     backgroundColor: Colors.background,
@@ -709,24 +849,24 @@ const styles = StyleSheet.create({
   levelText: {
     fontSize: 14,
     color: Colors.text,
-    fontWeight: '500',
+    fontWeight: "500",
   },
   featuredBadge: {
     backgroundColor: Colors.warning,
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 4,
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 12,
   },
   featuredText: {
-    color: '#fff',
+    color: "#fff",
     fontSize: 14,
-    fontWeight: 'bold',
+    fontWeight: "bold",
   },
   tabsContainer: {
-    flexDirection: 'row',
+    flexDirection: "row",
     backgroundColor: Colors.card,
     borderRadius: 12,
     padding: 4,
@@ -736,27 +876,27 @@ const styles = StyleSheet.create({
   },
   tab: {
     flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
     paddingVertical: 12,
     borderRadius: 8,
     gap: 8,
   },
   activeTab: {
-    backgroundColor: Colors.primary + '20',
+    backgroundColor: Colors.primary + "20",
   },
   tabText: {
     fontSize: 14,
     color: Colors.text,
-    fontWeight: '500',
+    fontWeight: "500",
   },
   activeTabText: {
     color: Colors.primary,
-    fontWeight: 'bold',
+    fontWeight: "bold",
   },
   statsContainer: {
-    flexDirection: 'row',
+    flexDirection: "row",
     backgroundColor: Colors.card,
     borderRadius: 16,
     padding: 20,
@@ -766,11 +906,11 @@ const styles = StyleSheet.create({
   },
   statItem: {
     flex: 1,
-    alignItems: 'center',
+    alignItems: "center",
   },
   statValue: {
     fontSize: 20,
-    fontWeight: 'bold',
+    fontWeight: "bold",
     color: Colors.text,
     marginVertical: 8,
   },
@@ -783,7 +923,7 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     fontSize: 18,
-    fontWeight: 'bold',
+    fontWeight: "bold",
     color: Colors.text,
     marginBottom: 12,
   },
@@ -798,18 +938,15 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: Colors.text,
     lineHeight: 28,
-    textAlign: 'right',
+    textAlign: "right",
   },
   editDescription: {
     minHeight: 150,
-    textAlignVertical: 'top',
+    textAlignVertical: "top",
     fontSize: 16,
     lineHeight: 28,
   },
   teacherCard: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
     backgroundColor: Colors.card,
     borderRadius: 12,
     padding: 16,
@@ -817,8 +954,8 @@ const styles = StyleSheet.create({
     borderColor: Colors.border,
   },
   teacherInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 12,
   },
   teacherDetails: {
@@ -826,7 +963,7 @@ const styles = StyleSheet.create({
   },
   teacherName: {
     fontSize: 16,
-    fontWeight: 'bold',
+    fontWeight: "bold",
     color: Colors.text,
     marginBottom: 4,
   },
@@ -834,21 +971,9 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: Colors.textSecondary,
   },
-  teacherButton: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 8,
-    backgroundColor: Colors.background,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  teacherButtonText: {
-    fontSize: 14,
-    color: Colors.text,
-  },
   requirementItem: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
+    flexDirection: "row",
+    alignItems: "flex-start",
     marginBottom: 8,
     gap: 8,
   },
@@ -859,8 +984,8 @@ const styles = StyleSheet.create({
     lineHeight: 24,
   },
   outcomeItem: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
+    flexDirection: "row",
+    alignItems: "flex-start",
     marginBottom: 8,
     gap: 8,
   },
@@ -871,16 +996,16 @@ const styles = StyleSheet.create({
     lineHeight: 24,
   },
   detailsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
+    flexDirection: "row",
+    flexWrap: "wrap",
     gap: 12,
   },
   detailItem: {
-    width: '48%',
+    width: "48%",
     backgroundColor: Colors.card,
     borderRadius: 8,
     padding: 12,
-    alignItems: 'center',
+    alignItems: "center",
     borderWidth: 1,
     borderColor: Colors.border,
   },
@@ -893,17 +1018,31 @@ const styles = StyleSheet.create({
   detailValue: {
     fontSize: 14,
     color: Colors.text,
-    fontWeight: '500',
+    fontWeight: "500",
+  },
+  priceRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  priceLabel: {
+    fontSize: 14,
+    color: Colors.textSecondary,
+  },
+  priceValue: {
+    fontSize: 16,
+    fontWeight: "bold",
+    color: Colors.primary,
   },
   curriculumHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     marginBottom: 16,
   },
   addLessonButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     backgroundColor: Colors.primary,
     paddingHorizontal: 16,
     paddingVertical: 8,
@@ -911,12 +1050,26 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   addLessonText: {
-    color: '#fff',
+    color: "#fff",
     fontSize: 14,
-    fontWeight: '500',
+    fontWeight: "500",
   },
   lessonsList: {
     gap: 8,
+  },
+  emptyLessons: {
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 40,
+    backgroundColor: Colors.card,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  emptyLessonsText: {
+    fontSize: 14,
+    color: Colors.textSecondary,
+    marginTop: 12,
   },
   lessonItem: {
     backgroundColor: Colors.card,
@@ -926,8 +1079,8 @@ const styles = StyleSheet.create({
     borderColor: Colors.border,
   },
   lessonHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 12,
   },
   lessonNumber: {
@@ -935,14 +1088,14 @@ const styles = StyleSheet.create({
     height: 32,
     borderRadius: 16,
     backgroundColor: Colors.background,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
     borderWidth: 1,
     borderColor: Colors.border,
   },
   lessonNumberText: {
     fontSize: 14,
-    fontWeight: 'bold',
+    fontWeight: "bold",
     color: Colors.primary,
   },
   lessonInfo: {
@@ -950,12 +1103,12 @@ const styles = StyleSheet.create({
   },
   lessonTitle: {
     fontSize: 16,
-    fontWeight: '500',
+    fontWeight: "500",
     color: Colors.text,
     marginBottom: 4,
   },
   lessonMeta: {
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: 12,
   },
   lessonType: {
@@ -967,7 +1120,7 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
   },
   previewBadge: {
-    backgroundColor: Colors.warning + '20',
+    backgroundColor: Colors.warning + "20",
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 4,
@@ -975,7 +1128,7 @@ const styles = StyleSheet.create({
   previewText: {
     fontSize: 10,
     color: Colors.warning,
-    fontWeight: 'bold',
+    fontWeight: "bold",
   },
   lessonAction: {
     padding: 4,
@@ -995,26 +1148,26 @@ const styles = StyleSheet.create({
     borderColor: Colors.border,
   },
   statsHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     marginBottom: 16,
     gap: 8,
   },
   statsTitle: {
     fontSize: 16,
-    fontWeight: 'bold',
+    fontWeight: "bold",
     color: Colors.text,
   },
   statsRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    justifyContent: "space-between",
   },
   statsItem: {
-    alignItems: 'center',
+    alignItems: "center",
   },
   statsValue: {
     fontSize: 20,
-    fontWeight: 'bold',
+    fontWeight: "bold",
     color: Colors.text,
     marginBottom: 4,
   },
@@ -1022,29 +1175,25 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: Colors.textSecondary,
   },
-  ratingDistribution: {
-    flexDirection: 'row',
-    gap: 2,
-  },
   managementActions: {
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: 12,
   },
   managementButton: {
     flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
     paddingVertical: 12,
     borderRadius: 8,
     gap: 8,
   },
   managementButtonText: {
     fontSize: 14,
-    fontWeight: '500',
+    fontWeight: "500",
   },
   actionButtons: {
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: 12,
     marginTop: 8,
   },
@@ -1052,15 +1201,15 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingVertical: 14,
     borderRadius: 8,
-    alignItems: 'center',
+    alignItems: "center",
   },
   saveButton: {
     backgroundColor: Colors.primary,
   },
   saveButtonText: {
-    color: '#fff',
+    color: "#fff",
     fontSize: 16,
-    fontWeight: 'bold',
+    fontWeight: "bold",
   },
   cancelButton: {
     backgroundColor: Colors.background,
@@ -1070,6 +1219,6 @@ const styles = StyleSheet.create({
   cancelButtonText: {
     color: Colors.text,
     fontSize: 16,
-    fontWeight: '500',
+    fontWeight: "500",
   },
 });

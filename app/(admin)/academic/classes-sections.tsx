@@ -1,289 +1,332 @@
-import { useState } from 'react';
+// app/(admin)/classes/index.tsx
+import { Header } from "@/components/Header";
+import { Colors } from "@/constants/Colors";
 import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-  TextInput,
-  Modal,
-  Alert,
-} from 'react-native';
+  adminClassApi,
+  ClassItem,
+  Teacher,
+} from "@/src/config/adminClassApi";
+import { useRouter } from "expo-router";
 import {
-  Users,
-  Plus,
   Edit2,
+  Plus,
+  Search,
   Trash2,
   User,
-  ChevronRight,
-  Search,
-  Building,
-  X,
-  BookOpen,
-} from 'lucide-react-native';
-
-interface ClassItem {
-  id: string;
-  name: string;
-  grade: string;
-  section: string;
-  students: number;
-  classTeacher: string;
-  room: string;
-  subjects: string[];
-  capacity?: string;
-}
-
-interface NewClass {
-  grade: string;
-  section: string;
-  classTeacher: string;
-  room: string;
-  capacity: string;
-}
+  Users,
+  X
+} from "lucide-react-native";
+import { useCallback, useEffect, useState } from "react";
+import {
+  ActivityIndicator,
+  Alert,
+  Modal,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 export default function ClassesSections() {
-  const [classes, setClasses] = useState<ClassItem[]>([
-    {
-      id: '1',
-      name: 'صنف ۱۰ الف',
-      grade: '10',
-      section: 'A',
-      students: 35,
-      classTeacher: 'استاد جان اسمیت',
-      room: 'اطاق ۱۰۱',
-      subjects: ['ریاضی', 'ساینس', 'انگلیسی'],
-      capacity: '40',
-    },
-    {
-      id: '2',
-      name: 'صنف ۹ ب',
-      grade: '9',
-      section: 'B',
-      students: 32,
-      classTeacher: 'استاد سارا جانسن',
-      room: 'اطاق ۲۰۵',
-      subjects: ['ریاضی', 'ساینس', 'مطالعات اجتماعی'],
-      capacity: '40',
-    },
-  ]);
-
+  const router = useRouter();
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [classes, setClasses] = useState<ClassItem[]>([]);
+  const [teachers, setTeachers] = useState<Teacher[]>([]);
+  const [grades, setGrades] = useState<string[]>([]);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedGrade, setSelectedGrade] = useState("all");
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingClass, setEditingClass] = useState<ClassItem | null>(null);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedGrade, setSelectedGrade] = useState('all');
-  const [selectedTeacher, setSelectedTeacher] = useState('all');
-
-  const [newClass, setNewClass] = useState<NewClass>({
-    grade: '',
-    section: '',
-    classTeacher: '',
-    room: '',
-    capacity: '40',
+  const [submitting, setSubmitting] = useState(false);
+  const [newClass, setNewClass] = useState({
+    name: "",
+    section: "",
+    teacherId: null as number | null,
+    capacity: "40",
   });
 
-  const grades = ['نرسری', 'KG', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12'];
-  const sections = ['A', 'B', 'C', 'D'];
-  const teachers = [
-    'استاد جان اسمیت',
-    'استاد سارا جانسن',
-    'استاد رابرت ویلسن',
-    'استاد اما دیویس',
-  ];
-  const rooms = ['اطاق ۱۰۱', 'اطاق ۱۰۲', 'اطاق ۲۰۱', 'اطاق ۳۰۱'];
+  const loadData = useCallback(async () => {
+    try {
+      setLoading(true);
+      const [classesRes, teachersRes, gradesRes] =
+        await Promise.all([
+          adminClassApi.getClasses({
+            search: searchQuery || undefined,
+            grade: selectedGrade !== "all" ? selectedGrade : undefined,
+          }),
+          adminClassApi.getTeachers(),
+          adminClassApi.getGrades(),
+        ]);
 
-  const handleSaveClass = () => {
-    if (!newClass.grade || !newClass.section || !newClass.classTeacher) {
-      Alert.alert('خطا', 'لطفاً تمام بخش‌های ضروری را تکمیل کنید');
+      if (classesRes.success && classesRes.data) {
+        setClasses(classesRes.data.classes);
+      }
+      if (teachersRes.success && teachersRes.data) {
+        setTeachers(teachersRes.data);
+      }
+      if (gradesRes.success && gradesRes.data) {
+        setGrades(gradesRes.data);
+      }
+    } catch (error) {
+      console.error("Error loading classes:", error);
+    } finally {
+      setLoading(false);
+    }
+  }, [searchQuery, selectedGrade]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    await loadData();
+    setRefreshing(false);
+  };
+
+  const handleSaveClass = async () => {
+    if (!newClass.name) {
+      Alert.alert("خطا", "لطفاً نام صنف را وارد کنید");
       return;
     }
 
-    const classObj: ClassItem = {
-      id: editingClass ? editingClass.id : Date.now().toString(),
-      name: `صنف ${newClass.grade} ${newClass.section}`,
-      grade: newClass.grade,
-      section: newClass.section,
-      students: editingClass ? editingClass.students : 0,
-      classTeacher: newClass.classTeacher,
-      room: newClass.room,
-      subjects: editingClass ? editingClass.subjects : [],
-      capacity: newClass.capacity,
-    };
+    setSubmitting(true);
+    try {
+      let response;
+      const classData = {
+        name: newClass.name,
+        section: newClass.section,
+        teacherId: newClass.teacherId,
+        capacity: newClass.capacity,
+      };
 
-    if (editingClass) {
-      setClasses(classes.map(c => (c.id === classObj.id ? classObj : c)));
-      Alert.alert('موفقیت', 'صنف با موفقیت ویرایش شد');
-    } else {
-      setClasses([...classes, classObj]);
-      Alert.alert('موفقیت', 'صنف جدید با موفقیت ایجاد شد');
+      if (editingClass) {
+        response = await adminClassApi.updateClass(editingClass.id, classData);
+      } else {
+        response = await adminClassApi.createClass(classData);
+      }
+
+      if (response.success) {
+        Alert.alert("موفقیت", response.message);
+        setShowAddModal(false);
+        resetForm();
+        loadData();
+      } else {
+        Alert.alert("خطا", response.message);
+      }
+    } catch (error) {
+      console.error("Save class error:", error);
+      Alert.alert("خطا", "خطا در ذخیره اطلاعات");
+    } finally {
+      setSubmitting(false);
     }
-
-    setShowAddModal(false);
-    setEditingClass(null);
-    setNewClass({ grade: '', section: '', classTeacher: '', room: '', capacity: '40' });
   };
 
   const handleEditClass = (classItem: ClassItem) => {
     setEditingClass(classItem);
     setNewClass({
-      grade: classItem.grade,
-      section: classItem.section,
-      classTeacher: classItem.classTeacher,
-      room: classItem.room,
-      capacity: classItem.capacity || '40',
+      name: classItem.name,
+      section: classItem.section || "",
+      teacherId: classItem.teacherId || null,
+      capacity: classItem.capacity || "40",
     });
     setShowAddModal(true);
   };
 
-  const handleDeleteClass = (id: string) => {
-    Alert.alert(
-      'حذف صنف',
-      'آیا مطمئن هستید که می‌خواهید این صنف را حذف کنید؟',
-      [
-        { text: 'لغو', style: 'cancel' },
-        {
-          text: 'حذف',
-          style: 'destructive',
-          onPress: () => {
-            setClasses(classes.filter(c => c.id !== id));
-            Alert.alert('موفقیت', 'صنف با موفقیت حذف شد');
-          },
+  const handleDeleteClass = async (id: number, name: string) => {
+    Alert.alert("حذف صنف", `آیا از حذف صنف "${name}" مطمئن هستید؟`, [
+      { text: "لغو", style: "cancel" },
+      {
+        text: "حذف",
+        style: "destructive",
+        onPress: async () => {
+          try {
+            const response = await adminClassApi.deleteClass(id);
+            if (response.success) {
+              Alert.alert("موفقیت", response.message);
+              loadData();
+            } else {
+              Alert.alert("خطا", response.message);
+            }
+          } catch (error) {
+            Alert.alert("خطا", "خطا در حذف صنف");
+          }
         },
-      ]
-    );
+      },
+    ]);
   };
 
   const resetForm = () => {
-    setNewClass({ grade: '', section: '', classTeacher: '', room: '', capacity: '40' });
+    setNewClass({
+      name: "",
+      section: "",
+      teacherId: null,
+      capacity: "40",
+    });
     setEditingClass(null);
     setShowAddModal(false);
   };
 
-  const filteredClasses = classes.filter(classItem => {
-    const matchesSearch = 
-      classItem.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      classItem.classTeacher.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      classItem.room.toLowerCase().includes(searchQuery.toLowerCase());
-    
-    const matchesGrade = selectedGrade === 'all' || classItem.grade === selectedGrade;
-    const matchesTeacher = selectedTeacher === 'all' || classItem.classTeacher === selectedTeacher;
-    
-    return matchesSearch && matchesGrade && matchesTeacher;
-  });
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.container} edges={["top"]}>
+        <Header title="صنف‌ها و بخش‌ها" showBack />
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={Colors.primary} />
+          <Text style={styles.loadingText}>در حال بارگذاری...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
-    <View style={styles.container}>
-      <ScrollView>
-        {/* Header */}
-        <View style={styles.header}>
-          <View style={styles.headerContent}>
-            <Text style={styles.title}>صنف‌ها و بخش‌ها</Text>
-            <Text style={styles.subtitle}>
-              مدیریت ساختار صنف‌ها و تعیین مسئولیت‌ها
-            </Text>
-          </View>
-          <TouchableOpacity style={styles.addButton} onPress={() => {
-            resetForm();
-            setShowAddModal(true);
-          }}>
-            <Plus size={20} color="white" />
-            <Text style={styles.addButtonText}>افزودن صنف</Text>
+    <SafeAreaView style={styles.container} edges={["top"]}>
+      <Header
+        title="صنف‌ها و بخش‌ها"
+        showBack
+        rightComponent={
+          <TouchableOpacity
+            onPress={() => {
+              resetForm();
+              setShowAddModal(true);
+            }}
+          >
+            <Plus size={24} color={Colors.primary} />
           </TouchableOpacity>
-        </View>
+        }
+      />
 
-        {/* Search and Filters */}
+      <ScrollView
+        style={styles.content}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            colors={[Colors.primary]}
+          />
+        }
+      >
+        {/* Search */}
         <View style={styles.searchContainer}>
           <Search size={20} color="#8E8E93" />
           <TextInput
             style={styles.searchInput}
-            placeholder="جستجوی صنف، استاد، اطاق..."
+            placeholder="جستجوی صنف، استاد..."
             value={searchQuery}
             onChangeText={setSearchQuery}
+            textAlign="right"
           />
         </View>
 
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filtersContainer}>
-          <TouchableOpacity 
-            style={[styles.filterChip, selectedGrade === 'all' && styles.filterChipActive]}
-            onPress={() => setSelectedGrade('all')}
+        {/* Grade Filters */}
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.filtersContainer}
+        >
+          <TouchableOpacity
+            style={[
+              styles.filterChip,
+              selectedGrade === "all" && styles.filterChipActive,
+            ]}
+            onPress={() => setSelectedGrade("all")}
           >
-            <Text style={[styles.filterChipText, selectedGrade === 'all' && styles.filterChipTextActive]}>
+            <Text
+              style={[
+                styles.filterChipText,
+                selectedGrade === "all" && styles.filterChipTextActive,
+              ]}
+            >
               تمام صنف‌ها
             </Text>
           </TouchableOpacity>
-          
-          {grades.map(grade => (
-            <TouchableOpacity 
+
+          {grades.map((grade) => (
+            <TouchableOpacity
               key={grade}
-              style={[styles.filterChip, selectedGrade === grade && styles.filterChipActive]}
+              style={[
+                styles.filterChip,
+                selectedGrade === grade && styles.filterChipActive,
+              ]}
               onPress={() => setSelectedGrade(grade)}
             >
-              <Text style={[styles.filterChipText, selectedGrade === grade && styles.filterChipTextActive]}>
-                صنف {grade}
+              <Text
+                style={[
+                  styles.filterChipText,
+                  selectedGrade === grade && styles.filterChipTextActive,
+                ]}
+              >
+                {grade}
               </Text>
             </TouchableOpacity>
           ))}
         </ScrollView>
 
         {/* Class List */}
-        {filteredClasses.map(classItem => (
-          <View key={classItem.id} style={styles.classCard}>
-            <View style={styles.classHeader}>
-              <View style={styles.classInfo}>
-                <Text style={styles.className}>{classItem.name}</Text>
-                <Text style={styles.classTeacher}>{classItem.classTeacher}</Text>
-              </View>
-              <View style={styles.studentCount}>
-                <Users size={16} color="#007AFF" />
-                <Text style={styles.studentCountText}>
-                  {classItem.students}/{classItem.capacity} شاگردان
-                </Text>
-              </View>
-            </View>
-            
-            <View style={styles.classDetails}>
-              <View style={styles.detailItem}>
-                <Building size={14} color="#8E8E93" />
-                <Text style={styles.detailText}>{classItem.room}</Text>
-              </View>
-              <View style={styles.detailItem}>
-                <BookOpen size={14} color="#8E8E93" />
-                <Text style={styles.detailText}>{classItem.subjects.join('، ')}</Text>
-              </View>
-            </View>
-
-            <View style={styles.classActions}>
-              <TouchableOpacity 
-                style={styles.actionButton}
-                onPress={() => handleEditClass(classItem)}
-              >
-                <Edit2 size={16} color="#007AFF" />
-                <Text style={styles.actionText}>ویرایش</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity 
-                style={styles.actionButton}
-                onPress={() => handleDeleteClass(classItem.id)}
-              >
-                <Trash2 size={16} color="#FF3B30" />
-                <Text style={[styles.actionText, { color: '#FF3B30' }]}>حذف</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        ))}
-        
-        {filteredClasses.length === 0 && (
+        {classes.length === 0 ? (
           <View style={styles.emptyState}>
             <Users size={48} color="#C7C7CC" />
             <Text style={styles.emptyStateText}>هیچ صنفی یافت نشد</Text>
+            <Text style={styles.emptyStateSubtext}>
+              برای ایجاد صنف جدید، روی دکمه + در بالای صفحه کلیک کنید
+            </Text>
           </View>
+        ) : (
+          classes.map((classItem) => (
+            <View key={classItem.id} style={styles.classCard}>
+              <View style={styles.classHeader}>
+                <View style={styles.classInfo}>
+                  <Text style={styles.className}>{classItem.name}</Text>
+                  {classItem.section ? (
+                    <Text style={styles.classSection}>{classItem.section}</Text>
+                  ) : null}
+                  <Text style={styles.classTeacher}>
+                    {classItem.classTeacher || "نامشخص"}
+                  </Text>
+                </View>
+                <View style={styles.studentCount}>
+                  <Users size={16} color={Colors.primary} />
+                  <Text style={styles.studentCountText}>
+                    {classItem.students}/{classItem.capacity} شاگردان
+                  </Text>
+                </View>
+              </View>
+
+              <View style={styles.classActions}>
+                <TouchableOpacity
+                  style={styles.actionButton}
+                  onPress={() => handleEditClass(classItem)}
+                >
+                  <Edit2 size={16} color={Colors.primary} />
+                  <Text style={styles.actionText}>ویرایش</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.actionButton}
+                  onPress={() =>
+                    handleDeleteClass(classItem.id, classItem.name)
+                  }
+                >
+                  <Trash2 size={16} color={Colors.danger} />
+                  <Text style={[styles.actionText, { color: Colors.danger }]}>
+                    حذف
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          ))
         )}
       </ScrollView>
 
       {/* Add/Edit Modal */}
-      <Modal 
-        visible={showAddModal} 
-        transparent 
+      <Modal
+        visible={showAddModal}
+        transparent
         animationType="slide"
         onRequestClose={resetForm}
       >
@@ -291,7 +334,7 @@ export default function ClassesSections() {
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>
-                {editingClass ? 'ویرایش صنف' : 'ایجاد صنف جدید'}
+                {editingClass ? "ویرایش صنف" : "ایجاد صنف جدید"}
               </Text>
               <TouchableOpacity onPress={resetForm}>
                 <X size={24} color="#8E8E93" />
@@ -299,102 +342,75 @@ export default function ClassesSections() {
             </View>
 
             <ScrollView style={styles.modalForm}>
-              {/* Grade Selection */}
+              {/* Class Name Input */}
               <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>صنف *</Text>
-                <View style={styles.optionsGrid}>
-                  {grades.map(grade => (
-                    <TouchableOpacity
-                      key={grade}
-                      style={[
-                        styles.optionButton,
-                        newClass.grade === grade && styles.optionButtonActive
-                      ]}
-                      onPress={() => setNewClass({...newClass, grade})}
-                    >
-                      <Text style={[
-                        styles.optionText,
-                        newClass.grade === grade && styles.optionTextActive
-                      ]}>
-                        {grade}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
+                <Text style={styles.inputLabel}>نام صنف *</Text>
+                <TextInput
+                  style={styles.formInput}
+                  placeholder="مثال: دوازدهم"
+                  value={newClass.name}
+                  onChangeText={(text) =>
+                    setNewClass({ ...newClass, name: text })
+                  }
+                  textAlign="right"
+                />
               </View>
 
-              {/* Section Selection */}
+              {/* Section Input (Optional) */}
               <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>بخش *</Text>
-                <View style={styles.optionsRow}>
-                  {sections.map(section => (
-                    <TouchableOpacity
-                      key={section}
-                      style={[
-                        styles.optionButton,
-                        newClass.section === section && styles.optionButtonActive
-                      ]}
-                      onPress={() => setNewClass({...newClass, section})}
-                    >
-                      <Text style={[
-                        styles.optionText,
-                        newClass.section === section && styles.optionTextActive
-                      ]}>
-                        {section}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
+                <Text style={styles.inputLabel}>بخش (اختیاری)</Text>
+                <TextInput
+                  style={styles.formInput}
+                  placeholder="مثال: الف"
+                  value={newClass.section}
+                  onChangeText={(text) =>
+                    setNewClass({ ...newClass, section: text })
+                  }
+                  textAlign="right"
+                />
               </View>
 
-              {/* Class Teacher Selection */}
+              {/* Teacher Selection */}
               <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>استاد صنف *</Text>
-                <View style={styles.selectContainer}>
-                  {teachers.map(teacher => (
-                    <TouchableOpacity
-                      key={teacher}
-                      style={[
-                        styles.selectOption,
-                        newClass.classTeacher === teacher && styles.selectOptionActive
-                      ]}
-                      onPress={() => setNewClass({...newClass, classTeacher: teacher})}
-                    >
-                      <User size={16} color="#8E8E93" />
-                      <Text style={[
-                        styles.selectOptionText,
-                        newClass.classTeacher === teacher && styles.selectOptionTextActive
-                      ]}>
-                        {teacher}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              </View>
-
-              {/* Room Selection */}
-              <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>اطاق</Text>
-                <View style={styles.selectContainer}>
-                  {rooms.map(room => (
-                    <TouchableOpacity
-                      key={room}
-                      style={[
-                        styles.selectOption,
-                        newClass.room === room && styles.selectOptionActive
-                      ]}
-                      onPress={() => setNewClass({...newClass, room})}
-                    >
-                      <Building size={16} color="#8E8E93" />
-                      <Text style={[
-                        styles.selectOptionText,
-                        newClass.room === room && styles.selectOptionTextActive
-                      ]}>
-                        {room}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
+                <Text style={styles.inputLabel}>استاد صنف</Text>
+                <ScrollView style={styles.selectContainer} nestedScrollEnabled>
+                  {teachers.length === 0 ? (
+                    <Text style={styles.noDataText}>هیچ استادی یافت نشد</Text>
+                  ) : (
+                    teachers.map((teacher) => (
+                      <TouchableOpacity
+                        key={teacher.id}
+                        style={[
+                          styles.selectOption,
+                          newClass.teacherId === teacher.id &&
+                            styles.selectOptionActive,
+                        ]}
+                        onPress={() =>
+                          setNewClass({
+                            ...newClass,
+                            teacherId: teacher.id,
+                          })
+                        }
+                      >
+                        <User size={16} color="#8E8E93" />
+                        <Text
+                          style={[
+                            styles.selectOptionText,
+                            newClass.teacherId === teacher.id &&
+                              styles.selectOptionTextActive,
+                          ]}
+                        >
+                          {teacher.name}
+                        </Text>
+                        {newClass.teacherId === teacher.id && (
+                          <View style={styles.checkMark}>
+                            <Text style={styles.checkMarkText}>✓</Text>
+                          </View>
+                        )}
+                      </TouchableOpacity>
+                    ))
+                  )}
+                </ScrollView>
               </View>
 
               {/* Capacity Input */}
@@ -404,9 +420,12 @@ export default function ClassesSections() {
                   <TextInput
                     style={styles.capacityInput}
                     value={newClass.capacity}
-                    onChangeText={(text) => setNewClass({...newClass, capacity: text})}
+                    onChangeText={(text) =>
+                      setNewClass({ ...newClass, capacity: text })
+                    }
                     keyboardType="numeric"
                     placeholder="40"
+                    textAlign="right"
                   />
                   <Text style={styles.capacityLabel}>شاگرد</Text>
                 </View>
@@ -414,80 +433,65 @@ export default function ClassesSections() {
             </ScrollView>
 
             <View style={styles.modalActions}>
-              <TouchableOpacity
-                style={styles.cancelButton}
-                onPress={resetForm}
-              >
+              <TouchableOpacity style={styles.cancelButton} onPress={resetForm}>
                 <Text style={styles.cancelButtonText}>لغو</Text>
               </TouchableOpacity>
-              
-              <TouchableOpacity 
-                style={styles.saveButton} 
+
+              <TouchableOpacity
+                style={styles.saveButton}
                 onPress={handleSaveClass}
+                disabled={submitting}
               >
                 <Text style={styles.saveButtonText}>
-                  {editingClass ? 'به‌روزرسانی صنف' : 'ایجاد صنف'}
+                  {submitting
+                    ? "در حال..."
+                    : editingClass
+                      ? "به‌روزرسانی صنف"
+                      : "ایجاد صنف"}
                 </Text>
               </TouchableOpacity>
             </View>
           </View>
         </View>
       </Modal>
-    </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f5f5f7' },
-  header: {
+  container: {
+    flex: 1,
+    backgroundColor: Colors.background,
+  },
+  content: {
+    flex: 1,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
     padding: 20,
-    backgroundColor: 'white',
-    borderBottomWidth: 1,
-    borderBottomColor: '#e5e5ea',
   },
-  headerContent: {
-    marginBottom: 12,
-  },
-  title: { 
-    fontSize: 24, 
-    fontWeight: 'bold',
-    color: '#1c1c1e'
-  },
-  subtitle: { 
-    fontSize: 14, 
-    color: '#8E8E93',
-    marginTop: 4
-  },
-  addButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor: '#007AFF',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderRadius: 12,
-    alignSelf: 'flex-start',
-  },
-  addButtonText: { 
-    color: 'white', 
-    fontWeight: '600',
-    fontSize: 16
+  loadingText: {
+    marginTop: 16,
+    fontSize: 16,
+    color: Colors.textSecondary,
   },
   searchContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     margin: 16,
-    backgroundColor: '#f2f2f7',
+    backgroundColor: Colors.card,
     padding: 12,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#e5e5ea',
+    borderColor: Colors.border,
   },
-  searchInput: { 
-    marginLeft: 12, 
+  searchInput: {
+    marginLeft: 12,
     flex: 1,
     fontSize: 16,
-    color: '#1c1c1e',
+    color: Colors.text,
   },
   filtersContainer: {
     paddingHorizontal: 16,
@@ -496,136 +500,133 @@ const styles = StyleSheet.create({
   filterChip: {
     paddingHorizontal: 16,
     paddingVertical: 8,
-    backgroundColor: '#f2f2f7',
+    backgroundColor: Colors.card,
     borderRadius: 20,
     marginRight: 8,
     borderWidth: 1,
-    borderColor: '#e5e5ea',
+    borderColor: Colors.border,
   },
   filterChipActive: {
-    backgroundColor: '#007AFF',
-    borderColor: '#007AFF',
+    backgroundColor: Colors.primary,
+    borderColor: Colors.primary,
   },
   filterChipText: {
     fontSize: 14,
-    color: '#8E8E93',
-    fontWeight: '500',
+    color: Colors.textSecondary,
+    fontWeight: "500",
   },
   filterChipTextActive: {
-    color: 'white',
+    color: "white",
   },
   classCard: {
-    backgroundColor: 'white',
+    backgroundColor: Colors.card,
     marginHorizontal: 16,
     marginBottom: 12,
     padding: 16,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: '#e5e5ea',
-    shadowColor: '#000',
+    borderColor: Colors.border,
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.05,
     shadowRadius: 2,
     elevation: 2,
   },
   classHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
     marginBottom: 12,
   },
   classInfo: {
     flex: 1,
   },
-  className: { 
-    fontSize: 18, 
-    fontWeight: '600',
-    color: '#1c1c1e',
-    marginBottom: 4
+  className: {
+    fontSize: 18,
+    fontWeight: "600",
+    color: Colors.text,
+    marginBottom: 4,
   },
-  classTeacher: { 
+  classSection: {
     fontSize: 14,
-    color: '#8E8E93',
+    color: Colors.primary,
+    marginBottom: 4,
+  },
+  classTeacher: {
+    fontSize: 14,
+    color: Colors.textSecondary,
   },
   studentCount: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 6,
-    backgroundColor: '#f2f2f7',
+    backgroundColor: Colors.background,
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 12,
   },
   studentCountText: {
     fontSize: 14,
-    color: '#007AFF',
-    fontWeight: '500',
-  },
-  classDetails: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 12,
-    marginBottom: 16,
-  },
-  detailItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  detailText: {
-    fontSize: 14,
-    color: '#8E8E93',
+    color: Colors.primary,
+    fontWeight: "500",
   },
   classActions: {
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: 16,
     paddingTop: 12,
     borderTopWidth: 1,
-    borderTopColor: '#f2f2f7',
+    borderTopColor: Colors.border,
   },
   actionButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 6,
   },
-  actionText: { 
+  actionText: {
     fontSize: 14,
-    color: '#007AFF',
-    fontWeight: '500',
+    color: Colors.primary,
+    fontWeight: "500",
   },
   emptyState: {
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     padding: 48,
   },
   emptyStateText: {
     fontSize: 16,
-    color: '#8E8E93',
+    color: Colors.textSecondary,
     marginTop: 12,
+    fontWeight: "bold",
+  },
+  emptyStateSubtext: {
+    fontSize: 14,
+    color: Colors.textSecondary,
+    marginTop: 8,
+    textAlign: "center",
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'flex-end',
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "flex-end",
   },
   modalContent: {
-    backgroundColor: 'white',
+    backgroundColor: Colors.card,
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
-    maxHeight: '90%',
+    maxHeight: "90%",
   },
   modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     padding: 20,
     borderBottomWidth: 1,
-    borderBottomColor: '#f2f2f7',
+    borderBottomColor: Colors.border,
   },
-  modalTitle: { 
-    fontSize: 20, 
-    fontWeight: '600',
-    color: '#1c1c1e'
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: "600",
+    color: Colors.text,
   },
   modalForm: {
     padding: 20,
@@ -635,119 +636,119 @@ const styles = StyleSheet.create({
   },
   inputLabel: {
     fontSize: 16,
-    fontWeight: '600',
-    color: '#1c1c1e',
+    fontWeight: "600",
+    color: Colors.text,
     marginBottom: 12,
   },
-  optionsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  optionsRow: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  optionButton: {
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    backgroundColor: '#f2f2f7',
+  formInput: {
+    backgroundColor: Colors.background,
     borderRadius: 12,
+    padding: 14,
     borderWidth: 1,
-    borderColor: '#e5e5ea',
-    minWidth: 50,
-    alignItems: 'center',
-  },
-  optionButtonActive: {
-    backgroundColor: '#007AFF',
-    borderColor: '#007AFF',
-  },
-  optionText: {
+    borderColor: Colors.border,
     fontSize: 16,
-    color: '#8E8E93',
-    fontWeight: '500',
-  },
-  optionTextActive: {
-    color: 'white',
+    color: Colors.text,
+    textAlign: "right",
   },
   selectContainer: {
+    maxHeight: 200,
     gap: 8,
   },
   selectOption: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 12,
     padding: 14,
-    backgroundColor: '#f2f2f7',
+    backgroundColor: Colors.background,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#e5e5ea',
+    borderColor: Colors.border,
   },
   selectOptionActive: {
-    backgroundColor: '#e3f2ff',
-    borderColor: '#007AFF',
+    backgroundColor: "rgba(59, 130, 246, 0.1)",
+    borderColor: Colors.primary,
   },
   selectOptionText: {
     fontSize: 16,
-    color: '#1c1c1e',
+    color: Colors.text,
     flex: 1,
   },
   selectOptionTextActive: {
-    color: '#007AFF',
-    fontWeight: '500',
+    color: Colors.primary,
+    fontWeight: "500",
+  },
+  checkMark: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: Colors.primary,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  checkMarkText: {
+    color: "white",
+    fontSize: 14,
+    fontWeight: "bold",
+  },
+  noDataText: {
+    fontSize: 14,
+    color: Colors.textSecondary,
+    textAlign: "center",
+    padding: 20,
   },
   capacityContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#f2f2f7',
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: Colors.background,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#e5e5ea',
-    overflow: 'hidden',
+    borderColor: Colors.border,
+    overflow: "hidden",
   },
   capacityInput: {
     flex: 1,
     padding: 14,
     fontSize: 16,
-    color: '#1c1c1e',
+    color: Colors.text,
+    textAlign: "right",
   },
   capacityLabel: {
     paddingHorizontal: 16,
     paddingVertical: 14,
     fontSize: 16,
-    color: '#8E8E93',
-    backgroundColor: '#e5e5ea',
+    color: Colors.textSecondary,
+    backgroundColor: Colors.border,
   },
   modalActions: {
-    flexDirection: 'row',
+    flexDirection: "row",
     padding: 20,
     paddingTop: 0,
     gap: 12,
   },
   saveButton: {
     flex: 2,
-    backgroundColor: '#007AFF',
+    backgroundColor: Colors.primary,
     padding: 16,
     borderRadius: 12,
-    alignItems: 'center',
+    alignItems: "center",
   },
-  saveButtonText: { 
-    color: 'white', 
-    fontWeight: '600',
-    fontSize: 16
+  saveButtonText: {
+    color: "white",
+    fontWeight: "600",
+    fontSize: 16,
   },
   cancelButton: {
     flex: 1,
     padding: 16,
     borderRadius: 12,
-    alignItems: 'center',
-    backgroundColor: '#f2f2f7',
+    alignItems: "center",
+    backgroundColor: Colors.background,
     borderWidth: 1,
-    borderColor: '#e5e5ea',
+    borderColor: Colors.border,
   },
-  cancelButtonText: { 
+  cancelButtonText: {
     fontSize: 16,
-    color: '#8E8E93',
-    fontWeight: '500'
+    color: Colors.textSecondary,
+    fontWeight: "500",
   },
 });

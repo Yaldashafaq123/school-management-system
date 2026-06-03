@@ -1,34 +1,36 @@
-import React, { useState } from 'react';
+import { Ionicons } from "@expo/vector-icons";
+import { LinearGradient } from "expo-linear-gradient";
+import { useRouter } from "expo-router";
+import { useState } from "react";
 import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  TextInput,
+  Alert,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
-  Alert,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { LinearGradient } from 'expo-linear-gradient';
-import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
-import { Colors } from '../../constants/Colors';
-import { BASE_URL } from '../../src/config/api';
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { Colors } from "../../constants/Colors";
+import { BASE_URL } from "../../src/config/api";
 
 export default function ForgotPasswordScreen() {
   const router = useRouter();
-  
-  const [email, setEmail] = useState('');
-  const [step, setStep] = useState<'email' | 'verification' | 'newPassword'>('email');
-  const [verificationCode, setVerificationCode] = useState('');
-  const [newPassword, setNewPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
+
+  const [email, setEmail] = useState("");
+  const [step, setStep] = useState<"email" | "verification" | "newPassword">(
+    "email",
+  );
+  const [verificationCode, setVerificationCode] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-  
+
   const [validationErrors, setValidationErrors] = useState<{
     email?: string;
     verificationCode?: string;
@@ -38,47 +40,47 @@ export default function ForgotPasswordScreen() {
 
   const validateEmail = () => {
     const errors: typeof validationErrors = {};
-    
+
     if (!email.trim()) {
-      errors.email = 'ایمیل الزامی است';
+      errors.email = "ایمیل الزامی است";
     } else if (!/\S+@\S+\.\S+/.test(email)) {
-      errors.email = 'ایمیل معتبر نیست';
+      errors.email = "ایمیل معتبر نیست";
     }
-    
+
     setValidationErrors(errors);
     return Object.keys(errors).length === 0;
   };
 
   const validateVerificationCode = () => {
     const errors: typeof validationErrors = {};
-    
+
     if (!verificationCode.trim()) {
-      errors.verificationCode = 'کد تایید الزامی است';
+      errors.verificationCode = "کد تایید الزامی است";
     } else if (verificationCode.length !== 6) {
-      errors.verificationCode = 'کد تایید باید ۶ رقمی باشد';
+      errors.verificationCode = "کد تایید باید ۶ رقمی باشد";
     } else if (!/^\d+$/.test(verificationCode)) {
-      errors.verificationCode = 'کد تایید باید عددی باشد';
+      errors.verificationCode = "کد تایید باید عددی باشد";
     }
-    
+
     setValidationErrors(errors);
     return Object.keys(errors).length === 0;
   };
 
   const validatePasswords = () => {
     const errors: typeof validationErrors = {};
-    
+
     if (!newPassword.trim()) {
-      errors.newPassword = 'رمز عبور جدید الزامی است';
+      errors.newPassword = "رمز عبور جدید الزامی است";
     } else if (newPassword.length < 6) {
-      errors.newPassword = 'رمز عبور باید حداقل ۶ کاراکتر باشد';
+      errors.newPassword = "رمز عبور باید حداقل ۶ کاراکتر باشد";
     }
-    
+
     if (!confirmPassword.trim()) {
-      errors.confirmPassword = 'تکرار رمز عبور الزامی است';
+      errors.confirmPassword = "تکرار رمز عبور الزامی است";
     } else if (newPassword !== confirmPassword) {
-      errors.confirmPassword = 'رمز عبور با تکرار آن مطابقت ندارد';
+      errors.confirmPassword = "رمز عبور با تکرار آن مطابقت ندارد";
     }
-    
+
     setValidationErrors(errors);
     return Object.keys(errors).length === 0;
   };
@@ -102,13 +104,11 @@ export default function ForgotPasswordScreen() {
         throw new Error(data.message || "خطا در ارسال کد");
       }
 
-      Alert.alert(
-        'کد تایید ارسال شد',
-        `کد تایید به ایمیل ${email} ارسال شد.`,
-        [{ text: 'باشه', onPress: () => setStep('verification') }]
-      );
+      Alert.alert("کد تایید ارسال شد", `کد تایید به ایمیل ${email} ارسال شد.`, [
+        { text: "باشه", onPress: () => setStep("verification") },
+      ]);
     } catch (error: any) {
-      Alert.alert('خطا', error.message || 'ارسال کد تایید ناموفق بود');
+      Alert.alert("خطا", error.message || "ارسال کد تایید ناموفق بود");
     } finally {
       setLoading(false);
     }
@@ -133,9 +133,9 @@ export default function ForgotPasswordScreen() {
         throw new Error(data.message || "کد نامعتبر است");
       }
 
-      setStep('newPassword');
+      setStep("newPassword");
     } catch (error: any) {
-      Alert.alert('خطا', error.message || 'تایید کد ناموفق بود');
+      Alert.alert("خطا", error.message || "تایید کد ناموفق بود");
     } finally {
       setLoading(false);
     }
@@ -151,10 +151,10 @@ export default function ForgotPasswordScreen() {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ 
-          email, 
+        body: JSON.stringify({
+          email,
           code: verificationCode,
-          newPassword 
+          newPassword,
         }),
       });
 
@@ -164,23 +164,19 @@ export default function ForgotPasswordScreen() {
         throw new Error(data.message || "خطا در تغییر رمز عبور");
       }
 
-      Alert.alert(
-        'موفقیت',
-        'رمز عبور شما با موفقیت تغییر یافت.',
-        [
-          {
-            text: 'ورود به حساب',
-            onPress: () => {
-              router.replace({
-                pathname: '/(auth)/login',
-                params: { email }
-              });
-            }
-          }
-        ]
-      );
+      Alert.alert("موفقیت", "رمز عبور شما با موفقیت تغییر یافت.", [
+        {
+          text: "ورود به حساب",
+          onPress: () => {
+            router.replace({
+              pathname: "/(auth)/login",
+              params: { email },
+            });
+          },
+        },
+      ]);
     } catch (error: any) {
-      Alert.alert('خطا', error.message || 'تغییر رمز عبور ناموفق بود');
+      Alert.alert("خطا", error.message || "تغییر رمز عبور ناموفق بود");
     } finally {
       setLoading(false);
     }
@@ -203,16 +199,13 @@ export default function ForgotPasswordScreen() {
         throw new Error(data.message || "خطا در ارسال مجدد کد");
       }
 
-      Alert.alert('توجه', 'کد جدید به ایمیل شما ارسال شد.');
+      Alert.alert("توجه", "کد جدید به ایمیل شما ارسال شد.");
     } catch (error: any) {
-      Alert.alert('خطا', error.message || 'ارسال مجدد کد ناموفق بود');
+      Alert.alert("خطا", error.message || "ارسال مجدد کد ناموفق بود");
     } finally {
       setLoading(false);
     }
   };
-
-  // All the render functions (renderStepEmail, renderStepVerification, renderStepNewPassword) 
-  // remain EXACTLY the same as your original file - NO UI CHANGES
 
   const renderStepEmail = () => (
     <>
@@ -226,15 +219,18 @@ export default function ForgotPasswordScreen() {
 
       <Text style={styles.stepTitle}>بازیابی رمز عبور</Text>
       <Text style={styles.stepDescription}>
-        لطفا آدرس ایمیل حساب کاربری خود را وارد کنید تا کد تایید برای شما ارسال شود.
+        لطفا آدرس ایمیل حساب کاربری خود را وارد کنید تا کد تایید برای شما ارسال
+        شود.
       </Text>
 
       <View style={styles.inputGroup}>
         <Text style={styles.inputLabel}>ایمیل</Text>
-        <View style={[
-          styles.inputContainer,
-          validationErrors.email && styles.inputError
-        ]}>
+        <View
+          style={[
+            styles.inputContainer,
+            validationErrors.email && styles.inputError,
+          ]}
+        >
           <Ionicons
             name="mail-outline"
             size={20}
@@ -249,7 +245,7 @@ export default function ForgotPasswordScreen() {
             onChangeText={(text) => {
               setEmail(text);
               if (validationErrors.email) {
-                setValidationErrors(prev => ({ ...prev, email: undefined }));
+                setValidationErrors((prev) => ({ ...prev, email: undefined }));
               }
             }}
             keyboardType="email-address"
@@ -283,7 +279,12 @@ export default function ForgotPasswordScreen() {
         onPress={() => router.back()}
         disabled={loading}
       >
-        <Ionicons name="arrow-back" size={16} color={Colors.primary} style={styles.backIcon} />
+        <Ionicons
+          name="arrow-back"
+          size={16}
+          color={Colors.primary}
+          style={styles.backIcon}
+        />
         <Text style={styles.backToLoginText}>بازگشت به صفحه ورود</Text>
       </TouchableOpacity>
     </>
@@ -301,17 +302,19 @@ export default function ForgotPasswordScreen() {
 
       <Text style={styles.stepTitle}>تایید ایمیل</Text>
       <Text style={styles.stepDescription}>
-        کد ۶ رقمی ارسال شده به ایمیل 
+        کد ۶ رقمی ارسال شده به ایمیل
         <Text style={styles.emailHighlight}> {email} </Text>
         را وارد کنید.
       </Text>
 
       <View style={styles.inputGroup}>
         <Text style={styles.inputLabel}>کد تایید</Text>
-        <View style={[
-          styles.inputContainer,
-          validationErrors.verificationCode && styles.inputError
-        ]}>
+        <View
+          style={[
+            styles.inputContainer,
+            validationErrors.verificationCode && styles.inputError,
+          ]}
+        >
           <Ionicons
             name="shield-checkmark-outline"
             size={20}
@@ -324,11 +327,14 @@ export default function ForgotPasswordScreen() {
             placeholderTextColor={Colors.textSecondary}
             value={verificationCode}
             onChangeText={(text) => {
-              const numericText = text.replace(/[^0-9]/g, '');
+              const numericText = text.replace(/[^0-9]/g, "");
               if (numericText.length <= 6) {
                 setVerificationCode(numericText);
                 if (validationErrors.verificationCode) {
-                  setValidationErrors(prev => ({ ...prev, verificationCode: undefined }));
+                  setValidationErrors((prev) => ({
+                    ...prev,
+                    verificationCode: undefined,
+                  }));
                 }
               }
             }}
@@ -336,12 +342,12 @@ export default function ForgotPasswordScreen() {
             maxLength={6}
             editable={!loading}
           />
-          <Text style={styles.codeLength}>
-            {verificationCode.length}/6
-          </Text>
+          <Text style={styles.codeLength}>{verificationCode.length}/6</Text>
         </View>
         {validationErrors.verificationCode && (
-          <Text style={styles.errorText}>{validationErrors.verificationCode}</Text>
+          <Text style={styles.errorText}>
+            {validationErrors.verificationCode}
+          </Text>
         )}
       </View>
 
@@ -370,8 +376,8 @@ export default function ForgotPasswordScreen() {
       <TouchableOpacity
         style={styles.secondaryButton}
         onPress={() => {
-          setStep('email');
-          setVerificationCode('');
+          setStep("email");
+          setVerificationCode("");
         }}
         disabled={loading}
       >
@@ -397,10 +403,12 @@ export default function ForgotPasswordScreen() {
 
       <View style={styles.inputGroup}>
         <Text style={styles.inputLabel}>رمز عبور جدید</Text>
-        <View style={[
-          styles.inputContainer,
-          validationErrors.newPassword && styles.inputError
-        ]}>
+        <View
+          style={[
+            styles.inputContainer,
+            validationErrors.newPassword && styles.inputError,
+          ]}
+        >
           <Ionicons
             name="lock-closed-outline"
             size={20}
@@ -415,7 +423,10 @@ export default function ForgotPasswordScreen() {
             onChangeText={(text) => {
               setNewPassword(text);
               if (validationErrors.newPassword) {
-                setValidationErrors(prev => ({ ...prev, newPassword: undefined }));
+                setValidationErrors((prev) => ({
+                  ...prev,
+                  newPassword: undefined,
+                }));
               }
             }}
             secureTextEntry={!showNewPassword}
@@ -426,7 +437,7 @@ export default function ForgotPasswordScreen() {
             style={styles.passwordToggle}
           >
             <Ionicons
-              name={showNewPassword ? 'eye-off' : 'eye'}
+              name={showNewPassword ? "eye-off" : "eye"}
               size={20}
               color={Colors.textSecondary}
             />
@@ -439,10 +450,12 @@ export default function ForgotPasswordScreen() {
 
       <View style={styles.inputGroup}>
         <Text style={styles.inputLabel}>تکرار رمز عبور جدید</Text>
-        <View style={[
-          styles.inputContainer,
-          validationErrors.confirmPassword && styles.inputError
-        ]}>
+        <View
+          style={[
+            styles.inputContainer,
+            validationErrors.confirmPassword && styles.inputError,
+          ]}
+        >
           <Ionicons
             name="lock-closed-outline"
             size={20}
@@ -457,7 +470,10 @@ export default function ForgotPasswordScreen() {
             onChangeText={(text) => {
               setConfirmPassword(text);
               if (validationErrors.confirmPassword) {
-                setValidationErrors(prev => ({ ...prev, confirmPassword: undefined }));
+                setValidationErrors((prev) => ({
+                  ...prev,
+                  confirmPassword: undefined,
+                }));
               }
             }}
             secureTextEntry={!showConfirmPassword}
@@ -468,14 +484,16 @@ export default function ForgotPasswordScreen() {
             style={styles.passwordToggle}
           >
             <Ionicons
-              name={showConfirmPassword ? 'eye-off' : 'eye'}
+              name={showConfirmPassword ? "eye-off" : "eye"}
               size={20}
               color={Colors.textSecondary}
             />
           </TouchableOpacity>
         </View>
         {validationErrors.confirmPassword && (
-          <Text style={styles.errorText}>{validationErrors.confirmPassword}</Text>
+          <Text style={styles.errorText}>
+            {validationErrors.confirmPassword}
+          </Text>
         )}
       </View>
 
@@ -483,19 +501,33 @@ export default function ForgotPasswordScreen() {
         <Text style={styles.requirementsTitle}>الزامات رمز عبور:</Text>
         <View style={styles.requirementItem}>
           <Ionicons
-            name={newPassword.length >= 6 ? 'checkmark-circle' : 'ellipse-outline'}
+            name={
+              newPassword.length >= 6 ? "checkmark-circle" : "ellipse-outline"
+            }
             size={16}
-            color={newPassword.length >= 6 ? Colors.success : Colors.textSecondary}
+            color={
+              newPassword.length >= 6 ? Colors.success : Colors.textSecondary
+            }
           />
           <Text style={styles.requirementText}>حداقل ۶ کاراکتر</Text>
         </View>
         <View style={styles.requirementItem}>
           <Ionicons
-            name={newPassword && confirmPassword && newPassword === confirmPassword ? 'checkmark-circle' : 'ellipse-outline'}
+            name={
+              newPassword && confirmPassword && newPassword === confirmPassword
+                ? "checkmark-circle"
+                : "ellipse-outline"
+            }
             size={16}
-            color={newPassword && confirmPassword && newPassword === confirmPassword ? Colors.success : Colors.textSecondary}
+            color={
+              newPassword && confirmPassword && newPassword === confirmPassword
+                ? Colors.success
+                : Colors.textSecondary
+            }
           />
-          <Text style={styles.requirementText}>رمز عبور و تکرار آن مطابقت دارند</Text>
+          <Text style={styles.requirementText}>
+            رمز عبور و تکرار آن مطابقت دارند
+          </Text>
         </View>
       </View>
 
@@ -516,7 +548,7 @@ export default function ForgotPasswordScreen() {
 
       <TouchableOpacity
         style={styles.secondaryButton}
-        onPress={() => setStep('verification')}
+        onPress={() => setStep("verification")}
         disabled={loading}
       >
         <Text style={styles.secondaryButtonText}>بازگشت به مرحله قبل</Text>
@@ -527,7 +559,7 @@ export default function ForgotPasswordScreen() {
   return (
     <SafeAreaView style={styles.container}>
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
         style={styles.keyboardAvoid}
       >
         <ScrollView
@@ -544,16 +576,16 @@ export default function ForgotPasswordScreen() {
                 onPress={() => router.back()}
                 disabled={loading}
               >
-                <Ionicons name="arrow-forward" size={24} color="#fff" />
+                <Ionicons name="arrow-back" size={24} color="#fff" />
               </TouchableOpacity>
-              <Text style={styles.logoText}>آموزش فارسی</Text>
+              <Text style={styles.logoText}>بازیابی رمز عبور</Text>
             </View>
 
             <View style={styles.card}>
               <View style={styles.form}>
-                {step === 'email' && renderStepEmail()}
-                {step === 'verification' && renderStepVerification()}
-                {step === 'newPassword' && renderStepNewPassword()}
+                {step === "email" && renderStepEmail()}
+                {step === "verification" && renderStepVerification()}
+                {step === "newPassword" && renderStepNewPassword()}
               </View>
             </View>
           </LinearGradient>
@@ -577,9 +609,9 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     paddingHorizontal: 20,
     paddingTop: 20,
     paddingBottom: 40,
@@ -589,8 +621,8 @@ const styles = StyleSheet.create({
   },
   logoText: {
     fontSize: 20,
-    fontWeight: 'bold',
-    color: '#fff',
+    fontWeight: "bold",
+    color: "#fff",
   },
   card: {
     flex: 1,
@@ -604,9 +636,9 @@ const styles = StyleSheet.create({
     gap: 32,
   },
   stepIndicator: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
     marginBottom: 24,
   },
   stepDot: {
@@ -635,34 +667,34 @@ const styles = StyleSheet.create({
   },
   stepTitle: {
     fontSize: 24,
-    fontWeight: 'bold',
+    fontWeight: "bold",
     color: Colors.text,
-    textAlign: 'center',
+    textAlign: "center",
     marginBottom: 8,
   },
   stepDescription: {
     fontSize: 14,
     color: Colors.textSecondary,
-    textAlign: 'center',
+    textAlign: "center",
     lineHeight: 22,
     marginBottom: 24,
   },
   emailHighlight: {
     color: Colors.primary,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   inputGroup: {
     gap: 8,
   },
   inputLabel: {
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: "600",
     color: Colors.text,
-    textAlign: 'right',
+    textAlign: "right",
   },
   inputContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     backgroundColor: Colors.card,
     borderRadius: 12,
     paddingHorizontal: 16,
@@ -680,7 +712,7 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 15,
     color: Colors.text,
-    textAlign: 'right',
+    textAlign: "right",
   },
   codeLength: {
     fontSize: 12,
@@ -694,44 +726,44 @@ const styles = StyleSheet.create({
   errorText: {
     fontSize: 12,
     color: Colors.danger,
-    textAlign: 'right',
+    textAlign: "right",
     marginTop: 4,
   },
   primaryButton: {
     backgroundColor: Colors.primary,
     borderRadius: 12,
     paddingVertical: 16,
-    alignItems: 'center',
+    alignItems: "center",
   },
   buttonDisabled: {
     opacity: 0.7,
   },
   primaryButtonText: {
-    color: '#fff',
+    color: "#fff",
     fontSize: 16,
-    fontWeight: 'bold',
+    fontWeight: "bold",
   },
   secondaryButton: {
     borderWidth: 1,
     borderColor: Colors.border,
     borderRadius: 12,
     paddingVertical: 16,
-    alignItems: 'center',
+    alignItems: "center",
   },
   secondaryButtonText: {
     color: Colors.text,
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   loadingContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 8,
   },
   backToLogin: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
     marginTop: 16,
   },
   backIcon: {
@@ -740,12 +772,12 @@ const styles = StyleSheet.create({
   backToLoginText: {
     fontSize: 14,
     color: Colors.primary,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   resendContainer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
     gap: 8,
   },
   resendText: {
@@ -755,7 +787,7 @@ const styles = StyleSheet.create({
   resendLink: {
     fontSize: 14,
     color: Colors.primary,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   passwordRequirements: {
     backgroundColor: Colors.card,
@@ -765,13 +797,13 @@ const styles = StyleSheet.create({
   },
   requirementsTitle: {
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: "600",
     color: Colors.text,
     marginBottom: 4,
   },
   requirementItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 8,
   },
   requirementText: {

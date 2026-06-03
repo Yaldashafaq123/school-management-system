@@ -1,36 +1,37 @@
-import { Stack } from 'expo-router';
-import { Colors } from '../../../constants/Colors';
+import { Stack } from "expo-router";
+import { Colors } from "../../../constants/Colors";
 
 export default function UsersLayout() {
   return (
     <Stack
       screenOptions={{
+        headerShown: false,
         headerStyle: {
           backgroundColor: Colors.background,
         },
         headerTintColor: Colors.text,
         headerTitleStyle: {
-          fontWeight: 'bold',
+          fontWeight: "bold",
         },
       }}
     >
       <Stack.Screen
         name="index"
         options={{
-          title: 'مدیریت کاربران',
+          title: "مدیریت کاربران",
           headerShown: false,
         }}
       />
       <Stack.Screen
         name="[id]"
         options={{
-          title: 'جزئیات کاربر',
+          title: "جزئیات کاربر",
         }}
       />
       <Stack.Screen
         name="create"
         options={{
-          title: 'ایجاد کاربر جدید',
+          title: "ایجاد کاربر جدید",
         }}
       />
     </Stack>

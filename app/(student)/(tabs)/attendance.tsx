@@ -7,9 +7,10 @@ import {
   getStatusIcon,
   getStatusText,
   studentAttendanceApi,
-  StudentAttendanceData
+  StudentAttendanceData,
 } from "@/src/config/studentAttendanceApi";
 import { Ionicons } from "@expo/vector-icons";
+import moment from "moment-jalaali";
 import { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
@@ -25,6 +26,81 @@ import { LineChart, PieChart } from "react-native-chart-kit";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
+
+// Configure moment for Persian/Jalaali calendar
+moment.loadPersian({ dialect: "persian-modern" });
+
+// Afghan Solar Hijri month names (Hamal to Hoot)
+const AFGHAN_MONTHS = [
+  "حمل", // 0
+  "ثور", // 1
+  "جوزا", // 2
+  "سرطان", // 3
+  "اسد", // 4
+  "سنبله", // 5
+  "میزان", // 6
+  "عقرب", // 7
+  "قوس", // 8
+  "جدی", // 9
+  "دلو", // 10
+  "حوت", // 11
+];
+
+// Afghan weekdays (Saturday-based week)
+const AFGHAN_WEEKDAYS = [
+  "شنبه", // Saturday (0)
+  "یکشنبه", // Sunday (1)
+  "دوشنبه", // Monday (2)
+  "سه‌شنبه", // Tuesday (3)
+  "چهارشنبه", // Wednesday (4)
+  "پنجشنبه", // Thursday (5)
+  "جمعه", // Friday (6)
+];
+
+/**
+ * Converts a Gregorian date string to Afghan Solar Hijri date string.
+ * Uses moment-jalaali for accurate conversion (handles the ~20-day offset
+ * between Gregorian and Solar Hijri months correctly).
+ * Returns format: "DD MonthName YYYY" e.g. "5 حمل 1403"
+ */
+function toSolarHijri(gregorianDate: string): string {
+  if (!gregorianDate) return "";
+  const m = moment(gregorianDate);
+  if (!m.isValid()) return gregorianDate;
+  const year = m.jYear();
+  const monthName = AFGHAN_MONTHS[m.jMonth()]; // jMonth() is 0-based
+  const day = m.jDate();
+  return `${day} ${monthName} ${year}`;
+}
+
+/**
+ * Returns the Afghan weekday name for a given Gregorian date string.
+ * Gregorian: 0=Sunday, 1=Monday, ..., 6=Saturday
+ * Afghan week starts on Saturday, so Saturday=0 in our array.
+ */
+function getAfghanWeekday(gregorianDate: string): string {
+  if (!gregorianDate) return "";
+  const m = moment(gregorianDate);
+  if (!m.isValid()) return "";
+  // m.day(): 0=Sunday, 1=Monday, 2=Tuesday, 3=Wednesday,
+  //           4=Thursday, 5=Friday, 6=Saturday
+  const gregorianDay = m.day();
+  // Map to Afghan index (Saturday=0)
+  const afghanIndex = gregorianDay === 6 ? 0 : gregorianDay + 1;
+  return AFGHAN_WEEKDAYS[afghanIndex];
+}
+
+/**
+ * Returns the Afghan month name for a given Gregorian date string.
+ * Uses moment-jalaali for accurate Solar Hijri month calculation.
+ * Do NOT use a simple Gregorian-month-name lookup — that is always ~20 days off.
+ */
+function toAfghanMonthName(gregorianDate: string): string {
+  if (!gregorianDate) return gregorianDate;
+  const m = moment(gregorianDate);
+  if (!m.isValid()) return gregorianDate;
+  return AFGHAN_MONTHS[m.jMonth()];
+}
 
 export default function AttendanceScreen() {
   const { user } = useAuth();
@@ -42,9 +118,47 @@ export default function AttendanceScreen() {
     try {
       const response = await studentAttendanceApi.getAttendanceOverview();
       if (response.success && response.data) {
-        setAttendanceData(response.data);
-        if (response.data.monthlySummaries.length > 0) {
-          setSelectedMonth(response.data.monthlySummaries[0].month);
+        const transformedData = {
+          ...response.data,
+
+          // Convert each day's Gregorian date to Afghan Solar Hijri
+          dailyAttendance: response.data.dailyAttendance.map((day) => ({
+            ...day,
+            // Store the original ISO date for weekday calculation before overwriting
+            date: toSolarHijri(day.date),
+            dayOfWeek: getAfghanWeekday(day.date),
+          })),
+
+          // Convert monthly summary month labels.
+          // The backend sends the first day of the Gregorian month as an ISO
+          // date string (e.g. "2024-04-01"). Convert that to Afghan month name.
+          // If the backend already sends Afghan month names (e.g. "حمل"),
+          // moment will not parse them as valid dates so toAfghanMonthName
+          // returns the string unchanged — safe either way.
+          monthlySummaries: response.data.monthlySummaries.map((summary) => ({
+            ...summary,
+            month: moment(summary.month).isValid()
+              ? toAfghanMonthName(summary.month)
+              : summary.month, // already an Afghan month name — leave it
+          })),
+
+          analytics: {
+            ...response.data.analytics,
+            monthlyTrend: {
+              // Same logic: convert only if the label is a parseable date;
+              // otherwise the backend already sent Afghan month names — keep them.
+              labels: response.data.analytics.monthlyTrend.labels.map(
+                (label) =>
+                  moment(label).isValid() ? toAfghanMonthName(label) : label,
+              ),
+              data: response.data.analytics.monthlyTrend.data,
+            },
+          },
+        };
+
+        setAttendanceData(transformedData);
+        if (transformedData.monthlySummaries.length > 0) {
+          setSelectedMonth(transformedData.monthlySummaries[0].month);
         }
       }
     } catch (error) {
@@ -101,12 +215,13 @@ export default function AttendanceScreen() {
       ]
     : [];
 
-  // Fixed: Properly format line chart data
   const lineChartData = {
     labels: attendanceData?.analytics?.monthlyTrend?.labels || [],
     datasets: [
       {
-        data: attendanceData?.analytics?.monthlyTrend?.data || [],
+        data: attendanceData?.analytics?.monthlyTrend?.data?.length
+          ? attendanceData.analytics.monthlyTrend.data
+          : [0],
         color: (opacity = 1) => `rgba(59, 130, 246, ${opacity})`,
         strokeWidth: 2,
       },

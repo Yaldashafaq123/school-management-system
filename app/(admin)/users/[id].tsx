@@ -2,10 +2,13 @@
 import {
   AdminUser,
   adminUserApi,
+  ClassOption,
   getRoleLabel,
   getStatusColor,
   getStatusLabel,
-  UpdateUserData
+  SubjectOption,
+  TeacherOption,
+  UpdateUserData,
 } from "@/src/config/adminUserApi";
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -14,8 +17,10 @@ import {
   ActivityIndicator,
   Alert,
   Image,
+  Modal,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   TextInput,
   TouchableOpacity,
@@ -25,16 +30,87 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Header } from "../../../components/Header";
 import { Colors } from "../../../constants/Colors";
 
-interface ExtendedUser extends AdminUser {
+// Complete ExtendedUser interface matching your Prisma schema
+export interface ExtendedUser extends AdminUser {
+  // Personal Information
+  bio?: string;
+  address?: string;
+  birthDate?: string;
+  rfidCode?: string; // Attendance card ID!
+
+  // Academic Information
+  grade?: string;
+  school?: string;
+  interests?: string[];
+
+  // Student specific (from your schema)
+  studentId?: number;
+  studentStatus?: "ACTIVE" | "GRADUATED" | "SUSPENDED" | "LEFT";
+  attendanceRecords?: {
+    id: number;
+    date: string;
+    status: "PRESENT" | "ABSENT" | "LATE" | "EXCUSED";
+    scannedAt?: string;
+  }[];
+  grades?: {
+    id: number;
+    subject: string;
+    marks: number;
+    exam: { name: string; date: string };
+  }[];
+  studentFees?: {
+    id: number;
+    amount: number;
+    status: "PENDING" | "PAID" | "OVERDUE" | "PARTIAL";
+    dueDate: string;
+    feeCategory: { title: string; description?: string };
+    payments?: { id: number; amount: number; confirmedAt: string }[];
+  }[];
+
+  // Teacher specific (from your schema)
+  teacherId?: number;
+  experience?: string;
+  certification?: string;
+  hourlyRate?: number;
+  rating?: number;
+  joiningDate?: string;
+  contractEndDate?: string;
+  baseSalary?: number;
+  overtimeRate?: number;
+  isActive?: boolean;
+  teacherEducations?: { id: number; title: string }[];
+  salaries?: {
+    id: number;
+    amount: number;
+    month: number;
+    year: number;
+    status: "PENDING" | "PAID" | "PARTIAL";
+    paidAmount?: number;
+  }[];
+
+  // Parent specific (from your schema)
+  parentId?: number;
+  children?: {
+    id: number;
+    name: string;
+    email?: string;
+    class?: string;
+    className?: string;
+  }[];
+  subscriptionPlan?: string;
+  subscriptionStatus?: string;
+  subscriptionExpiry?: string;
+  emergencyContact?: string;
+  occupation?: string;
+  relationship?: string;
+
+  // Stats & Dates
   join_date?: string;
   last_login?: string;
   enrolled_courses?: number;
   completed_courses?: number;
   total_hours?: number;
   certificates?: number;
-  bio?: string;
-  address?: string;
-  education?: string;
 }
 
 export default function UserDetail() {
@@ -46,6 +122,37 @@ export default function UserDetail() {
   const [formData, setFormData] = useState<Partial<ExtendedUser>>({});
   const [isUpdating, setIsUpdating] = useState(false);
 
+  // Modal states
+  const [showChildSelector, setShowChildSelector] = useState(false);
+  const [availableStudents, setAvailableStudents] = useState<any[]>([]);
+  const [searchStudentEmail, setSearchStudentEmail] = useState("");
+  const [searchingStudent, setSearchingStudent] = useState(false);
+
+  // Dropdown options
+  const [classes, setClasses] = useState<ClassOption[]>([]);
+  const [teachers, setTeachers] = useState<TeacherOption[]>([]);
+  const [subjects, setSubjects] = useState<SubjectOption[]>([]);
+  const [loadingOptions, setLoadingOptions] = useState(false);
+
+  // Fetch dropdown options
+  const fetchDropdownOptions = useCallback(async () => {
+    setLoadingOptions(true);
+    try {
+      const [classesRes, teachersRes, subjectsRes] = await Promise.all([
+        adminUserApi.getClasses(),
+        adminUserApi.getTeachers(),
+        adminUserApi.getSubjects(),
+      ]);
+      if (classesRes.success) setClasses(classesRes.data);
+      if (teachersRes.success) setTeachers(teachersRes.data);
+      if (subjectsRes.success) setSubjects(subjectsRes.data);
+    } catch (error) {
+      console.error("Error fetching options:", error);
+    } finally {
+      setLoadingOptions(false);
+    }
+  }, []);
+
   const fetchUserDetail = useCallback(async () => {
     if (!id) return;
 
@@ -54,20 +161,73 @@ export default function UserDetail() {
       const response = await adminUserApi.getUser(parseInt(id));
 
       if (response.success && response.data) {
-        // Transform AdminUser to ExtendedUser
+        // Transform all fields from your backend response
+        const rawData = response.data as any;
+
         const extendedUser: ExtendedUser = {
           ...response.data,
-          join_date: new Date(response.data.createdAt).toLocaleDateString(
-            "fa-IR",
-          ),
-          last_login: new Date(response.data.createdAt).toLocaleString("fa-IR"),
-          enrolled_courses: response.data.stats?.coursesCount || 0,
-          completed_courses: response.data.stats?.assignmentCount || 0,
+          // Dates
+          join_date: rawData.createdAt
+            ? new Date(rawData.createdAt).toLocaleDateString("fa-IR")
+            : "",
+          last_login: rawData.lastLogin
+            ? new Date(rawData.lastLogin).toLocaleString("fa-IR")
+            : new Date(rawData.createdAt).toLocaleString("fa-IR"),
+          // Stats
+          enrolled_courses:
+            rawData._count?.courses || rawData.stats?.coursesCount || 0,
+          completed_courses: rawData.stats?.assignmentCount || 0,
           total_hours: 0,
           certificates: 0,
-          bio: "",
-          address: "",
-          education: "",
+          // Personal from User model
+          bio: rawData.bio || "",
+          address: rawData.address || "",
+          birthDate: rawData.birthDate || "",
+          rfidCode: rawData.rfidCode || "", // ← Attendance card ID!
+          // Student fields
+          studentId: rawData.student?.id,
+          studentStatus: rawData.student?.status || "ACTIVE",
+          grade: rawData.student?.grade || "",
+          school: rawData.student?.school || "",
+          interests: rawData.student?.interests || [],
+          attendanceRecords: rawData.student?.attendances || [],
+          grades: rawData.student?.grades || [],
+          studentFees: rawData.student?.studentFees || [],
+          // Teacher fields
+          teacherId: rawData.teacher?.id,
+          experience: rawData.teacher?.experience,
+          certification: rawData.teacher?.certification,
+          hourlyRate: rawData.teacher?.hourlyRate,
+          rating: rawData.teacher?.rating || 0,
+          joiningDate: rawData.teacher?.joiningDate,
+          contractEndDate: rawData.teacher?.contractEndDate,
+          baseSalary: rawData.teacher?.baseSalary,
+          overtimeRate: rawData.teacher?.overtimeRate,
+          isActive: rawData.teacher?.isActive,
+          teacherEducations: rawData.teacher?.educations || [],
+          salaries: rawData.teacher?.salaries || [],
+          subjects:
+            rawData.teacher?.subjects?.map((s: any) => s.subject?.name || s) ||
+            rawData.subjects ||
+            [],
+          // Parent fields
+          parentId: rawData.parent?.id,
+          children:
+            rawData.parent?.students?.map((ps: any) => ({
+              id: ps.student?.id,
+              name: ps.student?.user?.fullName,
+              email: ps.student?.user?.email,
+              class: ps.student?.class?.name,
+              className: ps.student?.class?.name,
+            })) ||
+            rawData.children ||
+            [],
+          subscriptionPlan: rawData.parent?.subscriptionPlan || "پایه",
+          subscriptionStatus: rawData.parent?.subscriptionStatus || "active",
+          subscriptionExpiry: rawData.parent?.subscriptionExpiry,
+          emergencyContact: rawData.parent?.emergencyContact,
+          occupation: rawData.parent?.occupation,
+          relationship: rawData.parent?.relationship,
         };
         setUser(extendedUser);
         setFormData(extendedUser);
@@ -85,7 +245,66 @@ export default function UserDetail() {
 
   useEffect(() => {
     fetchUserDetail();
-  }, [fetchUserDetail]);
+    fetchDropdownOptions();
+  }, [fetchUserDetail, fetchDropdownOptions]);
+
+  // Search for student by email to add as child to parent
+  const handleSearchStudent = async () => {
+    if (!searchStudentEmail.trim()) {
+      Alert.alert("خطا", "لطفا ایمیل دانش‌آموز را وارد کنید");
+      return;
+    }
+
+    setSearchingStudent(true);
+    try {
+      const response =
+        await adminUserApi.findStudentByEmail(searchStudentEmail);
+      if (response.success && response.data) {
+        setAvailableStudents([response.data]);
+        Alert.alert(
+          "دانش‌آموز یافت شد",
+          `${response.data.name}\nکلاس: ${response.data.className || "نامشخص"}`,
+          [
+            { text: "لغو", style: "cancel" },
+            {
+              text: "اضافه کردن",
+              onPress: () =>
+                addChildToParent(response.data!.id, response.data!.name),
+            },
+          ],
+        );
+      } else {
+        Alert.alert("خطا", "دانش‌آموزی با این ایمیل یافت نشد");
+      }
+    } catch (error) {
+      console.error("Error searching student:", error);
+      Alert.alert("خطا", "خطا در جستجوی دانش‌آموز");
+    } finally {
+      setSearchingStudent(false);
+    }
+  };
+
+  const addChildToParent = async (studentId: number, studentName: string) => {
+    if (!user?.id) return;
+
+    // Update parent with new child
+    const updateData: UpdateUserData = {
+      childId: studentId,
+    };
+
+    try {
+      const response = await adminUserApi.updateUser(user.id, updateData);
+      if (response.success) {
+        Alert.alert("موفقیت", `${studentName} با موفقیت اضافه شد`);
+        fetchUserDetail(); // Refresh user data
+      } else {
+        Alert.alert("خطا", response.message || "خطا در اضافه کردن دانش‌آموز");
+      }
+    } catch (error) {
+      console.error("Error adding child:", error);
+      Alert.alert("خطا", "خطا در اضافه کردن دانش‌آموز");
+    }
+  };
 
   const handleSave = async () => {
     if (!user?.id) return;
@@ -101,7 +320,15 @@ export default function UserDetail() {
         status: formData.status,
         verified: formData.verified,
         classId: formData.classId,
-        subjects: formData.subjects?.map((s) => parseInt(s as any)) as number[],
+        subjects: formData.subjects
+          ?.map((s) => {
+            // Handle both string subjects and IDs
+            if (typeof s === "number") return s;
+            const subject = subjects.find((sub) => sub.name === s);
+            return subject?.id || 0;
+          })
+          .filter((id) => id > 0) as number[],
+        teacherId: formData.teacherId,
       };
 
       const response = await adminUserApi.updateUser(user.id, updateData);
@@ -121,6 +348,28 @@ export default function UserDetail() {
       Alert.alert("خطا", "در بروزرسانی اطلاعات مشکلی پیش آمده");
     } finally {
       setIsUpdating(false);
+    }
+  };
+
+  const handleSaveRfidCode = async () => {
+    if (!user?.id || !formData.rfidCode) return;
+
+    try {
+      const response = await adminUserApi.updateUser(user.id, {
+        ...formData,
+        rfidCode: formData.rfidCode,
+      } as any);
+
+      if (response.success) {
+        Alert.alert("موفقیت", "کد کارت حضور با موفقیت ثبت شد");
+        setEditing(false);
+        fetchUserDetail();
+      } else {
+        Alert.alert("خطا", response.message || "خطا در ثبت کد کارت");
+      }
+    } catch (error) {
+      console.error("Error saving RFID:", error);
+      Alert.alert("خطا", "خطا در ثبت کد کارت");
     }
   };
 
@@ -329,7 +578,7 @@ export default function UserDetail() {
           </View>
         </View>
 
-        {/* Stats */}
+        {/* Stats Row */}
         <View style={styles.statsContainer}>
           <View style={styles.statItem}>
             <Text style={styles.statValue}>
@@ -339,21 +588,21 @@ export default function UserDetail() {
           </View>
           <View style={styles.statItem}>
             <Text style={styles.statValue}>
-              {user.stats?.attendanceCount || 0}
+              {user.stats?.attendanceCount ||
+                user.attendanceRecords?.length ||
+                0}
             </Text>
             <Text style={styles.statLabel}>حضور</Text>
           </View>
           <View style={styles.statItem}>
-            <Text style={styles.statValue}>
-              {user.stats?.messageCount || 0}
-            </Text>
-            <Text style={styles.statLabel}>پیام‌ها</Text>
+            <Text style={styles.statValue}>{user.grades?.length || 0}</Text>
+            <Text style={styles.statLabel}>نمرات</Text>
           </View>
         </View>
 
-        {/* Personal Info */}
+        {/* ========== CONTACT INFORMATION ========== */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>اطلاعات شخصی</Text>
+          <Text style={styles.sectionTitle}>اطلاعات تماس</Text>
           <View style={styles.infoCard}>
             <View style={styles.infoRow}>
               <Ionicons name="mail" size={20} color={Colors.textSecondary} />
@@ -402,75 +651,718 @@ export default function UserDetail() {
           </View>
         </View>
 
-        {/* Class Info (for students) */}
-        {user.role === "student" && user.className && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>اطلاعات تحصیلی</Text>
-            <View style={styles.infoCard}>
-              <View style={styles.infoRow}>
-                <Ionicons
-                  name="school"
-                  size={20}
-                  color={Colors.textSecondary}
+        {/* ========== ATTENDANCE CARD ID (RFID) ========== */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>کارت حضور</Text>
+          <View style={[styles.infoCard, styles.rfidCard]}>
+            <Ionicons name="card" size={24} color={Colors.primary} />
+            {editing ? (
+              <View style={styles.rfidEditContainer}>
+                <TextInput
+                  style={styles.rfidInput}
+                  value={formData.rfidCode}
+                  onChangeText={(text) =>
+                    setFormData({ ...formData, rfidCode: text })
+                  }
+                  placeholder="شناسه کارت RFID را اسکن یا وارد کنید"
+                  textAlign="center"
+                  autoCapitalize="characters"
                 />
-                {editing ? (
-                  <TextInput
-                    style={styles.editInput}
-                    value={formData.classId?.toString()}
-                    onChangeText={(text) =>
-                      setFormData({ ...formData, classId: parseInt(text) })
-                    }
-                    placeholder="شناسه کلاس"
-                    keyboardType="numeric"
-                    textAlign="right"
-                  />
-                ) : (
-                  <Text style={styles.infoText}>
-                    {user.className} {user.classSection || ""}
-                  </Text>
-                )}
+                <TouchableOpacity
+                  style={styles.rfidSaveButton}
+                  onPress={handleSaveRfidCode}
+                >
+                  <Text style={styles.rfidSaveText}>ذخیره کارت</Text>
+                </TouchableOpacity>
               </View>
+            ) : (
+              <Text style={styles.rfidValue}>
+                {user.rfidCode || "هیچ کارتی ثبت نشده است"}
+              </Text>
+            )}
+            <Text style={styles.rfidHint}>
+              برای ثبت کارت حضور، آن را روی دستگاه اسکنر قرار دهید یا کد را وارد
+              کنید
+            </Text>
+          </View>
+        </View>
+
+        {/* ========== PERSONAL INFORMATION ========== */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>اطلاعات شخصی</Text>
+          <View style={styles.infoCard}>
+            <View style={styles.infoRow}>
+              <Ionicons
+                name="document-text"
+                size={20}
+                color={Colors.textSecondary}
+              />
+              {editing ? (
+                <TextInput
+                  style={[styles.editInput, styles.multilineInput]}
+                  value={formData.bio}
+                  onChangeText={(text) =>
+                    setFormData({ ...formData, bio: text })
+                  }
+                  placeholder="بیوگرافی"
+                  multiline
+                  numberOfLines={3}
+                  textAlign="right"
+                />
+              ) : (
+                <Text style={styles.infoText}>{user.bio || "ثبت نشده"}</Text>
+              )}
+            </View>
+            <View style={styles.infoRow}>
+              <Ionicons
+                name="location"
+                size={20}
+                color={Colors.textSecondary}
+              />
+              {editing ? (
+                <TextInput
+                  style={styles.editInput}
+                  value={formData.address}
+                  onChangeText={(text) =>
+                    setFormData({ ...formData, address: text })
+                  }
+                  placeholder="آدرس"
+                  textAlign="right"
+                />
+              ) : (
+                <Text style={styles.infoText}>
+                  {user.address || "ثبت نشده"}
+                </Text>
+              )}
+            </View>
+            <View style={styles.infoRow}>
+              <Ionicons
+                name="calendar"
+                size={20}
+                color={Colors.textSecondary}
+              />
+              {editing ? (
+                <TextInput
+                  style={styles.editInput}
+                  value={formData.birthDate}
+                  onChangeText={(text) =>
+                    setFormData({ ...formData, birthDate: text })
+                  }
+                  placeholder="تاریخ تولد (مثال: 1380/01/01)"
+                  textAlign="right"
+                />
+              ) : (
+                <Text style={styles.infoText}>
+                  {user.birthDate || "ثبت نشده"}
+                </Text>
+              )}
             </View>
           </View>
-        )}
+        </View>
 
-        {/* Subjects (for teachers) */}
-        {user.role === "teacher" &&
-          user.subjects &&
-          user.subjects.length > 0 && (
+        {/* ========== STUDENT SPECIFIC ========== */}
+        {user.role === "student" && (
+          <>
             <View style={styles.section}>
-              <Text style={styles.sectionTitle}>دروس تدریس</Text>
+              <Text style={styles.sectionTitle}>اطلاعات تحصیلی</Text>
               <View style={styles.infoCard}>
-                <View style={styles.subjectsContainer}>
-                  {user.subjects.map((subject, index) => (
-                    <View key={index} style={styles.subjectTag}>
-                      <Text style={styles.subjectText}>{subject}</Text>
+                <View style={styles.infoRow}>
+                  <Ionicons
+                    name="school"
+                    size={20}
+                    color={Colors.textSecondary}
+                  />
+                  {editing ? (
+                    <View style={styles.dropdownContainer}>
+                      <TouchableOpacity
+                        style={styles.dropdownButton}
+                        onPress={() => {
+                          Alert.alert(
+                            "انتخاب کلاس",
+                            classes.map((c) => `${c.id}: ${c.name}`).join("\n"),
+                            [
+                              { text: "لغو", style: "cancel" },
+                              {
+                                text: "وارد کردن ID",
+                                onPress: () => {
+                                  const id = prompt("شناسه کلاس را وارد کنید:");
+                                  if (id)
+                                    setFormData({
+                                      ...formData,
+                                      classId: parseInt(id),
+                                    });
+                                },
+                              },
+                            ],
+                          );
+                        }}
+                      >
+                        <Text style={styles.dropdownText}>
+                          {formData.classId
+                            ? classes.find((c) => c.id === formData.classId)
+                                ?.name || `کلاس ${formData.classId}`
+                            : "انتخاب کلاس"}
+                        </Text>
+                        <Ionicons
+                          name="chevron-down"
+                          size={16}
+                          color={Colors.textSecondary}
+                        />
+                      </TouchableOpacity>
+                    </View>
+                  ) : (
+                    <Text style={styles.infoText}>
+                      {user.className || user.classId
+                        ? `کلاس ${user.className || user.classId}`
+                        : "ثبت نشده"}
+                    </Text>
+                  )}
+                </View>
+                <View style={styles.infoRow}>
+                  <Ionicons
+                    name="ribbon"
+                    size={20}
+                    color={Colors.textSecondary}
+                  />
+                  <Text style={styles.infoText}>
+                    وضعیت تحصیلی:{" "}
+                    {user.studentStatus === "ACTIVE"
+                      ? "فعال"
+                      : user.studentStatus === "GRADUATED"
+                        ? "فارغ التحصیل"
+                        : user.studentStatus === "SUSPENDED"
+                          ? "تعلیق"
+                          : "ترک تحصیل"}
+                  </Text>
+                </View>
+                <View style={styles.infoRow}>
+                  <Ionicons
+                    name="business"
+                    size={20}
+                    color={Colors.textSecondary}
+                  />
+                  <Text style={styles.infoText}>
+                    مدرسه: {user.school || "ثبت نشده"}
+                  </Text>
+                </View>
+              </View>
+            </View>
+
+            {/* Attendance Records */}
+            {user.attendanceRecords && user.attendanceRecords.length > 0 && (
+              <View style={styles.section}>
+                <Text style={styles.sectionTitle}>سوابق حضور و غیاب</Text>
+                <View style={styles.infoCard}>
+                  {user.attendanceRecords.slice(0, 10).map((record) => (
+                    <View key={record.id} style={styles.attendanceRow}>
+                      <Text style={styles.attendanceDate}>
+                        {new Date(record.date).toLocaleDateString("fa-IR")}
+                      </Text>
+                      <View
+                        style={[
+                          styles.attendanceBadge,
+                          {
+                            backgroundColor:
+                              record.status === "PRESENT"
+                                ? "#D4F7E2"
+                                : record.status === "LATE"
+                                  ? "#FFF4E5"
+                                  : "#FFE5E5",
+                          },
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.attendanceStatus,
+                            {
+                              color:
+                                record.status === "PRESENT"
+                                  ? "#34C759"
+                                  : record.status === "LATE"
+                                    ? "#FF9500"
+                                    : "#FF3B30",
+                            },
+                          ]}
+                        >
+                          {record.status === "PRESENT"
+                            ? "حاضر"
+                            : record.status === "ABSENT"
+                              ? "غایب"
+                              : record.status === "LATE"
+                                ? "تأخیر"
+                                : "مرخصی"}
+                        </Text>
+                      </View>
                     </View>
                   ))}
                 </View>
               </View>
-            </View>
-          )}
+            )}
 
-        {/* Children (for parents) */}
-        {user.role === "parent" &&
-          user.children &&
-          user.children.length > 0 && (
+            {/* Grades */}
+            {user.grades && user.grades.length > 0 && (
+              <View style={styles.section}>
+                <Text style={styles.sectionTitle}>نمرات</Text>
+                <View style={styles.infoCard}>
+                  {user.grades.map((grade) => (
+                    <View key={grade.id} style={styles.gradeRow}>
+                      <View>
+                        <Text style={styles.gradeSubject}>{grade.subject}</Text>
+                        <Text style={styles.gradeExam}>
+                          {grade.exam?.name || "امتحان"}
+                        </Text>
+                      </View>
+                      <View
+                        style={[
+                          styles.gradeValue,
+                          {
+                            backgroundColor:
+                              grade.marks >= 10 ? "#D4F7E2" : "#FFE5E5",
+                          },
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.gradeText,
+                            {
+                              color: grade.marks >= 10 ? "#34C759" : "#FF3B30",
+                            },
+                          ]}
+                        >
+                          {grade.marks}
+                        </Text>
+                      </View>
+                    </View>
+                  ))}
+                </View>
+              </View>
+            )}
+
+            {/* Student Fees */}
+            {user.studentFees && user.studentFees.length > 0 && (
+              <View style={styles.section}>
+                <Text style={styles.sectionTitle}>شهریه‌ها</Text>
+                <View style={styles.infoCard}>
+                  {user.studentFees.map((fee) => (
+                    <View key={fee.id} style={styles.feeRow}>
+                      <View style={styles.feeLeft}>
+                        <Text style={styles.feeTitle}>
+                          {fee.feeCategory.title}
+                        </Text>
+                        <Text style={styles.feeDueDate}>
+                          سررسید:{" "}
+                          {new Date(fee.dueDate).toLocaleDateString("fa-IR")}
+                        </Text>
+                        {fee.feeCategory.description && (
+                          <Text style={styles.feeDesc}>
+                            {fee.feeCategory.description}
+                          </Text>
+                        )}
+                      </View>
+                      <View style={styles.feeRight}>
+                        <Text style={styles.feeAmount}>
+                          {fee.amount.toLocaleString()} تومان
+                        </Text>
+                        <View
+                          style={[
+                            styles.feeStatusBadge,
+                            {
+                              backgroundColor:
+                                fee.status === "PAID"
+                                  ? "#D4F7E2"
+                                  : fee.status === "PARTIAL"
+                                    ? "#FFF4E5"
+                                    : "#FFE5E5",
+                            },
+                          ]}
+                        >
+                          <Text
+                            style={[
+                              styles.feeStatusText,
+                              {
+                                color:
+                                  fee.status === "PAID"
+                                    ? "#34C759"
+                                    : fee.status === "PARTIAL"
+                                      ? "#FF9500"
+                                      : "#FF3B30",
+                              },
+                            ]}
+                          >
+                            {fee.status === "PAID"
+                              ? "پرداخت شده"
+                              : fee.status === "PENDING"
+                                ? "در انتظار"
+                                : fee.status === "PARTIAL"
+                                  ? "پرداخت جزئی"
+                                  : "جریمه"}
+                          </Text>
+                        </View>
+                      </View>
+                    </View>
+                  ))}
+                </View>
+              </View>
+            )}
+          </>
+        )}
+
+        {/* ========== TEACHER SPECIFIC ========== */}
+        {user.role === "teacher" && (
+          <>
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>اطلاعات حرفه‌ای</Text>
+              <View style={styles.infoCard}>
+                <View style={styles.infoRow}>
+                  <Ionicons
+                    name="briefcase"
+                    size={20}
+                    color={Colors.textSecondary}
+                  />
+                  {editing ? (
+                    <TextInput
+                      style={styles.editInput}
+                      value={formData.experience}
+                      onChangeText={(text) =>
+                        setFormData({ ...formData, experience: text })
+                      }
+                      placeholder="سابقه کاری"
+                      textAlign="right"
+                    />
+                  ) : (
+                    <Text style={styles.infoText}>
+                      {user.experience || "ثبت نشده"}
+                    </Text>
+                  )}
+                </View>
+                <View style={styles.infoRow}>
+                  <Ionicons
+                    name="ribbon"
+                    size={20}
+                    color={Colors.textSecondary}
+                  />
+                  {editing ? (
+                    <TextInput
+                      style={styles.editInput}
+                      value={formData.certification}
+                      onChangeText={(text) =>
+                        setFormData({ ...formData, certification: text })
+                      }
+                      placeholder="گواهینامه‌ها"
+                      textAlign="right"
+                    />
+                  ) : (
+                    <Text style={styles.infoText}>
+                      {user.certification || "ثبت نشده"}
+                    </Text>
+                  )}
+                </View>
+                <View style={styles.infoRow}>
+                  <Ionicons
+                    name="cash"
+                    size={20}
+                    color={Colors.textSecondary}
+                  />
+                  {editing ? (
+                    <TextInput
+                      style={styles.editInput}
+                      value={formData.hourlyRate?.toString()}
+                      onChangeText={(text) =>
+                        setFormData({
+                          ...formData,
+                          hourlyRate: parseFloat(text) || 0,
+                        })
+                      }
+                      placeholder="نرخ ساعتی (تومان)"
+                      keyboardType="numeric"
+                      textAlign="right"
+                    />
+                  ) : (
+                    <Text style={styles.infoText}>
+                      {user.hourlyRate
+                        ? `${user.hourlyRate.toLocaleString()} تومان`
+                        : "ثبت نشده"}
+                    </Text>
+                  )}
+                </View>
+                <View style={styles.infoRow}>
+                  <Ionicons
+                    name="trending-up"
+                    size={20}
+                    color={Colors.textSecondary}
+                  />
+                  {editing ? (
+                    <TextInput
+                      style={styles.editInput}
+                      value={formData.baseSalary?.toString()}
+                      onChangeText={(text) =>
+                        setFormData({
+                          ...formData,
+                          baseSalary: parseFloat(text) || 0,
+                        })
+                      }
+                      placeholder="حقوق پایه (تومان)"
+                      keyboardType="numeric"
+                      textAlign="right"
+                    />
+                  ) : (
+                    <Text style={styles.infoText}>
+                      {user.baseSalary
+                        ? `${user.baseSalary.toLocaleString()} تومان`
+                        : "ثبت نشده"}
+                    </Text>
+                  )}
+                </View>
+                <View style={styles.infoRow}>
+                  <Ionicons name="star" size={20} color={Colors.warning} />
+                  <Text style={styles.infoText}>
+                    امتیاز: {user.rating || 0} / 5
+                  </Text>
+                </View>
+                <View style={styles.infoRow}>
+                  <Ionicons
+                    name="calendar"
+                    size={20}
+                    color={Colors.textSecondary}
+                  />
+                  <Text style={styles.infoText}>
+                    تاریخ شروع: {user.joiningDate || "ثبت نشده"}
+                  </Text>
+                </View>
+                <View style={styles.infoRow}>
+                  <Ionicons
+                    name="alert-circle"
+                    size={20}
+                    color={Colors.textSecondary}
+                  />
+                  <Text style={styles.infoText}>
+                    وضعیت: {user.isActive !== false ? "فعال" : "غیرفعال"}
+                  </Text>
+                </View>
+
+                {/* Subjects taught */}
+                {user.subjects && user.subjects.length > 0 && (
+                  <View style={styles.infoRow}>
+                    <Ionicons
+                      name="bookmarks"
+                      size={20}
+                      color={Colors.textSecondary}
+                    />
+                    <View style={styles.subjectsContainer}>
+                      {user.subjects.map((subject, index) => (
+                        <View key={index} style={styles.subjectTag}>
+                          <Text style={styles.subjectText}>{subject}</Text>
+                        </View>
+                      ))}
+                    </View>
+                  </View>
+                )}
+              </View>
+            </View>
+
+            {/* Teacher Educations */}
+            {user.teacherEducations && user.teacherEducations.length > 0 && (
+              <View style={styles.section}>
+                <Text style={styles.sectionTitle}>تحصیلات</Text>
+                <View style={styles.infoCard}>
+                  {user.teacherEducations.map((edu) => (
+                    <View key={edu.id} style={styles.educationItem}>
+                      <Ionicons
+                        name="school-outline"
+                        size={16}
+                        color={Colors.primary}
+                      />
+                      <Text style={styles.educationText}>{edu.title}</Text>
+                    </View>
+                  ))}
+                </View>
+              </View>
+            )}
+
+            {/* Teacher Salaries */}
+            {user.salaries && user.salaries.length > 0 && (
+              <View style={styles.section}>
+                <Text style={styles.sectionTitle}>سوابق حقوق</Text>
+                <View style={styles.infoCard}>
+                  {user.salaries.map((salary) => (
+                    <View key={salary.id} style={styles.salaryRow}>
+                      <View>
+                        <Text style={styles.salaryPeriod}>
+                          {salary.month}/{salary.year}
+                        </Text>
+                        <Text style={styles.salaryAmount}>
+                          {salary.amount.toLocaleString()} تومان
+                        </Text>
+                      </View>
+                      <View
+                        style={[
+                          styles.salaryStatusBadge,
+                          {
+                            backgroundColor:
+                              salary.status === "PAID"
+                                ? "#D4F7E2"
+                                : salary.status === "PARTIAL"
+                                  ? "#FFF4E5"
+                                  : "#FFE5E5",
+                          },
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.salaryStatusText,
+                            {
+                              color:
+                                salary.status === "PAID"
+                                  ? "#34C759"
+                                  : salary.status === "PARTIAL"
+                                    ? "#FF9500"
+                                    : "#FF3B30",
+                            },
+                          ]}
+                        >
+                          {salary.status === "PAID"
+                            ? "پرداخت شده"
+                            : salary.status === "PARTIAL"
+                              ? "پرداخت جزئی"
+                              : "در انتظار"}
+                        </Text>
+                      </View>
+                    </View>
+                  ))}
+                </View>
+              </View>
+            )}
+          </>
+        )}
+
+        {/* ========== PARENT SPECIFIC ========== */}
+        {user.role === "parent" && (
+          <>
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>اطلاعات والدین</Text>
+              <View style={styles.infoCard}>
+                <View style={styles.infoRow}>
+                  <Ionicons
+                    name="briefcase"
+                    size={20}
+                    color={Colors.textSecondary}
+                  />
+                  {editing ? (
+                    <TextInput
+                      style={styles.editInput}
+                      value={formData.occupation}
+                      onChangeText={(text) =>
+                        setFormData({ ...formData, occupation: text })
+                      }
+                      placeholder="شغل"
+                      textAlign="right"
+                    />
+                  ) : (
+                    <Text style={styles.infoText}>
+                      {user.occupation || "ثبت نشده"}
+                    </Text>
+                  )}
+                </View>
+                <View style={styles.infoRow}>
+                  <Ionicons
+                    name="people"
+                    size={20}
+                    color={Colors.textSecondary}
+                  />
+                  <Text style={styles.infoText}>
+                    پلن اشتراک: {user.subscriptionPlan || "پایه"}
+                  </Text>
+                </View>
+                <View style={styles.infoRow}>
+                  <Ionicons
+                    name="checkmark-circle"
+                    size={20}
+                    color={Colors.textSecondary}
+                  />
+                  <Text style={styles.infoText}>
+                    وضعیت اشتراک:{" "}
+                    {user.subscriptionStatus === "active" ? "فعال" : "غیرفعال"}
+                  </Text>
+                </View>
+                {user.subscriptionExpiry && (
+                  <View style={styles.infoRow}>
+                    <Ionicons name="time" size={20} color={Colors.warning} />
+                    <Text style={styles.infoText}>
+                      انقضای اشتراک:{" "}
+                      {new Date(user.subscriptionExpiry).toLocaleDateString(
+                        "fa-IR",
+                      )}
+                    </Text>
+                  </View>
+                )}
+                <View style={styles.infoRow}>
+                  <Ionicons
+                    name="call-outline"
+                    size={20}
+                    color={Colors.textSecondary}
+                  />
+                  <Text style={styles.infoText}>
+                    تماس اضطراری: {user.emergencyContact || "ثبت نشده"}
+                  </Text>
+                </View>
+                <View style={styles.infoRow}>
+                  <Ionicons
+                    name="heart"
+                    size={20}
+                    color={Colors.textSecondary}
+                  />
+                  <Text style={styles.infoText}>
+                    نسبت با دانش‌آموز: {user.relationship || "ثبت نشده"}
+                  </Text>
+                </View>
+              </View>
+            </View>
+
+            {/* Children Management */}
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>فرزندان</Text>
               <View style={styles.infoCard}>
-                {user.children.map((child) => (
-                  <View key={child.id} style={styles.childItem}>
-                    <Ionicons name="person" size={16} color={Colors.primary} />
-                    <Text style={styles.childName}>{child.name}</Text>
-                    <Text style={styles.childId}> (ID: {child.id})</Text>
-                  </View>
-                ))}
+                {user.children && user.children.length > 0 ? (
+                  user.children.map((child) => (
+                    <View key={child.id} style={styles.childItem}>
+                      <Ionicons
+                        name="person"
+                        size={16}
+                        color={Colors.primary}
+                      />
+                      <View style={styles.childInfo}>
+                        <Text style={styles.childName}>{child.name}</Text>
+                        <Text style={styles.childEmail}>{child.email}</Text>
+                        {child.class && (
+                          <Text style={styles.childClass}>{child.class}</Text>
+                        )}
+                      </View>
+                    </View>
+                  ))
+                ) : (
+                  <Text style={styles.emptyText}>هیچ فرزندی ثبت نشده است</Text>
+                )}
+
+                {/* Add child button for parents in edit mode */}
+                {editing && (
+                  <TouchableOpacity
+                    style={styles.addChildButton}
+                    onPress={() => setShowChildSelector(true)}
+                  >
+                    <Ionicons
+                      name="add-circle"
+                      size={20}
+                      color={Colors.primary}
+                    />
+                    <Text style={styles.addChildText}>افزودن فرزند جدید</Text>
+                  </TouchableOpacity>
+                )}
               </View>
             </View>
-          )}
+          </>
+        )}
 
-        {/* Status Actions */}
+        {/* ========== MANAGEMENT ACTIONS ========== */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>مدیریت کاربر</Text>
           <View style={styles.actionsRow}>
@@ -505,9 +1397,30 @@ export default function UserDetail() {
               </Text>
             </TouchableOpacity>
           </View>
+          <View style={styles.verifiedRow}>
+            <Text style={styles.verifiedLabel}>تأیید شده:</Text>
+            {editing ? (
+              <Switch
+                value={formData.verified}
+                onValueChange={(value) =>
+                  setFormData({ ...formData, verified: value })
+                }
+                trackColor={{ false: Colors.border, true: Colors.primary }}
+              />
+            ) : (
+              <Text
+                style={[
+                  styles.verifiedValue,
+                  { color: user.verified ? Colors.success : Colors.danger },
+                ]}
+              >
+                {user.verified ? "بله" : "خیر"}
+              </Text>
+            )}
+          </View>
         </View>
 
-        {/* Danger Zone */}
+        {/* ========== DANGER ZONE ========== */}
         <View style={styles.section}>
           <Text style={[styles.sectionTitle, styles.dangerTitle]}>
             منطقه خطر
@@ -535,7 +1448,7 @@ export default function UserDetail() {
           </View>
         </View>
 
-        {/* Save/Cancel Buttons */}
+        {/* ========== SAVE/CANCEL BUTTONS ========== */}
         {editing && (
           <View style={styles.actionButtons}>
             <TouchableOpacity
@@ -561,6 +1474,54 @@ export default function UserDetail() {
           </View>
         )}
       </ScrollView>
+
+      {/* Modal for adding child to parent */}
+      <Modal
+        visible={showChildSelector}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowChildSelector(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>افزودن فرزند</Text>
+            <Text style={styles.modalSubtitle}>
+              برای افزودن دانش‌آموز به عنوان فرزند، ایمیل او را وارد کنید
+            </Text>
+
+            <TextInput
+              style={styles.modalInput}
+              placeholder="ایمیل دانش‌آموز"
+              value={searchStudentEmail}
+              onChangeText={setSearchStudentEmail}
+              keyboardType="email-address"
+              autoCapitalize="none"
+            />
+
+            <TouchableOpacity
+              style={styles.modalSearchButton}
+              onPress={handleSearchStudent}
+              disabled={searchingStudent}
+            >
+              {searchingStudent ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Text style={styles.modalSearchText}>جستجو</Text>
+              )}
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.modalCancelButton}
+              onPress={() => {
+                setShowChildSelector(false);
+                setSearchStudentEmail("");
+              }}
+            >
+              <Text style={styles.modalCancelText}>لغو</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -722,7 +1683,7 @@ const styles = StyleSheet.create({
   },
   infoRow: {
     flexDirection: "row",
-    alignItems: "center",
+    alignItems: "flex-start",
     marginBottom: 12,
     gap: 12,
   },
@@ -741,10 +1702,32 @@ const styles = StyleSheet.create({
     padding: 8,
     backgroundColor: Colors.background,
   },
+  multilineInput: {
+    minHeight: 60,
+    textAlignVertical: "top",
+  },
+  dropdownContainer: {
+    flex: 1,
+  },
+  dropdownButton: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: Colors.primary,
+    borderRadius: 8,
+    padding: 8,
+    backgroundColor: Colors.background,
+  },
+  dropdownText: {
+    fontSize: 14,
+    color: Colors.text,
+  },
   subjectsContainer: {
     flexDirection: "row",
     flexWrap: "wrap",
     gap: 8,
+    flex: 1,
   },
   subjectTag: {
     backgroundColor: Colors.primary + "20",
@@ -756,24 +1739,238 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: Colors.primary,
   },
+  // RFID Card styles
+  rfidCard: {
+    alignItems: "center",
+    backgroundColor: Colors.primary + "10",
+    borderColor: Colors.primary,
+    borderWidth: 1,
+  },
+  rfidEditContainer: {
+    width: "100%",
+    marginTop: 12,
+  },
+  rfidInput: {
+    width: "100%",
+    borderWidth: 1,
+    borderColor: Colors.primary,
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 16,
+    fontFamily: "monospace",
+    textAlign: "center",
+    backgroundColor: Colors.background,
+  },
+  rfidValue: {
+    fontSize: 16,
+    fontFamily: "monospace",
+    fontWeight: "bold",
+    color: Colors.primary,
+    marginTop: 8,
+  },
+  rfidSaveButton: {
+    backgroundColor: Colors.primary,
+    borderRadius: 8,
+    padding: 12,
+    marginTop: 8,
+    alignItems: "center",
+  },
+  rfidSaveText: {
+    color: "#fff",
+    fontWeight: "bold",
+  },
+  rfidHint: {
+    fontSize: 12,
+    color: Colors.textSecondary,
+    marginTop: 8,
+    textAlign: "center",
+  },
+  // Attendance styles
+  attendanceRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+  },
+  attendanceDate: {
+    fontSize: 14,
+    color: Colors.text,
+  },
+  attendanceBadge: {
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  attendanceStatus: {
+    fontSize: 12,
+    fontWeight: "500",
+  },
+  // Grade styles
+  gradeRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+  },
+  gradeSubject: {
+    fontSize: 14,
+    fontWeight: "500",
+    color: Colors.text,
+  },
+  gradeExam: {
+    fontSize: 12,
+    color: Colors.textSecondary,
+  },
+  gradeValue: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  gradeText: {
+    fontSize: 18,
+    fontWeight: "bold",
+  },
+  // Fee styles
+  feeRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+  },
+  feeLeft: {
+    flex: 1,
+  },
+  feeTitle: {
+    fontSize: 14,
+    fontWeight: "500",
+    color: Colors.text,
+  },
+  feeDueDate: {
+    fontSize: 12,
+    color: Colors.textSecondary,
+    marginTop: 2,
+  },
+  feeDesc: {
+    fontSize: 11,
+    color: Colors.textSecondary,
+    marginTop: 2,
+  },
+  feeRight: {
+    alignItems: "flex-end",
+  },
+  feeAmount: {
+    fontSize: 14,
+    fontWeight: "bold",
+    color: Colors.text,
+  },
+  feeStatusBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 8,
+    marginTop: 4,
+  },
+  feeStatusText: {
+    fontSize: 10,
+    fontWeight: "500",
+  },
+  // Teacher styles
+  educationItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 8,
+  },
+  educationText: {
+    fontSize: 14,
+    color: Colors.text,
+  },
+  salaryRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+  },
+  salaryPeriod: {
+    fontSize: 14,
+    fontWeight: "500",
+    color: Colors.text,
+  },
+  salaryAmount: {
+    fontSize: 12,
+    color: Colors.textSecondary,
+  },
+  salaryStatusBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  salaryStatusText: {
+    fontSize: 11,
+    fontWeight: "500",
+  },
+  // Parent styles
   childItem: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 8,
-    gap: 8,
+    marginBottom: 12,
+    gap: 12,
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+  },
+  childInfo: {
+    flex: 1,
   },
   childName: {
     fontSize: 14,
     color: Colors.text,
     fontWeight: "500",
   },
-  childId: {
+  childEmail: {
     fontSize: 12,
     color: Colors.textSecondary,
   },
+  childClass: {
+    fontSize: 12,
+    color: Colors.primary,
+    marginTop: 2,
+  },
+  emptyText: {
+    fontSize: 14,
+    color: Colors.textSecondary,
+    textAlign: "center",
+    paddingVertical: 16,
+  },
+  addChildButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    padding: 12,
+    backgroundColor: Colors.primary + "10",
+    borderRadius: 8,
+    marginTop: 8,
+  },
+  addChildText: {
+    fontSize: 14,
+    color: Colors.primary,
+    fontWeight: "500",
+  },
+  // Management styles
   actionsRow: {
     flexDirection: "row",
     gap: 8,
+    marginBottom: 12,
   },
   statusAction: {
     flex: 1,
@@ -788,6 +1985,21 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "500",
   },
+  verifiedRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: 8,
+  },
+  verifiedLabel: {
+    fontSize: 14,
+    color: Colors.text,
+  },
+  verifiedValue: {
+    fontSize: 14,
+    fontWeight: "500",
+  },
+  // Danger zone
   dangerCard: {
     backgroundColor: "rgba(239, 68, 68, 0.05)",
     borderRadius: 12,
@@ -815,6 +2027,7 @@ const styles = StyleSheet.create({
     color: Colors.danger,
     textAlign: "center",
   },
+  // Action buttons
   actionButtons: {
     flexDirection: "row",
     gap: 12,
@@ -844,5 +2057,65 @@ const styles = StyleSheet.create({
     color: Colors.text,
     fontSize: 16,
     fontWeight: "500",
+  },
+  // Modal styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  modalContent: {
+    backgroundColor: Colors.card,
+    borderRadius: 16,
+    padding: 20,
+    width: "90%",
+    maxWidth: 400,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: "bold",
+    color: Colors.text,
+    textAlign: "center",
+    marginBottom: 8,
+  },
+  modalSubtitle: {
+    fontSize: 14,
+    color: Colors.textSecondary,
+    textAlign: "center",
+    marginBottom: 20,
+  },
+  modalInput: {
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 16,
+    backgroundColor: Colors.background,
+    marginBottom: 16,
+  },
+  modalSearchButton: {
+    backgroundColor: Colors.primary,
+    borderRadius: 8,
+    padding: 14,
+    alignItems: "center",
+    marginBottom: 12,
+  },
+  modalSearchText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "bold",
+  },
+  modalCancelButton: {
+    backgroundColor: Colors.background,
+    borderRadius: 8,
+    padding: 14,
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  modalCancelText: {
+    color: Colors.text,
+    fontSize: 16,
   },
 });

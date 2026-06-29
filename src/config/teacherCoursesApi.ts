@@ -17,7 +17,7 @@ export interface Lesson {
   title: string;
   description: string;
   videoUrl: string;
-  duration: string;
+  duration: number;
   isFree: boolean;
   order: number;
   thumbnail?: string;

@@ -48,16 +48,98 @@ export interface UpdateUserData {
   childId?: number;
 }
 
+// src/config/adminUserApi.ts
+// Add these new types and update existing ones
+
 export interface CreateUserData {
+  // Basic Info
   fullName: string;
-  name?: string; // For backward compatibility
+  nameFarsi?: string;
   email: string;
   phone?: string;
   password: string;
   role: UserRole;
+  isActive?: boolean;
+  verified?: boolean;
+
+  // Personal Info
+  fatherName?: string;
+  fatherNameFarsi?: string;
+  grandfatherName?: string;
+  grandfatherNameFarsi?: string;
+  sex?: string;
+  maritalStatus?: string;
+  bloodType?: string;
+  civilId?: string;
+  civilIdIssueDate?: Date | null;
+  civilIdExpiryDate?: Date | null;
+  birthDate?: Date | null;
+  birthPlace?: string;
+  nationality?: string;
+  currentAddress?: string;
+  permanentAddress?: string;
+  emergencyContactName?: string;
+  emergencyContactPhone?: string;
+  emergencyContactRelation?: string;
+
+  // Education
+  educationLevel?: string;
+  educationField?: string;
+  educationInstitution?: string;
+  graduationYear?: number | null;
+  workExperience?: string;
+
+  // Employment
+  joinDate?: Date | null;
+  contractStartDate?: Date | null;
+  contractEndDate?: Date | null;
+  contractType?: string;
+  workSchedule?: string;
+  workShift?: string;
+  baseSalary?: number | null;
+  salaryCurrency?: string;
+  bankAccountNumber?: string;
+  bankName?: string;
+  insuranceNumber?: string;
+  insuranceProvider?: string;
+  hasInsurance?: boolean;
+  hasContract?: boolean;
+
+  // Student fields
   classId?: number | null;
-  teacherId?: number | null;
+  studentNumber?: string;
+  previousSchool?: string;
+  enrollmentDate?: Date | null;
+  enrollmentType?: string;
+  transferSchool?: string;
+  transferDate?: Date | null;
+  isTransfer?: boolean;
+  feeWaiver?: boolean;
+  feeWaiverReason?: string;
+  scholarship?: boolean;
+  scholarshipType?: string;
+  scholarshipPercentage?: number | null;
+  studentGraduationDate?: Date | null;
+  studentGraduationYear?: number | null;
+  siblingCount?: number | null;
+  siblingNames?: string;
+  healthConditions?: string;
+  allergies?: string;
+  medication?: string;
+  specialNeeds?: string;
+
+  // Teacher fields
+  teacherCode?: string;
+  specialization?: string;
+  teachingExperience?: number | null;
+  languageSkills?: string;
+  publications?: string;
+  awards?: string;
+
+  // Parent fields
   childId?: number | null;
+  teacherId?: number | null;
+
   subjects?: number[];
 }
 

@@ -1,746 +1,539 @@
-import { Header } from "@/components/Header";
-import { Colors } from "@/constants/Colors";
+// app/(admin)/financial/fees/templates/create.tsx
+import React, { useState, useEffect } from "react";
 import {
-  FeeCategory as ApiFeeCategory,
-  financeApi,
-  formatCurrency,
-} from "@/src/config/financeApi";
-import { Ionicons } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
-import { useCallback, useEffect, useState } from "react";
-import {
-  ActivityIndicator,
-  Alert,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
-  StyleSheet,
-  Switch,
-  Text,
-  TextInput,
-  TouchableOpacity,
   View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  Alert,
+  ActivityIndicator,
+  TextInput,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { useRouter } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
+import { financeApi, AcademicYear, ClassItem } from "@/src/config/financeApi";
+import { AmountInput } from "@/components/finance/AmountInput";
 
-interface ClassItem {
-  id: number;
+interface TemplateItemInput {
+  feeType: string;
   name: string;
-  section: string;
-}
-
-interface FeeCategory {
-  id: number;
-  title: string;
-  amount: number;
+  amount: string;
   isRecurring: boolean;
+  isMandatory: boolean;
+  description?: string;
 }
 
-const FREQUENCY_OPTIONS = [
-  { value: "MONTHLY", label: "ماهانه", icon: "repeat", color: Colors.primary },
-  { value: "YEARLY", label: "سالانه", icon: "calendar", color: Colors.warning },
-  { value: "ONE_TIME", label: "یکباره", icon: "flash", color: Colors.success },
-];
-
-export default function CreateFeeTemplate() {
+export default function CreateTemplateScreen() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
-  const [loadingData, setLoadingData] = useState(true);
+  const [academicYears, setAcademicYears] = useState<AcademicYear[]>([]);
   const [classes, setClasses] = useState<ClassItem[]>([]);
-  const [feeCategories, setFeeCategories] = useState<FeeCategory[]>([]);
 
-  const [formData, setFormData] = useState({
-    classId: null as number | null,
-    feeCategoryId: null as number | null,
-    amount: "",
-    frequency: "MONTHLY",
-    dueDay: "10",
-    isActive: true,
-  });
+  // Form
+  const [name, setName] = useState("");
+  const [selectedYearId, setSelectedYearId] = useState<number | null>(null);
+  const [selectedClassId, setSelectedClassId] = useState<number | null>(null);
+  const [description, setDescription] = useState("");
+  const [items, setItems] = useState<TemplateItemInput[]>([]);
 
-  const [errors, setErrors] = useState<Record<string, string>>({});
-
-  const loadData = useCallback(async () => {
-    try {
-      const [classesRes, categoriesRes] = await Promise.all([
-        financeApi.getClassesList(),
-        financeApi.getFeeCategories(),
-      ]);
-
-      if (classesRes.success) {
-        setClasses(classesRes.data || []);
-      }
-      if (categoriesRes.success) {
-        // Transform API FeeCategory to local FeeCategory with default for isRecurring
-        const transformedCategories: FeeCategory[] = (
-          categoriesRes.data || []
-        ).map((cat: ApiFeeCategory) => ({
-          id: cat.id,
-          title: cat.title,
-          amount: cat.amount,
-          isRecurring: cat.isRecurring || false,
-        }));
-        setFeeCategories(transformedCategories);
-      }
-    } catch (error) {
-      console.error("Error loading data:", error);
-      Alert.alert("خطا", "مشکلی در بارگذاری اطلاعات پیش آمد");
-    } finally {
-      setLoadingData(false);
-    }
-  }, []);
+  // New item
+  const [showAddItem, setShowAddItem] = useState(false);
+  const [itemName, setItemName] = useState("");
+  const [itemAmount, setItemAmount] = useState("");
+  const [itemType, setItemType] = useState("MONTHLY_TUITION");
+  const [itemRecurring, setItemRecurring] = useState(false);
+  const [itemMandatory, setItemMandatory] = useState(true);
 
   useEffect(() => {
     loadData();
-  }, [loadData]);
+  }, []);
 
-  const selectedCategory = feeCategories.find(
-    (c) => c.id === formData.feeCategoryId,
-  );
-  const selectedClass = classes.find((c) => c.id === formData.classId);
-
-  // Auto-populate amount when category is selected
-  useEffect(() => {
-    if (selectedCategory && selectedCategory.amount > 0) {
-      setFormData((prev) => ({
-        ...prev,
-        amount: selectedCategory.amount.toString(),
-      }));
-    }
-  }, [selectedCategory]);
-
-  const validateForm = (): boolean => {
-    const newErrors: Record<string, string> = {};
-
-    if (!formData.classId) newErrors.classId = "انتخاب صنف الزامی است";
-    if (!formData.feeCategoryId)
-      newErrors.feeCategoryId = "انتخاب نوع هزینه الزامی است";
-
-    if (!formData.amount) {
-      newErrors.amount = "مبلغ الزامی است";
-    } else {
-      const amountNum = parseFloat(formData.amount);
-      if (isNaN(amountNum) || amountNum <= 0) {
-        newErrors.amount = "مبلغ باید عددی مثبت باشد";
+  const loadData = async () => {
+    try {
+      const [yearsRes, classesRes] = await Promise.all([
+        financeApi.getAcademicYears(),
+        financeApi.getClassesList(),
+      ]);
+      if (yearsRes.success) {
+        setAcademicYears(yearsRes.data);
+        const active = yearsRes.data.find(y => y.isActive);
+        if (active) setSelectedYearId(active.id);
       }
+      if (classesRes.success) setClasses(classesRes.data);
+    } catch (error) {
+      console.error("Load data error:", error);
     }
-
-    const dueDayNum = parseInt(formData.dueDay);
-    if (isNaN(dueDayNum) || dueDayNum < 1 || dueDayNum > 31) {
-      newErrors.dueDay = "روز سررسید باید بین 1 تا 31 باشد";
-    }
-
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
   };
 
-  const handleCreate = async () => {
-    if (!validateForm()) return;
+  const feeTypes = [
+    { value: "MONTHLY_TUITION", label: "شهریه ماهانه", recurring: true },
+    { value: "MONTHLY_TRANSPORT", label: "حمل و نقل", recurring: true },
+    { value: "ONE_TIME_ADMISSION", label: "پذیرش", recurring: false },
+    { value: "ONE_TIME_REGISTRATION", label: "ثبت نام", recurring: false },
+    { value: "ONE_TIME_BOOKS", label: "کتاب‌ها", recurring: false },
+    { value: "ONE_TIME_UNIFORM", label: "یونیفورم", recurring: false },
+    { value: "ONE_TIME_EXAM", label: "امتحان", recurring: false },
+    { value: "OTHER", label: "سایر", recurring: false },
+  ];
+
+  const addItem = () => {
+    if (!itemName || !itemAmount || Number(itemAmount) <= 0) {
+      Alert.alert("خطا", "نام و مبلغ را وارد کنید");
+      return;
+    }
+    setItems([
+      ...items,
+      {
+        feeType: itemType,
+        name: itemName,
+        amount: itemAmount,
+        isRecurring: itemRecurring,
+        isMandatory: itemMandatory,
+        description: "",
+      },
+    ]);
+    setItemName("");
+    setItemAmount("");
+    setShowAddItem(false);
+  };
+
+  const removeItem = (index: number) => {
+    setItems(items.filter((_, i) => i !== index));
+  };
+
+  const handleSelectType = (type: string) => {
+    setItemType(type);
+    const found = feeTypes.find(t => t.value === type);
+    if (found) {
+      setItemRecurring(found.recurring);
+    }
+  };
+
+  const totalAmount = items.reduce((sum, item) => sum + Number(item.amount || 0), 0);
+
+  const handleSubmit = async () => {
+    if (!name.trim()) {
+      Alert.alert("خطا", "نام قالب را وارد کنید");
+      return;
+    }
+    if (!selectedYearId) {
+      Alert.alert("خطا", "سال تعلیمی را انتخاب کنید");
+      return;
+    }
+    if (items.length === 0) {
+      Alert.alert("خطا", "حداقل یک قلم اضافه کنید");
+      return;
+    }
 
     setLoading(true);
     try {
-      await financeApi.createFeeTemplate({
-        classId: formData.classId!,
-        feeCategoryId: formData.feeCategoryId!,
-        amount: parseFloat(formData.amount),
-        frequency: formData.frequency,
-        dueDay: parseInt(formData.dueDay),
-        isActive: formData.isActive,
+      const response = await financeApi.createFeeTemplate({
+        name,
+        academicYearId: selectedYearId,
+        classId: selectedClassId || undefined,
+        description: description || undefined,
+        items: items.map(item => ({
+          feeType: item.feeType,
+          name: item.name,
+          amount: Number(item.amount),
+          isRecurring: item.isRecurring,
+          isMandatory: item.isMandatory,
+        })),
       });
 
-      Alert.alert(
-        "موفق",
-        `قالب شهریه برای ${selectedClass?.name} با موفقیت ایجاد شد`,
-        [
-          {
-            text: "مشاهده قالب‌ها",
-            onPress: () => router.back(),
-          },
-          {
-            text: "ایجاد دوباره",
-            onPress: () => {
-              setFormData({
-                classId: null,
-                feeCategoryId: null,
-                amount: "",
-                frequency: "MONTHLY",
-                dueDay: "10",
-                isActive: true,
-              });
-              setErrors({});
-            },
-          },
-        ],
-      );
+      if (response.success) {
+        Alert.alert("موفقیت", "قالب با موفقیت ایجاد شد", [
+          { text: "باشه", onPress: () => router.back() },
+        ]);
+      }
     } catch (error: any) {
-      Alert.alert("خطا", error?.message || "ایجاد قالب ناموفق بود");
+      Alert.alert("خطا", error.message || "ایجاد قالب با مشکل مواجه شد");
     } finally {
       setLoading(false);
     }
   };
 
-  const isFormValid =
-    formData.classId &&
-    formData.feeCategoryId &&
-    formData.amount &&
-    parseFloat(formData.amount) > 0;
-
-  if (loadingData) {
-    return (
-      <SafeAreaView style={styles.container} edges={["top"]}>
-        <Header title="ایجاد قالب شهریه" showBack />
-        <View style={styles.centerContainer}>
-          <ActivityIndicator size="large" color={Colors.primary} />
-          <Text style={styles.loadingText}>در حال بارگذاری...</Text>
-        </View>
-      </SafeAreaView>
-    );
-  }
-
   return (
-    <SafeAreaView style={styles.container} edges={["top"]}>
-      {/* <Header title="ایجاد قالب شهریه" showBack /> */}
+    <View style={styles.container}>
+      <View style={styles.header}>
+        <TouchableOpacity onPress={() => router.back()}>
+          <Ionicons name="arrow-back" size={24} color="#1e293b" />
+        </TouchableOpacity>
+        <Text style={styles.title}>قالب فیس جدید</Text>
+        <View style={{ width: 40 }} />
+      </View>
 
-      <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-        style={styles.keyboardAvoid}
-      >
-        <ScrollView
-          style={styles.content}
-          showsVerticalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
-        >
-          {/* Info Banner */}
-          <View style={styles.infoBanner}>
-            <Ionicons
-              name="information-circle"
-              size={20}
-              color={Colors.primary}
-            />
-            <Text style={styles.infoText}>
-              قالب شهریه به شما امکان می‌دهد هزینه‌های دوره‌ای را برای یک صنف
-              تعریف کنید. پس از ایجاد قالب، می‌توانید آن را به دانش‌آموزان آن
-              صنف تخصیص دهید.
-            </Text>
+      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+        {/* Name */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>نام قالب</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="مثلاً: فیس صنف ۸ - ۱۴۰۳"
+            placeholderTextColor="#94a3b8"
+            value={name}
+            onChangeText={setName}
+            textAlign="right"
+          />
+        </View>
+
+        {/* Academic Year */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>سال تعلیمی</Text>
+          <View style={styles.chipGrid}>
+            {academicYears.map((year) => (
+              <TouchableOpacity
+                key={year.id}
+                style={[styles.chip, selectedYearId === year.id && styles.chipActive]}
+                onPress={() => setSelectedYearId(year.id)}
+              >
+                <Text style={[styles.chipText, selectedYearId === year.id && styles.chipTextActive]}>
+                  {year.name}
+                </Text>
+              </TouchableOpacity>
+            ))}
           </View>
+        </View>
 
-          {/* Class Selection */}
-          <View style={styles.formGroup}>
-            <Text style={styles.label}>
-              انتخاب صنف <Text style={styles.required}>*</Text>
-            </Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-              <View style={styles.chipContainer}>
-                {classes.map((cls) => (
-                  <TouchableOpacity
-                    key={cls.id}
-                    style={[
-                      styles.chip,
-                      formData.classId === cls.id && styles.chipActive,
-                    ]}
-                    onPress={() => {
-                      setFormData({ ...formData, classId: cls.id });
-                      if (errors.classId) setErrors({ ...errors, classId: "" });
-                    }}
-                    activeOpacity={0.7}
-                  >
-                    <Ionicons
-                      name="school"
-                      size={14}
-                      color={
-                        formData.classId === cls.id
-                          ? "white"
-                          : Colors.textSecondary
-                      }
-                    />
-                    <Text
-                      style={[
-                        styles.chipText,
-                        formData.classId === cls.id && styles.chipTextActive,
-                      ]}
-                    >
-                      {cls.name} {cls.section || ""}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </ScrollView>
-            {errors.classId && (
-              <Text style={styles.errorText}>{errors.classId}</Text>
-            )}
-          </View>
-
-          {/* Fee Category Selection */}
-          <View style={styles.formGroup}>
-            <Text style={styles.label}>
-              نوع هزینه <Text style={styles.required}>*</Text>
-            </Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-              <View style={styles.chipContainer}>
-                {feeCategories.map((cat) => (
-                  <TouchableOpacity
-                    key={cat.id}
-                    style={[
-                      styles.chip,
-                      styles.categoryChip,
-                      formData.feeCategoryId === cat.id && styles.chipActive,
-                    ]}
-                    onPress={() => {
-                      setFormData({ ...formData, feeCategoryId: cat.id });
-                      if (errors.feeCategoryId)
-                        setErrors({ ...errors, feeCategoryId: "" });
-                    }}
-                    activeOpacity={0.7}
-                  >
-                    <Ionicons
-                      name="pricetag"
-                      size={14}
-                      color={
-                        formData.feeCategoryId === cat.id
-                          ? "white"
-                          : Colors.textSecondary
-                      }
-                    />
-                    <Text
-                      style={[
-                        styles.chipText,
-                        formData.feeCategoryId === cat.id &&
-                          styles.chipTextActive,
-                      ]}
-                    >
-                      {cat.title}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </ScrollView>
-            {errors.feeCategoryId && (
-              <Text style={styles.errorText}>{errors.feeCategoryId}</Text>
-            )}
-          </View>
-
-          {/* Selected Category Info */}
-          {selectedCategory && (
-            <View style={styles.selectedInfo}>
-              <Text style={styles.selectedInfoText}>
-                مبلغ پیش‌فرض: {formatCurrency(selectedCategory.amount)}
+        {/* Class */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>صنف (اختیاری)</Text>
+          <View style={styles.chipGrid}>
+            <TouchableOpacity
+              style={[styles.chip, !selectedClassId && styles.chipActive]}
+              onPress={() => setSelectedClassId(null)}
+            >
+              <Text style={[styles.chipText, !selectedClassId && styles.chipTextActive]}>
+                همه صنوف
               </Text>
-            </View>
-          )}
-
-          {/* Amount */}
-          <View style={styles.formGroup}>
-            <Text style={styles.label}>
-              مبلغ (افغانی) <Text style={styles.required}>*</Text>
-            </Text>
-            <TextInput
-              style={[
-                styles.amountInput,
-                errors.amount ? styles.inputError : null,
-              ]}
-              value={formData.amount}
-              onChangeText={(text) => {
-                const cleaned = text.replace(/[^0-9.]/g, "");
-                setFormData({ ...formData, amount: cleaned });
-                if (errors.amount) setErrors({ ...errors, amount: "" });
-              }}
-              keyboardType="decimal-pad"
-              placeholder="مبلغ را وارد کنید"
-              placeholderTextColor={Colors.textSecondary}
-              textAlign="center"
-            />
-            {errors.amount && (
-              <Text style={styles.errorText}>{errors.amount}</Text>
-            )}
+            </TouchableOpacity>
+            {classes.map((cls) => (
+              <TouchableOpacity
+                key={cls.id}
+                style={[styles.chip, selectedClassId === cls.id && styles.chipActive]}
+                onPress={() => setSelectedClassId(cls.id)}
+              >
+                <Text style={[styles.chipText, selectedClassId === cls.id && styles.chipTextActive]}>
+                  {cls.name} {cls.section}
+                </Text>
+              </TouchableOpacity>
+            ))}
           </View>
+        </View>
 
-          {/* Frequency */}
-          <View style={styles.formGroup}>
-            <Text style={styles.label}>دوره پرداخت</Text>
-            <View style={styles.frequencyGrid}>
-              {FREQUENCY_OPTIONS.map((freq) => (
-                <TouchableOpacity
-                  key={freq.value}
-                  style={[
-                    styles.frequencyCard,
-                    formData.frequency === freq.value && {
-                      borderColor: freq.color,
-                      backgroundColor: `${freq.color}10`,
-                    },
-                  ]}
-                  onPress={() =>
-                    setFormData({ ...formData, frequency: freq.value })
-                  }
-                  activeOpacity={0.7}
-                >
+        {/* Fee Items */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>اقلام فیس</Text>
+          
+          {items.map((item, index) => (
+            <View key={index} style={styles.feeItemCard}>
+              <View style={styles.feeItemHeader}>
+                <View style={[styles.feeItemIcon, { backgroundColor: item.isRecurring ? "#fef3c7" : "#dbeafe" }]}>
                   <Ionicons
-                    name={freq.icon as any}
-                    size={24}
-                    color={
-                      formData.frequency === freq.value
-                        ? freq.color
-                        : Colors.textSecondary
-                    }
+                    name={item.isRecurring ? "repeat" : "receipt-outline"}
+                    size={18}
+                    color={item.isRecurring ? "#d97706" : "#3b82f6"}
                   />
-                  <Text
-                    style={[
-                      styles.frequencyLabel,
-                      formData.frequency === freq.value && {
-                        color: freq.color,
-                        fontWeight: "600",
-                      },
-                    ]}
-                  >
-                    {freq.label}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </View>
-
-          {/* Due Day */}
-          <View style={styles.formGroup}>
-            <Text style={styles.label}>
-              روز سررسید ماهانه <Text style={styles.required}>*</Text>
-            </Text>
-            <View style={styles.dueDayContainer}>
-              <TextInput
-                style={[
-                  styles.dueDayInput,
-                  errors.dueDay ? styles.inputError : null,
-                ]}
-                value={formData.dueDay}
-                onChangeText={(text) => {
-                  const cleaned = text.replace(/[^0-9]/g, "");
-                  setFormData({ ...formData, dueDay: cleaned });
-                  if (errors.dueDay) setErrors({ ...errors, dueDay: "" });
-                }}
-                keyboardType="number-pad"
-                placeholder="10"
-                placeholderTextColor={Colors.textSecondary}
-                textAlign="center"
-              />
-              <Text style={styles.dueDaySuffix}>هر ماه</Text>
-            </View>
-            {errors.dueDay && (
-              <Text style={styles.errorText}>{errors.dueDay}</Text>
-            )}
-            <Text style={styles.hintText}>
-              مثال: 10 یعنی هر ماه در تاریخ 10
-            </Text>
-          </View>
-
-          {/* Active Status */}
-          <View style={styles.formGroup}>
-            <View style={styles.switchRow}>
-              <View style={styles.switchInfo}>
-                <View
-                  style={[
-                    styles.statusDot,
-                    {
-                      backgroundColor: formData.isActive
-                        ? Colors.success
-                        : Colors.danger,
-                    },
-                  ]}
-                />
-                <View>
-                  <Text style={styles.switchLabel}>
-                    {formData.isActive ? "قالب فعال" : "قالب غیرفعال"}
-                  </Text>
-                  <Text style={styles.switchDesc}>
-                    {formData.isActive
-                      ? "قالب فعال است و می‌تواند تخصیص داده شود"
-                      : "قالب غیرفعال است و در لیست نمایش داده نمی‌شود"}
+                </View>
+                <View style={styles.feeItemInfo}>
+                  <Text style={styles.feeItemName}>{item.name}</Text>
+                  <Text style={styles.feeItemType}>
+                    {item.isRecurring ? "ماهانه" : "یکباره"}
+                    {item.isMandatory ? " • اجباری" : " • اختیاری"}
                   </Text>
                 </View>
+                <View style={styles.feeItemAmountContainer}>
+                  <Text style={styles.feeItemAmount}>
+                    {Number(item.amount).toLocaleString()} افغانی
+                  </Text>
+                  <TouchableOpacity onPress={() => removeItem(index)}>
+                    <Ionicons name="close-circle" size={22} color="#ef4444" />
+                  </TouchableOpacity>
+                </View>
               </View>
-              <Switch
-                value={formData.isActive}
-                onValueChange={(value) =>
-                  setFormData({ ...formData, isActive: value })
-                }
-                trackColor={{
-                  false: Colors.border,
-                  true: `${Colors.success}50`,
-                }}
-                thumbColor={formData.isActive ? Colors.success : "#f4f3f4"}
-              />
             </View>
-          </View>
+          ))}
 
-          {/* Summary */}
-          {selectedClass && selectedCategory && isFormValid && (
-            <View style={styles.summaryCard}>
-              <Text style={styles.summaryTitle}>خلاصه قالب</Text>
-              <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>صنف:</Text>
-                <Text style={styles.summaryValue}>
-                  {selectedClass.name} {selectedClass.section || ""}
-                </Text>
+          {/* Add Item Form */}
+          {showAddItem ? (
+            <View style={styles.addItemForm}>
+              <TextInput
+                style={styles.input}
+                placeholder="نام قلم"
+                placeholderTextColor="#94a3b8"
+                value={itemName}
+                onChangeText={setItemName}
+                textAlign="right"
+              />
+              <AmountInput
+                value={itemAmount}
+                onChangeText={setItemAmount}
+                placeholder="مبلغ"
+              />
+
+              <Text style={styles.subLabel}>نوع فیس</Text>
+              <View style={styles.typeGrid}>
+                {feeTypes.map((type) => (
+                  <TouchableOpacity
+                    key={type.value}
+                    style={[styles.typeChip, itemType === type.value && styles.typeChipActive]}
+                    onPress={() => handleSelectType(type.value)}
+                  >
+                    <Text style={[styles.typeChipText, itemType === type.value && styles.typeChipTextActive]}>
+                      {type.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
               </View>
-              <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>نوع هزینه:</Text>
-                <Text style={styles.summaryValue}>
-                  {selectedCategory.title}
-                </Text>
-              </View>
-              <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>مبلغ:</Text>
-                <Text
-                  style={[
-                    styles.summaryValue,
-                    { color: Colors.success, fontWeight: "bold" },
-                  ]}
+
+              <TouchableOpacity
+                style={styles.checkbox}
+                onPress={() => setItemMandatory(!itemMandatory)}
+              >
+                <Ionicons
+                  name={itemMandatory ? "checkbox" : "square-outline"}
+                  size={20}
+                  color={itemMandatory ? "#3b82f6" : "#94a3b8"}
+                />
+                <Text style={styles.checkboxText}>اجباری</Text>
+              </TouchableOpacity>
+
+              <View style={styles.addItemActions}>
+                <TouchableOpacity style={[styles.btn, styles.btnPrimary]} onPress={addItem}>
+                  <Text style={styles.btnPrimaryText}>اضافه کردن</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.btn, styles.btnSecondary]}
+                  onPress={() => setShowAddItem(false)}
                 >
-                  {formatCurrency(parseFloat(formData.amount))}
-                </Text>
-              </View>
-              <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>دوره:</Text>
-                <Text style={styles.summaryValue}>
-                  {
-                    FREQUENCY_OPTIONS.find(
-                      (f) => f.value === formData.frequency,
-                    )?.label
-                  }
-                </Text>
-              </View>
-              <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>روز سررسید:</Text>
-                <Text style={styles.summaryValue}>
-                  روز {formData.dueDay} هر ماه
-                </Text>
+                  <Text style={styles.btnSecondaryText}>لغو</Text>
+                </TouchableOpacity>
               </View>
             </View>
+          ) : (
+            <TouchableOpacity
+              style={styles.addItemTrigger}
+              onPress={() => setShowAddItem(true)}
+            >
+              <Ionicons name="add-circle-outline" size={24} color="#06b6d4" />
+              <Text style={styles.addItemTriggerText}>اضافه کردن قلم</Text>
+            </TouchableOpacity>
           )}
 
-          {/* Create Button */}
-          <TouchableOpacity
-            style={[
-              styles.createButton,
-              (!isFormValid || loading) && styles.createButtonDisabled,
-            ]}
-            onPress={handleCreate}
-            disabled={!isFormValid || loading}
-            activeOpacity={0.8}
-          >
-            {loading ? (
-              <ActivityIndicator size="small" color="white" />
-            ) : (
-              <>
-                <Ionicons name="checkmark-circle" size={22} color="white" />
-                <Text style={styles.createButtonText}>ایجاد قالب شهریه</Text>
-              </>
-            )}
-          </TouchableOpacity>
+          {items.length > 0 && (
+            <View style={styles.totalContainer}>
+              <Text style={styles.totalLabel}>مجموع:</Text>
+              <Text style={styles.totalAmount}>{totalAmount.toLocaleString()} افغانی</Text>
+            </View>
+          )}
+        </View>
 
-          <View style={{ height: 30 }} />
-        </ScrollView>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+        {/* Description */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>توضیحات (اختیاری)</Text>
+          <TextInput
+            style={styles.textArea}
+            placeholder="توضیحات قالب..."
+            placeholderTextColor="#94a3b8"
+            value={description}
+            onChangeText={setDescription}
+            multiline
+            numberOfLines={3}
+            textAlign="right"
+          />
+        </View>
+
+        <View style={{ height: 40 }} />
+      </ScrollView>
+
+      {/* Submit */}
+      <View style={styles.footer}>
+        <TouchableOpacity
+          style={[styles.submitButton, loading && styles.submitDisabled]}
+          onPress={handleSubmit}
+          disabled={loading}
+        >
+          {loading ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <>
+              <Ionicons name="save" size={22} color="#fff" />
+              <Text style={styles.submitText}>ذخیره قالب</Text>
+            </>
+          )}
+        </TouchableOpacity>
+      </View>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.background },
-  centerContainer: { flex: 1, justifyContent: "center", alignItems: "center" },
-  loadingText: {
-    marginTop: 12,
-    fontSize: 14,
-    color: Colors.textSecondary,
-    fontFamily: "Vazirmatn",
-  },
-  keyboardAvoid: { flex: 1 },
-  content: { flex: 1, padding: 16 },
-  infoBanner: {
+  container: { flex: 1, backgroundColor: "#f1f5f9" },
+  header: {
     flexDirection: "row",
-    backgroundColor: `${Colors.primary}10`,
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 20,
-    gap: 10,
-    alignItems: "flex-start",
-  },
-  infoText: {
-    flex: 1,
-    fontSize: 12,
-    color: Colors.textSecondary,
-    fontFamily: "Vazirmatn",
-    lineHeight: 20,
-    textAlign: "right",
-  },
-  formGroup: { marginBottom: 20 },
-  label: {
-    fontSize: 14,
-    fontWeight: "500",
-    color: Colors.text,
-    fontFamily: "Vazirmatn",
-    marginBottom: 8,
-    textAlign: "right",
-  },
-  required: { color: Colors.danger },
-  chipContainer: { flexDirection: "row", gap: 8, flexWrap: "wrap" },
-  chip: {
-    flexDirection: "row",
+    justifyContent: "space-between",
     alignItems: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: "#fff",
+    borderBottomWidth: 1,
+    borderBottomColor: "#e2e8f0",
+  },
+  title: { fontSize: 20, fontWeight: "700", color: "#1e293b", fontFamily: "VazirBold" },
+  scrollView: { flex: 1 },
+  section: {
+    margin: 16,
+    marginBottom: 0,
+    padding: 16,
+    backgroundColor: "#fff",
+    borderRadius: 16,
+  },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#334155",
+    marginBottom: 12,
+    fontFamily: "VazirBold",
+  },
+  input: {
+    backgroundColor: "#f8fafc",
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    borderRadius: 10,
+    padding: 12,
+    fontSize: 15,
+    color: "#1e293b",
+    fontFamily: "Vazir",
+    marginBottom: 8,
+  },
+  textArea: {
+    backgroundColor: "#f8fafc",
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    borderRadius: 10,
+    padding: 12,
+    fontSize: 14,
+    color: "#1e293b",
+    fontFamily: "Vazir",
+    minHeight: 80,
+    textAlignVertical: "top",
+  },
+  chipGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  chip: {
     paddingHorizontal: 14,
     paddingVertical: 8,
-    borderRadius: 20,
-    backgroundColor: Colors.card,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    gap: 6,
-  },
-  chipActive: { backgroundColor: Colors.primary, borderColor: Colors.primary },
-  chipText: {
-    fontSize: 13,
-    color: Colors.textSecondary,
-    fontFamily: "Vazirmatn",
-  },
-  chipTextActive: { color: "white" },
-  categoryChip: { backgroundColor: Colors.background },
-  selectedInfo: {
-    backgroundColor: `${Colors.success}10`,
     borderRadius: 8,
-    padding: 10,
-    marginBottom: 16,
-    alignItems: "center",
+    backgroundColor: "#f8fafc",
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
   },
-  selectedInfoText: {
-    fontSize: 12,
-    color: Colors.success,
-    fontFamily: "Vazirmatn",
+  chipActive: { backgroundColor: "#eff6ff", borderColor: "#3b82f6" },
+  chipText: { fontSize: 13, color: "#64748b", fontFamily: "Vazir" },
+  chipTextActive: { color: "#3b82f6", fontWeight: "600" },
+  subLabel: { fontSize: 14, fontWeight: "600", color: "#475569", marginBottom: 8, fontFamily: "Vazir", marginTop: 12 },
+  typeGrid: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginBottom: 12 },
+  typeChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: "#f8fafc",
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
   },
-  amountInput: {
-    backgroundColor: Colors.card,
-    borderWidth: 1.5,
-    borderColor: Colors.border,
+  typeChipActive: { backgroundColor: "#eff6ff", borderColor: "#3b82f6" },
+  typeChipText: { fontSize: 12, color: "#64748b", fontFamily: "Vazir" },
+  typeChipTextActive: { color: "#3b82f6", fontWeight: "600" },
+  checkbox: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 12 },
+  checkboxText: { fontSize: 14, color: "#475569", fontFamily: "Vazir" },
+  feeItemCard: {
+    backgroundColor: "#f8fafc",
     borderRadius: 12,
-    padding: 14,
-    fontSize: 18,
-    fontWeight: "bold",
-    color: Colors.text,
-    textAlign: "center",
-    fontFamily: "Vazirmatn",
-  },
-  inputError: { borderColor: Colors.danger },
-  errorText: {
-    fontSize: 12,
-    color: Colors.danger,
-    fontFamily: "Vazirmatn",
-    marginTop: 6,
-    textAlign: "right",
-  },
-  frequencyGrid: { flexDirection: "row", gap: 10 },
-  frequencyCard: {
-    flex: 1,
-    alignItems: "center",
     padding: 12,
-    borderRadius: 12,
-    borderWidth: 2,
-    borderColor: Colors.border,
-    backgroundColor: Colors.card,
-    gap: 8,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
   },
-  frequencyLabel: {
-    fontSize: 12,
-    color: Colors.textSecondary,
-    fontFamily: "Vazirmatn",
-  },
-  dueDayContainer: { flexDirection: "row", alignItems: "center", gap: 8 },
-  dueDayInput: {
-    flex: 1,
-    backgroundColor: Colors.card,
-    borderWidth: 1.5,
-    borderColor: Colors.border,
-    borderRadius: 12,
-    padding: 14,
-    fontSize: 16,
-    textAlign: "center",
-    fontFamily: "Vazirmatn",
-  },
-  dueDaySuffix: {
-    fontSize: 14,
-    color: Colors.textSecondary,
-    fontFamily: "Vazirmatn",
-  },
-  hintText: {
-    fontSize: 11,
-    color: Colors.textSecondary,
-    fontFamily: "Vazirmatn",
-    marginTop: 6,
-    textAlign: "right",
-  },
-  switchRow: {
+  feeItemHeader: {
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
-    backgroundColor: Colors.card,
-    padding: 14,
+    gap: 10,
+  },
+  feeItemIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 8,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  feeItemInfo: { flex: 1 },
+  feeItemName: { fontSize: 14, fontWeight: "600", color: "#1e293b", fontFamily: "Vazir" },
+  feeItemType: { fontSize: 11, color: "#94a3b8", marginTop: 2, fontFamily: "Vazir" },
+  feeItemAmountContainer: { alignItems: "flex-end" },
+  feeItemAmount: { fontSize: 14, fontWeight: "600", color: "#475569", fontFamily: "Vazir", marginBottom: 4 },
+  addItemForm: {
+    marginTop: 8,
+    padding: 16,
+    backgroundColor: "#f8fafc",
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: "#e2e8f0",
   },
-  switchInfo: { flexDirection: "row", alignItems: "center", gap: 10, flex: 1 },
-  statusDot: { width: 10, height: 10, borderRadius: 5 },
-  switchLabel: {
-    fontSize: 14,
-    fontWeight: "500",
-    color: Colors.text,
-    fontFamily: "Vazirmatn",
+  addItemActions: { flexDirection: "row", gap: 8 },
+  btn: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 10,
+    alignItems: "center",
   },
-  switchDesc: {
-    fontSize: 11,
-    color: Colors.textSecondary,
-    fontFamily: "Vazirmatn",
-    marginTop: 2,
-  },
-  summaryCard: {
-    backgroundColor: `${Colors.primary}08`,
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 20,
-  },
-  summaryTitle: {
-    fontSize: 15,
-    fontWeight: "bold",
-    color: Colors.text,
-    fontFamily: "Vazirmatn",
-    marginBottom: 12,
-    textAlign: "center",
-  },
-  summaryRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginBottom: 8,
-  },
-  summaryLabel: {
-    fontSize: 13,
-    color: Colors.textSecondary,
-    fontFamily: "Vazirmatn",
-  },
-  summaryValue: {
-    fontSize: 13,
-    fontWeight: "500",
-    color: Colors.text,
-    fontFamily: "Vazirmatn",
-  },
-  createButton: {
+  btnPrimary: { backgroundColor: "#06b6d4" },
+  btnPrimaryText: { color: "#fff", fontWeight: "600", fontFamily: "Vazir" },
+  btnSecondary: { backgroundColor: "#e2e8f0" },
+  btnSecondaryText: { color: "#64748b", fontFamily: "Vazir" },
+  addItemTrigger: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: Colors.primary,
-    borderRadius: 12,
     paddingVertical: 16,
+    borderWidth: 2,
+    borderColor: "#a5f3fc",
+    borderStyle: "dashed",
+    borderRadius: 12,
+    marginTop: 8,
     gap: 8,
-    marginTop: 10,
   },
-  createButtonDisabled: { opacity: 0.5 },
-  createButtonText: {
-    color: "white",
-    fontSize: 16,
-    fontWeight: "bold",
-    fontFamily: "Vazirmatn",
+  addItemTriggerText: { fontSize: 15, color: "#06b6d4", fontFamily: "Vazir" },
+  totalContainer: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginTop: 16,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: "#e2e8f0",
   },
+  totalLabel: { fontSize: 16, fontWeight: "700", color: "#1e293b", fontFamily: "VazirBold" },
+  totalAmount: { fontSize: 18, fontWeight: "700", color: "#06b6d4", fontFamily: "VazirBold" },
+  footer: {
+    padding: 16,
+    backgroundColor: "#fff",
+    borderTopWidth: 1,
+    borderTopColor: "#e2e8f0",
+  },
+  submitButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#06b6d4",
+    paddingVertical: 16,
+    borderRadius: 14,
+    gap: 8,
+    elevation: 4,
+    shadowColor: "#06b6d4",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+  },
+  submitDisabled: { opacity: 0.6 },
+  submitText: { color: "#fff", fontSize: 18, fontWeight: "700", fontFamily: "VazirBold" },
 });

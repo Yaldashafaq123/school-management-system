@@ -1,2084 +1,1219 @@
-// src/config/financeApi.ts - COMPLETE COMBINED VERSION
-import { apiRequest } from "./api";
+// src/config/financeApi.ts
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { BASE_URL } from "./api";
 
-// =============================
-// TYPES & INTERFACES
-// =============================
-
-export interface User {
-  id: number;
-  fullName: string;
-  email: string;
-  phone: string;
-  role: "ADMIN" | "TEACHER" | "STUDENT" | "PARENT";
-  verified: boolean;
-  createdAt: string;
-  profileImage?: string;
-  student?: {
-    id: number;
-    classId: number | null;
-    className?: string;
-    bio?: string;
-    grade?: string;
-    school?: string;
-    birthDate?: string;
-    parentContact?: string;
-    address?: string;
-    interests?: string[];
-    status?: string;
-  };
-  teacher?: {
-    id: number;
-    bio?: string;
-    experience?: string;
-    hourlyRate?: number;
-    baseSalary?: number;
-    overtimeRate?: number;
-    certification?: string;
-    availability?: boolean;
-    isActive?: boolean;
-    rating?: number;
-    subjects?: { id: number; name: string }[];
-  };
-  parent?: {
-    id: number;
-    relationship?: string;
-    occupation?: string;
-    address?: string;
-    emergencyContact?: string;
-    children?: {
-      id: number;
-      name: string;
-      className?: string;
-    }[];
-  };
-}
-
-export interface Class {
-  id: number;
-  name: string;
-  section?: string;
-  academicYearId?: number;
-  academicYear?: { id: number; name: string; isActive: boolean };
-  teacherId?: number;
-  teacher?: { id: number; name: string; email: string };
-  studentCount: number;
-  timetableCount: number;
-  assignmentCount: number;
-  isActive: boolean;
-  description?: string;
-  thumbnail?: string;
-}
-
-export interface Subject {
-  id: number;
-  name: string;
-  teacherCount: number;
-  classCount: number;
-  teachers: { id: number; name: string }[];
-  classes: { id: number; name: string; section?: string }[];
-}
-
-export interface TeacherSalary {
-  teacherId: number;
-  name: string;
-  email: string;
-  phone: string;
-  hourlyRate: number;
-  baseSalary: number;
-  overtimeRate: number;
-  totalEarned: number;
-  pendingAmount: number;
-  salaryHistory: {
-    id: number;
-    month: string;
-    year: number;
-    baseSalary: number;
-    overtimeAmount: number;
-    bonusAmount: number;
-    deductionAmount: number;
-    finalAmount: number;
-    paidAmount: number;
-    remainingAmount: number;
-    status: string;
-  }[];
-}
-
-export interface StudentFeeDetails {
-  studentId: number;
-  studentName: string;
-  className?: string;
-  fees: {
-    id: number;
-    title: string;
-    amount: number;
-    dueDate: string;
-    formattedDueDate?: string;
-    status: string;
-    billingMonth?: number;
-    billingYear?: number;
-    discount?: { code: string; type: string; value: number };
-    paidAmount: number;
-    remainingAmount: number;
-    payments: {
-      id: number;
-      amount: number;
-      paymentMethod?: string;
-      date: string;
-      confirmedBy: string;
-    }[];
-  }[];
-  summary: {
-    totalDue: number;
-    totalPaid: number;
-    totalAmount: number;
-    pendingCount: number;
-    paidCount: number;
-  };
-}
-
-export interface StudentFee {
-  id: number;
-  studentId: number;
-  studentName: string;
-  className?: string;
-  feeCategoryId: number;
-  feeTitle: string;
-  amount: number;
-  paidAmount: number;
-  remainingAmount: number;
-  dueDate: string;
-  formattedDueDate?: string;
-  status: "PAID" | "PARTIAL" | "PENDING" | "OVERDUE" | "CANCELLED";
-  billingMonth?: number;
-  billingYear?: number;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface Payment {
-  id: number;
-  studentId: number;
-  studentName: string;
-  className?: string;
-  feeId: number;
-  feeTitle: string;
-  amount: number;
-  date: string;
-  paymentMethod?: string;
-  transactionId?: string;
-  confirmedBy: string;
-  notes?: string;
-  createdAt: string;
-}
-
-export interface FeeCategory {
-  id: number;
-  title: string;
-  amount: number;
-  description?: string;
-  isRecurring?: boolean;
-  createdAt: string;
-  updatedAt: string;
-  assignedClasses?: { id: number; name: string; section?: string }[];
-  _count?: {
-    studentFees: number;
-  };
-}
+// ==================== TYPES ====================
 
 export interface FeeTemplate {
   id: number;
-  classId: number;
-  className: string;
-  feeCategoryId: number;
-  feeTitle: string;
-  amount: number;
-  frequency: "MONTHLY" | "YEARLY" | "ONE_TIME";
-  dueDay: number;
-  isActive: boolean;
-  academicYear?: string;
-  assignedStudents?: number;
-}
-
-export interface ExpenseCategory {
-  id: number;
   name: string;
+  academicYearId: number;
+  academicYearName?: string;
+  classId?: number;
+  className?: string;
   description?: string;
+  isActive: boolean;
+  itemCount: number;
+  assignedCount: number;
+  studentCount: number;
+  items: FeeTemplateItem[];
+  totalAmount: number;
   createdAt: string;
   updatedAt: string;
-  _count?: {
-    expenses: number;
-  };
-}
-
-export interface Expense {
-  id: number;
-  categoryId: number;
-  category?: string;
-  amount: number;
-  description: string;
-  date: string;
-  formattedDate?: string;
-  receiptUrl?: string;
-  createdBy?: string;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface MonthlySalary {
-  id: number;
-  teacherId: number;
-  teacherName: string;
-  month: number;
-  year: number;
-  baseSalary: number;
-  overtimeAmount: number;
-  bonusAmount: number;
-  deductionAmount: number;
-  finalAmount: number;
-  paidAmount: number;
-  remainingAmount: number;
-  status: "PENDING" | "PARTIAL" | "PAID" | "CANCELLED";
-  overtimeHours?: number;
-  createdAt: string;
-  updatedAt: string;
-  payments?: {
+  class?: {
     id: number;
-    amount: number;
-    date: string;
-    confirmedBy: string;
-  }[];
+    name: string;
+    section?: string;
+  };
+  academicYear?: {
+    id: number;
+    name: string;
+  };
+  templateItems?: FeeTemplateItem[];
 }
 
-export interface Salary {
+export interface FeeTemplateItem {
   id: number;
-  teacherId: number;
-  teacherName: string;
-  month: number;
-  year: number;
-  baseSalary: number;
-  overtimeAmount: number;
-  bonusAmount: number;
-  deductionAmount: number;
-  finalAmount: number;
-  paidAmount: number;
-  remainingAmount: number;
-  status: "PENDING" | "PARTIAL" | "PAID" | "CANCELLED";
-  paymentsCount?: number;
+  feeTemplateId: number;
+  feeType: string;
+  name: string;
+  amount: number;
+  isRecurring: boolean;
+  isMandatory: boolean;
+  description?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface FeeAssignment {
+  id: number;
+  studentId: number;
+  academicYearId: number;
+  feeTemplateId?: number;
+  assignedDate: string;
+  status: "DRAFT" | "ACTIVE" | "COMPLETED" | "CANCELLED";
+  notes?: string;
+  createdBy: number;
   createdAt: string;
   updatedAt: string;
+  student?: {
+    id: number;
+    user: { fullName: string; email: string; phone?: string };
+    class?: { id: number; name: string };
+  };
+  academicYear?: { id: number; name: string };
+  feeItems: FeeAssignmentItem[];
+  studentDiscounts?: StudentDiscount[];
+  feeTemplate?: { id: number; name: string };
 }
 
-export interface SalaryPayment {
+export interface FeeAssignmentItem {
   id: number;
-  salaryId: number;
-  teacherId: number;
-  teacherName: string;
+  feeAssignmentId: number;
+  feeType: string;
+  name: string;
   amount: number;
-  paymentDate: string;
+  isRecurring: boolean;
+  startMonth?: string;
+  endMonth?: string;
+  discountAmount: number;
+  finalAmount: number;
+  paidAmount?: number;
+  status: "PENDING" | "PAID" | "PARTIAL" | "OVERDUE" | "CANCELLED";
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
+  monthlyRecords?: MonthlyFeeRecord[];
+}
+
+export interface MonthlyFeeRecord {
+  id: number;
+  feeAssignmentItemId: number;
+  month: string;
+  year: number;
+  amount: number;
+  paidAmount: number;
+  balanceAmount: number;
+  dueDate?: string;
+  paidDate?: string;
+  status: "PENDING" | "PAID" | "PARTIAL" | "OVERDUE" | "CANCELLED";
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
+  payments?: MonthlyFeePayment[];
+}
+
+export interface MonthlyFeePayment {
+  id: number;
+  monthlyFeeRecordId: number;
+  amount: number;
   paymentMethod: string;
   referenceNo?: string;
-  transactionId?: string;
   notes?: string;
-  isEarlyPayment?: boolean;
-  confirmedBy: string;
+  confirmedBy: number;
+  confirmedAt: string;
   createdAt: string;
+  confirmer?: { fullName: string };
 }
 
-export interface PaginatedResponse<T> {
-  success: boolean;
-  data: {
-    items?: T[];
-    users?: T[];
-    classes?: T[];
-    total: number;
-    page: number;
-    totalPages: number;
-  };
+export interface FeeItemPayment {
+  id: number;
+  feeAssignmentItemId: number;
+  amount: number;
+  paymentMethod: string;
+  referenceNo?: string;
+  notes?: string;
+  confirmedBy: number;
+  confirmedAt: string;
+  createdAt: string;
+  confirmer?: { fullName: string };
 }
 
-export interface IncomeStatement {
-  year?: number;
-  summary: {
-    totalIncome: number;
-    totalExpenses: number;
-    netProfit: number;
-  };
-  monthlyData: {
-    month: number;
-    monthName: string;
-    income: number;
-    expenses: number;
-    profit: number;
-  }[];
+export interface StudentDiscount {
+  id: number;
+  studentId: number;
+  feeAssignmentId?: number;
+  feeAssignmentItemId?: number;
+  approvedBy: number;
+  amount: number;
+  reason: string;
+  createdAt: string;
+  approver?: { fullName: string };
 }
 
-export interface FinanceDashboard {
-  summary: {
-    totalIncome: number;
-    monthlyIncome: number;
-    yearlyIncome: number;
-    pendingFees: number;
-    totalExpenses: number;
-    monthlyExpenses: number;
-    yearlyExpenses?: number;
-    pendingSalaries: number;
-    totalStudents: number;
-    netProfit: number;
-    monthlyProfit: number;
-  };
-  recentPayments: {
-    id: number;
-    studentName: string;
-    amount: number;
-    date: string;
-    feeTitle: string;
-    status: string;
-  }[];
-  recentExpenses: {
-    id: number;
-    category: string;
-    amount: number;
-    date: string;
-    description: string;
-  }[];
+export interface AcademicYear {
+  id: number;
+  name: string;
+  startDate: string;
+  endDate: string;
+  isActive: boolean;
+  studentCount?: number;
+  templateCount?: number;
+  classCount?: number;
 }
 
 export interface OutstandingFee {
-  id: number;
   studentId: number;
   studentName: string;
-  className: string;
-  feeTitle: string;
-  amount: number;
-  paidAmount: number;
-  remainingAmount: number;
-  dueDate: string;
-  formattedDueDate: string;
-  overdueDays: number;
-  billingMonth?: number;
-  billingYear?: number;
+  studentPhone?: string;
+  className?: string;
+  academicYear: string;
+  totalBalance: number;
+  pendingItems: {
+    type: "monthly" | "one-time";
+    name: string;
+    month?: string;
+    year?: number;
+    monthName?: string;
+    balanceAmount: number;
+    recordId?: number;
+    itemId?: number;
+  }[];
+}
+
+export interface OutstandingFeesResponse {
+  totalOutstanding: number;
+  totalStudents: number;
+  students: OutstandingFee[];
 }
 
 export interface FeeStatistics {
   todayCollection: number;
+  todayCount: number;
   weekCollection: number;
   monthCollection: number;
   pendingFees: number;
+  pendingCount: number;
   overdueCount: number;
   totalStudents: number;
   collectionRate: number;
 }
 
-export interface PaymentReceipt {
+export interface PaymentRecord {
   id: number;
-  receiptNo: string;
+  studentId?: number;
   studentName: string;
-  studentClass: string;
-  feeTitle: string;
-  amount: number;
-  paidAmount: number;
-  remainingAmount: number;
-  paymentMethod: string;
-  paymentDate: string;
-  dueDate: string;
-  status: string;
-  collectedBy: string;
-}
-
-export interface CashFlowData {
-  startDate: string;
-  endDate: string;
-  openingBalance: number;
-  totalInflow: number;
-  totalOutflow: number;
-  netCashFlow: number;
-  closingBalance: number;
-  inflows: { category: string; amount: number; percentage: number }[];
-  outflows: { category: string; amount: number; percentage: number }[];
-}
-
-export interface DailyCollection {
-  date: string;
-  totalAmount: number;
-  count: number;
-  payments: {
-    id: number;
-    studentName: string;
-    amount: number;
-    paymentMethod: string;
-  }[];
-}
-
-export interface MonthlyCollection {
-  month: number;
-  monthName: string;
-  totalAmount: number;
-  count: number;
-  averagePerDay: number;
-}
-
-export interface ClassCollection {
-  classId: number;
+  studentPhone?: string;
   className: string;
-  totalCollected: number;
-  totalExpected: number;
-  collectionRate: number;
-  studentCount: number;
-  paidCount: number;
-  pendingCount: number;
-}
-
-export interface AgingBucket {
-  bucket: string;
   amount: number;
-  count: number;
-  color: string;
+  paymentMethod: string;
+  date: string;
+  time: string;
+  feeTitle: string;
+  confirmedBy: string;
+  referenceNo?: string | null;
+  notes?: string | null;
+  feePlanId?: number;
+  academicYear?: string;
 }
 
-export interface AgingData {
-  totalOutstanding: number;
-  buckets: AgingBucket[];
-  students: {
-    id: number;
-    name: string;
-    className: string;
-    amount: number;
-    dueDate: string;
-    overdueDays: number;
-    bucket: string;
-  }[];
+export interface PaymentHistoryResponse {
+  success: boolean;
+  data: {
+    payments: PaymentRecord[];
+    total: number;
+    page: number;
+    totalPages: number;
+    limit: number;
+  };
 }
 
-export interface OutstandingReportData {
-  totalOutstanding: number;
-  totalStudents: number;
-  averagePerStudent: number;
-  students: {
-    id: number;
-    studentId: number;
-    studentName: string;
-    className: string;
-    totalAmount: number;
-    feeCount: number;
-    oldestDueDate: string;
-    overdueDays: number;
-    fees: {
-      id: number;
-      title: string;
-      amount: number;
-      dueDate: string;
-      overdueDays: number;
-    }[];
-  }[];
-}
-
-export interface SalaryStatistics {
-  totalPaidThisMonth: number;
-  totalPending: number;
-  totalTeachers: number;
-  paidCount: number;
-  pendingCount: number;
-  averageSalary: number;
-}
-
-// Add this new interface
-export interface StudentSearchResult {
+export interface ClassItem {
   id: number;
   name: string;
-  email?: string;
-  phone?: string;
-  rollNumber: string;
-  className?: string;
-  pendingFees: {
-    id: number;
-    title: string;
-    amount: number;
-    paidAmount: number;
-    remainingAmount: number;
-    dueDate: string;
-    status: string;
-  }[];
-  totalPending: number;
+  section: string;
+  studentCount: number;
+  is_active?: boolean;
 }
 
-// Persian months constant
-export const PERSIAN_MONTHS = [
-  "حمل",
-  "ثور",
-  "جوزا",
-  "سرطان",
-  "اسد",
-  "سنبله",
-  "میزان",
-  "عقرب",
-  "قوس",
-  "جدی",
-  "دلو",
-  "حوت",
-];
+export interface BulkStudent {
+  id: number;
+  name: string;
+  rollNumber: string;
+  amount: number;
+  feeId?: number | null;
+  defaultAmount?: number;
+}
 
-// =============================
-// UTILITY FUNCTIONS
-// =============================
+export interface StudentFeeStatus {
+  id: number;
+  name: string;
+  phone?: string;
+  className?: string;
+  classSection?: string;
+  classId?: number;
+  totalFees: number;
+  totalPaid: number;
+  totalPending: number;
+  pendingFees: {
+    id: number;
+    academicYear: string;
+    academicYearId: number;
+    amount: number;
+    paidAmount: number;
+    balanceAmount: number;
+    discountAmount: number;
+    status: string;
+    createdAt: string;
+  }[];
+}
 
-export const toPersianNumber = (num: number): string => {
-  const persianDigits = ["۰", "۱", "۲", "۳", "۴", "۵", "۶", "۷", "۸", "۹"];
-  return num.toString().replace(/\d/g, (d) => persianDigits[parseInt(d)]);
-};
+export interface FeeCategory {
+  value: string;
+  label: string;
+  icon: string;
+  type: string;
+  isRecurring: boolean;
+}
 
-export const formatCurrency = (amount: number): string => {
-  if (amount === null || amount === undefined || isNaN(amount)) {
-    return "۰ افغانی";
+export interface AfghanMonth {
+  key: string;
+  name: string;
+}
+
+export interface DashboardSummary {
+  totalAssignments: number;
+  activeAssignments: number;
+  totalOutstanding: number;
+  monthlyCollection: number;
+}
+
+export interface ExpenseStats {
+  totalThisMonth: number;
+  totalThisYear: number;
+  averageDaily: number;
+  topCategory: {
+    name: string;
+    amount: number;
+  };
+}
+
+export interface Student {
+  id: number;
+  userId: number;
+  classId?: number;
+  status: string;
+  studentNumber?: string;
+  user: {
+    fullName: string;
+    email: string;
+    phone?: string;
+  };
+  class?: {
+    id: number;
+    name: string;
+    section?: string;
+  };
+}
+
+export interface FeeAssignmentInput {
+  studentId: number;
+  academicYearId: number;
+  feeTemplateId?: number;
+  items: FeeItemInput[];
+  notes?: string;
+}
+
+export interface FeeItemInput {
+  feeType: string;
+  name: string;
+  amount: number;
+  isRecurring: boolean;
+}
+
+export interface ApiResponse<T> {
+  success: boolean;
+  data: T;
+  message?: string;
+}
+
+// ==================== API CLASS ====================
+
+class FinanceApi {
+  private async getToken(): Promise<string | null> {
+    try {
+      const token = await AsyncStorage.getItem("auth_token");
+      return token;
+    } catch (error) {
+      console.error("Error getting token:", error);
+      return null;
+    }
   }
-  return `${toPersianNumber(Math.round(amount)).replace(/\B(?=(\d{3})+(?!\d))/g, ",")} افغانی`;
-};
 
-// =============================
-// MAIN FINANCE API
-// =============================
-
-export const financeApi = {
-  // =============================
-  // DASHBOARD & SUMMARY
-  // =============================
-
-  getDashboard: async (): Promise<FinanceDashboard> => {
-    const response = await apiRequest("/finance/admin/dashboard", {
-      method: "GET",
-    });
-    if (response.success && response.data) {
-      const summary = response.data.summary || {};
-      return {
-        summary: {
-          totalIncome: summary.totalIncome || 0,
-          monthlyIncome: summary.monthlyIncome || 0,
-          yearlyIncome: summary.yearlyIncome || 0,
-          pendingFees: summary.pendingFees || 0,
-          totalExpenses: summary.totalExpenses || 0,
-          monthlyExpenses: summary.monthlyExpenses || 0,
-          yearlyExpenses: summary.yearlyExpenses || 0,
-          pendingSalaries: summary.pendingSalaries || 0,
-          totalStudents: summary.totalStudents || 0,
-          netProfit:
-            summary.netProfit ??
-            (summary.totalIncome || 0) - (summary.totalExpenses || 0),
-          monthlyProfit:
-            summary.monthlyProfit ??
-            (summary.monthlyIncome || 0) - (summary.monthlyExpenses || 0),
-        },
-        recentPayments: response.data.recentPayments || [],
-        recentExpenses: response.data.recentExpenses || [],
-      };
-    }
+  private async getHeaders(): Promise<HeadersInit> {
+    const token = await this.getToken();
     return {
-      summary: {
-        totalIncome: 0,
-        monthlyIncome: 0,
-        yearlyIncome: 0,
-        pendingFees: 0,
-        totalExpenses: 0,
-        monthlyExpenses: 0,
-        yearlyExpenses: 0,
-        pendingSalaries: 0,
-        totalStudents: 0,
-        netProfit: 0,
-        monthlyProfit: 0,
-      },
-      recentPayments: [],
-      recentExpenses: [],
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
     };
-  },
+  }
 
-  getFinancialSummary: async () => {
-    const response = await apiRequest("/finance/admin/summary", {
-      method: "GET",
-    });
-    if (response.success && response.data) {
-      const data = response.data;
-      return {
-        ...data,
-        netProfit:
-          data.netProfit ?? (data.totalIncome || 0) - (data.totalExpenses || 0),
-        monthlyProfit:
-          data.monthlyProfit ??
-          (data.monthlyIncome || 0) - (data.monthlyExpenses || 0),
-      };
+  private async request<T>(
+    endpoint: string,
+    options: RequestInit = {},
+  ): Promise<T> {
+    try {
+      const headers = await this.getHeaders();
+      const url = `${BASE_URL}/finance${endpoint}`;
+
+      console.log(`📡 Request: ${options.method || "GET"} ${url}`);
+
+      const response = await fetch(url, {
+        ...options,
+        headers: {
+          ...headers,
+          ...options.headers,
+        },
+      });
+
+      if (!response.ok) {
+        const error = await response
+          .json()
+          .catch(() => ({ message: "Network error" }));
+        throw new Error(error.message || `HTTP ${response.status}`);
+      }
+
+      const result = await response.json();
+      return result as T;
+    } catch (error) {
+      console.error(`❌ API Error [${endpoint}]:`, error);
+      throw error;
     }
-    return response.data;
-  },
+  }
 
-  // =============================
-  // STUDENT SEARCH - NEW FUNCTION
-  // =============================
+  // ==================== DASHBOARD ====================
+  async getDashboard(): Promise<{ success: boolean; data: DashboardSummary }> {
+    return this.request("/dashboard/summary");
+  }
 
-  searchStudents: async (
-    query: string,
-    classId?: string | number,
-  ): Promise<{
-    success: boolean;
-    data: StudentSearchResult[];
-  }> => {
-    const queryParams = new URLSearchParams();
-    queryParams.append("query", query);
-    if (classId && classId !== "all") {
-      queryParams.append("classId", classId.toString());
+  // ==================== ACADEMIC YEARS ====================
+  async getAcademicYears(): Promise<AcademicYear[]> {
+    try {
+      console.log("📡 Fetching academic years from API...");
+      const result = await this.request<{
+        success: boolean;
+        data: AcademicYear[];
+      }>("/academic-years");
+      console.log("📡 API Response:", JSON.stringify(result, null, 2));
+
+      if (result && typeof result === "object") {
+        const response = result as any;
+        if (response.data && Array.isArray(response.data)) {
+          return response.data;
+        }
+        if (Array.isArray(response)) {
+          return response;
+        }
+        if (response.success && response.data) {
+          return response.data;
+        }
+      }
+
+      console.warn("⚠️ No academic years data found in response");
+      return [];
+    } catch (error) {
+      console.error("❌ Failed to fetch academic years:", error);
+      return [];
     }
-    const response = await apiRequest(
-      `/finance/admin/students/search?${queryParams.toString()}`,
-      { method: "GET" },
-    );
-    return response;
-  },
+  }
 
-  // =============================
-  // FEE CATEGORY MANAGEMENT
-  // =============================
-
-  getFeeCategories: async (params?: {
-    page?: number;
-    limit?: number;
-  }): Promise<{ success: boolean; data: FeeCategory[] }> => {
-    const queryParams = new URLSearchParams();
-    if (params?.page) queryParams.append("page", params.page.toString());
-    if (params?.limit) queryParams.append("limit", params.limit.toString());
-    const response = await apiRequest(
-      `/finance/admin/fee-categories?${queryParams.toString()}`,
-      { method: "GET" },
-    );
-    return response;
-  },
-
-  getFeeCategoryById: async (
-    categoryId: number,
-  ): Promise<{ success: boolean; data: FeeCategory }> => {
-    const response = await apiRequest(
-      `/finance/admin/fee-categories/${categoryId}`,
-      { method: "GET" },
-    );
-    return response;
-  },
-
-  createFeeCategory: async (data: {
-    title: string;
-    amount: number;
-    description?: string;
-    isRecurring?: boolean;
-  }): Promise<{ success: boolean; data: FeeCategory; message: string }> => {
-    const response = await apiRequest("/finance/admin/fee-categories", {
-      method: "POST",
-      body: JSON.stringify(data),
-    });
-    return response;
-  },
-
-  updateFeeCategory: async (
-    categoryId: number,
-    data: {
-      title?: string;
-      amount?: number;
-      description?: string;
-      isRecurring?: boolean;
-    },
-  ): Promise<{ success: boolean; data: FeeCategory; message: string }> => {
-    const response = await apiRequest(
-      `/finance/admin/fee-categories/${categoryId}`,
-      { method: "PUT", body: JSON.stringify(data) },
-    );
-    return response;
-  },
-
-  deleteFeeCategory: async (
-    categoryId: number,
-  ): Promise<{ success: boolean; message: string }> => {
-    const response = await apiRequest(
-      `/finance/admin/fee-categories/${categoryId}`,
-      { method: "DELETE" },
-    );
-    return response;
-  },
-
-  // =============================
-  // FEE TEMPLATE MANAGEMENT
-  // =============================
-
-  getFeeTemplates: async (): Promise<{
-    success: boolean;
-    data: FeeTemplate[];
-  }> => {
-    const response = await apiRequest("/finance/admin/fee-templates", {
-      method: "GET",
-    });
-    return response;
-  },
-
-  getFeeTemplateById: async (
-    templateId: number,
-  ): Promise<{ success: boolean; data: FeeTemplate }> => {
-    const response = await apiRequest(
-      `/finance/admin/fee-templates/${templateId}`,
-      { method: "GET" },
-    );
-    return response;
-  },
-
-  createFeeTemplate: async (data: {
-    classId: number;
-    feeCategoryId: number;
-    amount: number;
-    frequency: string;
-    dueDay: number;
-    isActive?: boolean;
+  // ==================== FEE TEMPLATES ====================
+  async getFeeTemplates(params?: {
+    classId?: number;
     academicYearId?: number;
-  }): Promise<{ success: boolean; data: FeeTemplate; message: string }> => {
-    const response = await apiRequest("/finance/admin/fee-templates", {
+    isActive?: boolean;
+  }): Promise<FeeTemplate[]> {
+    try {
+      const query = new URLSearchParams();
+      if (params?.classId) query.append("classId", params.classId.toString());
+      if (params?.academicYearId)
+        query.append("academicYearId", params.academicYearId.toString());
+      if (params?.isActive !== undefined)
+        query.append("isActive", params.isActive.toString());
+      const qs = query.toString();
+      const endpoint = `/fee-templates${qs ? `?${qs}` : ""}`;
+
+      console.log("📡 Fetching templates from:", endpoint);
+      const result = await this.request<{
+        success: boolean;
+        data: FeeTemplate[];
+      }>(endpoint);
+      console.log("📡 Templates Response:", JSON.stringify(result, null, 2));
+
+      if (result && typeof result === "object") {
+        const response = result as any;
+        if (response.data && Array.isArray(response.data)) {
+          // Ensure items are properly mapped
+          return response.data.map((template: any) => ({
+            ...template,
+            items: template.items || template.templateItems || [],
+          }));
+        }
+        if (Array.isArray(response)) {
+          return response.map((template: any) => ({
+            ...template,
+            items: template.items || template.templateItems || [],
+          }));
+        }
+        if (response.success && response.data) {
+          return response.data.map((template: any) => ({
+            ...template,
+            items: template.items || template.templateItems || [],
+          }));
+        }
+      }
+
+      console.warn("⚠️ No templates data found, returning empty array");
+      return [];
+    } catch (error) {
+      console.error("❌ Failed to fetch templates:", error);
+      return [];
+    }
+  }
+
+  async getFeeTemplateById(
+    id: number,
+  ): Promise<{ success: boolean; data: FeeTemplate }> {
+    return this.request(`/fee-templates/${id}`);
+  }
+
+  async createFeeTemplate(data: {
+    name: string;
+    classId?: number;
+    academicYearId: number;
+    description?: string;
+    items: Omit<
+      FeeTemplateItem,
+      "id" | "feeTemplateId" | "createdAt" | "updatedAt"
+    >[];
+  }): Promise<{ success: boolean; data: FeeTemplate }> {
+    return this.request("/fee-templates", {
       method: "POST",
       body: JSON.stringify(data),
     });
-    return response;
-  },
+  }
 
-  updateFeeTemplate: async (
-    templateId: number,
+  async updateFeeTemplate(
+    id: number,
     data: {
-      amount?: number;
-      frequency?: string;
-      dueDay?: number;
+      name?: string;
+      description?: string;
       isActive?: boolean;
+      items?: Omit<
+        FeeTemplateItem,
+        "id" | "feeTemplateId" | "createdAt" | "updatedAt"
+      >[];
     },
-  ): Promise<{ success: boolean; data: FeeTemplate; message: string }> => {
-    const response = await apiRequest(
-      `/finance/admin/fee-templates/${templateId}`,
-      { method: "PUT", body: JSON.stringify(data) },
-    );
-    return response;
-  },
+  ): Promise<{ success: boolean; data: FeeTemplate }> {
+    return this.request(`/fee-templates/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    });
+  }
 
-  deleteFeeTemplate: async (
+  async deleteFeeTemplate(
+    id: number,
+  ): Promise<{ success: boolean; message: string }> {
+    return this.request(`/fee-templates/${id}`, {
+      method: "DELETE",
+    });
+  }
+
+  async getStudentsForTemplate(
     templateId: number,
-  ): Promise<{ success: boolean; message: string }> => {
-    const response = await apiRequest(
-      `/finance/admin/fee-templates/${templateId}`,
-      { method: "DELETE" },
-    );
-    return response;
-  },
+  ): Promise<{ success: boolean; data: BulkStudent[] }> {
+    return this.request(`/fee-templates/${templateId}/students`);
+  }
 
-  getStudentsForTemplate: async (
-    templateId: number,
-  ): Promise<{
-    success: boolean;
-    data: {
-      id: number;
-      name: string;
-      rollNumber: string;
-      hasExistingFee: boolean;
-    }[];
-  }> => {
-    const response = await apiRequest(
-      `/finance/admin/fee-templates/${templateId}/students`,
-      { method: "GET" },
-    );
-    return response;
-  },
-
-  assignTemplateToStudents: async (data: {
+  async assignTemplateToStudents(data: {
     templateId: number;
     studentIds: number[];
-  }): Promise<{
-    success: boolean;
-    data: { count: number };
-    message: string;
-  }> => {
-    const response = await apiRequest("/finance/admin/fee-templates/assign", {
+    academicYearId?: number;
+  }): Promise<{ success: boolean; data: any }> {
+    return this.request("/fee-templates/assign", {
       method: "POST",
       body: JSON.stringify(data),
     });
-    return response;
-  },
+  }
 
-  // =============================
-  // EXPENSE CATEGORY MANAGEMENT
-  // =============================
+  // ==================== FEE CATEGORIES ====================
+  async getFeeCategories(): Promise<FeeCategory[]> {
+    try {
+      const result = await this.request<{
+        success: boolean;
+        data: FeeCategory[];
+      }>("/fee-categories");
+      console.log("📡 Categories Response:", JSON.stringify(result, null, 2));
 
-  getExpenseCategories: async (params?: {
-    page?: number;
-    limit?: number;
-  }): Promise<{ success: boolean; data: ExpenseCategory[] }> => {
-    const queryParams = new URLSearchParams();
-    if (params?.page) queryParams.append("page", params.page.toString());
-    if (params?.limit) queryParams.append("limit", params.limit.toString());
-    const response = await apiRequest(
-      `/finance/admin/expense-categories?${queryParams.toString()}`,
-      { method: "GET" },
-    );
-    return response;
-  },
+      if (result && typeof result === "object") {
+        const response = result as any;
+        if (response.data && Array.isArray(response.data)) {
+          return response.data;
+        }
+        if (Array.isArray(response)) {
+          return response;
+        }
+        if (response.success && response.data) {
+          return response.data;
+        }
+      }
 
-  createExpenseCategory: async (data: {
-    name: string;
-    description?: string;
-  }): Promise<{ success: boolean; data: ExpenseCategory; message: string }> => {
-    const response = await apiRequest("/finance/admin/expense-categories", {
-      method: "POST",
-      body: JSON.stringify(data),
-    });
-    return response;
-  },
+      return [];
+    } catch (error) {
+      console.error("❌ Failed to fetch fee categories:", error);
+      return [];
+    }
+  }
 
-  updateExpenseCategory: async (
-    categoryId: number,
-    data: { name?: string; description?: string },
-  ): Promise<{ success: boolean; data: ExpenseCategory; message: string }> => {
-    const response = await apiRequest(
-      `/finance/admin/expense-categories/${categoryId}`,
-      { method: "PUT", body: JSON.stringify(data) },
-    );
-    return response;
-  },
-
-  deleteExpenseCategory: async (
-    categoryId: number,
-  ): Promise<{ success: boolean; message: string }> => {
-    const response = await apiRequest(
-      `/finance/admin/expense-categories/${categoryId}`,
-      { method: "DELETE" },
-    );
-    return response;
-  },
-
-  // =============================
-  // EXPENSE MANAGEMENT
-  // =============================
-
-  getExpenses: async (params?: {
-    categoryId?: number;
-    startDate?: string;
-    endDate?: string;
-    page?: number;
-    limit?: number;
-  }): Promise<{
-    success: boolean;
-    data: {
-      expenses: Expense[];
-      total: number;
-      page: number;
-      totalPages: number;
-    };
-  }> => {
-    const queryParams = new URLSearchParams();
-    if (params?.categoryId)
-      queryParams.append("categoryId", params.categoryId.toString());
-    if (params?.startDate) queryParams.append("startDate", params.startDate);
-    if (params?.endDate) queryParams.append("endDate", params.endDate);
-    if (params?.page) queryParams.append("page", params.page.toString());
-    if (params?.limit) queryParams.append("limit", params.limit.toString());
-    const response = await apiRequest(
-      `/finance/admin/expenses?${queryParams.toString()}`,
-      { method: "GET" },
-    );
-    return response;
-  },
-
-  getExpenseById: async (
-    expenseId: number,
-  ): Promise<{ success: boolean; data: Expense }> => {
-    const response = await apiRequest(`/finance/admin/expenses/${expenseId}`, {
-      method: "GET",
-    });
-    return response;
-  },
-
-  createExpense: async (data: {
-    categoryId: number;
-    amount: number;
-    description: string;
-    date: string;
-    receiptUrl?: string;
-  }): Promise<{ success: boolean; data: Expense; message: string }> => {
-    const response = await apiRequest("/finance/admin/expenses", {
-      method: "POST",
-      body: JSON.stringify(data),
-    });
-    return response;
-  },
-
-  updateExpense: async (
-    expenseId: number,
-    data: {
-      categoryId?: number;
-      amount?: number;
-      description?: string;
-      date?: string;
-      receiptUrl?: string;
-    },
-  ): Promise<{ success: boolean; data: Expense; message: string }> => {
-    const response = await apiRequest(`/finance/admin/expenses/${expenseId}`, {
-      method: "PUT",
-      body: JSON.stringify(data),
-    });
-    return response;
-  },
-
-  deleteExpense: async (
-    expenseId: number,
-  ): Promise<{ success: boolean; message: string }> => {
-    const response = await apiRequest(`/finance/admin/expenses/${expenseId}`, {
-      method: "DELETE",
-    });
-    return response;
-  },
-
-  getExpenseStatistics: async (params?: {
-    startDate?: string;
-    endDate?: string;
-  }): Promise<{
-    success: boolean;
-    data: {
-      totalThisMonth: number;
-      totalThisYear: number;
-      averageDaily: number;
-      topCategory: { name: string; amount: number };
-    };
-  }> => {
-    const queryParams = new URLSearchParams();
-    if (params?.startDate) queryParams.append("startDate", params.startDate);
-    if (params?.endDate) queryParams.append("endDate", params.endDate);
-    const response = await apiRequest(
-      `/finance/admin/expenses/statistics?${queryParams.toString()}`,
-      { method: "GET" },
-    );
-    return response;
-  },
-
-  // =============================
-  // STUDENT FEES MANAGEMENT
-  // =============================
-
-  getStudentFees: async (params?: {
+  // ==================== FEE ASSIGNMENTS ====================
+  async getFeeAssignments(params?: {
+    studentId?: number;
+    academicYearId?: number;
     status?: string;
+    classId?: number;
+  }): Promise<{ success: boolean; data: FeeAssignment[] }> {
+    const query = new URLSearchParams();
+    if (params?.studentId)
+      query.append("studentId", params.studentId.toString());
+    if (params?.academicYearId)
+      query.append("academicYearId", params.academicYearId.toString());
+    if (params?.status) query.append("status", params.status);
+    if (params?.classId) query.append("classId", params.classId.toString());
+    const qs = query.toString();
+    return this.request(`/fee-assignments${qs ? `?${qs}` : ""}`);
+  }
+
+  async getFeeAssignment(
+    id: number,
+  ): Promise<{ success: boolean; data: FeeAssignment }> {
+    return this.request(`/fee-assignments/${id}`);
+  }
+
+  async createFeeAssignment(
+    data: FeeAssignmentInput,
+  ): Promise<{ success: boolean; data: FeeAssignment }> {
+    return this.request("/fee-assignments", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  // ==================== CLASSES ====================
+  async getClasses(): Promise<ClassItem[]> {
+    try {
+      const result = await this.request<{
+        success: boolean;
+        data: ClassItem[];
+      }>("/classes-list");
+      if (result.success && Array.isArray(result.data)) {
+        return result.data;
+      }
+      return [];
+    } catch (error) {
+      console.error("❌ Failed to fetch classes:", error);
+      return [];
+    }
+  }
+
+  // ==================== STUDENTS ====================
+
+  async searchStudents(query: string): Promise<Student[]> {
+    try {
+      const result = await this.request<{ success: boolean; data: Student[] }>(
+        `/students/search?q=${encodeURIComponent(query)}`,
+      );
+      if (result.success && Array.isArray(result.data)) {
+        return result.data;
+      }
+      return [];
+    } catch (error) {
+      console.error("❌ Failed to search students:", error);
+      return [];
+    }
+  }
+
+  // ==================== STUDENT FEE STATUS ====================
+  async getStudentFeeStatus(studentId: number): Promise<any> {
+    try {
+      const result = await this.request<{ success: boolean; data: any }>(
+        `/students/${studentId}/fee-summary`,
+      );
+      if (result.success) {
+        return result.data;
+      }
+      return null;
+    } catch (error) {
+      console.error("❌ Failed to fetch student fee status:", error);
+      return null;
+    }
+  }
+
+  // ==================== MONTHLY PAYMENTS ====================
+  async recordMonthlyPayment(data: {
+    monthlyFeeRecordId: number;
+    amount: number;
+    paymentMethod: string;
+    referenceNo?: string;
+    notes?: string;
+  }): Promise<{
+    success: boolean;
+    data: { payment: MonthlyFeePayment; record: any };
+  }> {
+    return this.request("/monthly-payments", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  // ==================== ONE-TIME PAYMENTS ====================
+  async recordOneTimePayment(data: {
+    feeAssignmentItemId: number;
+    amount: number;
+    paymentMethod: string;
+    referenceNo?: string;
+    notes?: string;
+  }): Promise<{
+    success: boolean;
+    data: { payment: FeeItemPayment; feeItem: any };
+  }> {
+    return this.request("/one-time-payments", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  // ==================== STUDENT DISCOUNTS ====================
+  async applyDiscount(data: {
+    feeAssignmentId: number;
+    feeAssignmentItemId?: number;
+    amount: number;
+    reason: string;
+  }): Promise<{ success: boolean; data: StudentDiscount }> {
+    return this.request("/discounts", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  // ==================== STUDENT FEE DETAILS ====================
+  async getStudentFeeSummary(
+    studentId: number,
+  ): Promise<{ success: boolean; data: any[] }> {
+    return this.request(`/students/${studentId}/fee-summary`);
+  }
+
+  async getStudentFeeDetails(
+    studentId: number,
+  ): Promise<{ success: boolean; data: any }> {
+    return this.request(`/students/${studentId}/fee-details`);
+  }
+
+  async getStudentsWithPendingFees(
+    classId?: number,
+  ): Promise<{ success: boolean; data: StudentFeeStatus[]; summary: any }> {
+    const query = classId && classId > 0 ? `?classId=${classId}` : "";
+    return this.request(`/students-pending-fees${query}`);
+  }
+
+  // ==================== OUTSTANDING FEES ====================
+  async getOutstandingFees(params?: {
     classId?: number;
     studentId?: number;
-    billingMonth?: number;
-    billingYear?: number;
-    page?: number;
-    limit?: number;
-  }): Promise<{
-    success: boolean;
-    data: {
-      fees: StudentFee[];
-      total: number;
-      page: number;
-      totalPages: number;
-    };
-  }> => {
-    const queryParams = new URLSearchParams();
-    if (params?.status) queryParams.append("status", params.status);
-    if (params?.classId)
-      queryParams.append("classId", params.classId.toString());
+  }): Promise<{ success: boolean; data: OutstandingFeesResponse }> {
+    const query = new URLSearchParams();
+    if (params?.classId) query.append("classId", params.classId.toString());
     if (params?.studentId)
-      queryParams.append("studentId", params.studentId.toString());
-    if (params?.billingMonth)
-      queryParams.append("billingMonth", params.billingMonth.toString());
-    if (params?.billingYear)
-      queryParams.append("billingYear", params.billingYear.toString());
-    if (params?.page) queryParams.append("page", params.page.toString());
-    if (params?.limit) queryParams.append("limit", params.limit.toString());
-    const response = await apiRequest(
-      `/finance/admin/student-fees?${queryParams.toString()}`,
-      { method: "GET" },
-    );
-    return response;
-  },
+      query.append("studentId", params.studentId.toString());
+    const qs = query.toString();
+    return this.request(`/outstanding-fees${qs ? `?${qs}` : ""}`);
+  }
 
-  getStudentFeeDetails: async (
-    studentId: number,
-  ): Promise<{ success: boolean; data: StudentFeeDetails }> => {
-    const response = await apiRequest(
-      `/finance/admin/students/${studentId}/fees`,
-      { method: "GET" },
-    );
-    return response;
-  },
+  // ==================== FEE STATISTICS ====================
+  async getFeeStatistics(): Promise<{ success: boolean; data: FeeStatistics }> {
+    return this.request("/fee-statistics");
+  }
 
-  getAllStudentFees: async (params?: {
-    status?: string;
-    classId?: number;
-    page?: number;
-    limit?: number;
-  }): Promise<{
-    success: boolean;
-    data: {
-      fees: StudentFee[];
-      total: number;
-      page: number;
-      totalPages: number;
-    };
-  }> => {
-    return financeApi.getStudentFees(params);
-  },
-
-  generateBulkFees: async (data: {
-    classId: number;
-    feeCategoryId: number;
-    dueDate: string;
-    billingMonth?: number;
-    billingYear?: number;
-    amount?: number;
-  }): Promise<{
-    success: boolean;
-    data?: StudentFee[];
-    count?: number;
-    message: string;
-  }> => {
-    const response = await apiRequest("/finance/admin/fees/bulk", {
-      method: "POST",
-      body: JSON.stringify(data),
-    });
-    return response;
-  },
-
-  addStudentCustomFee: async (
-    studentId: number,
-    data: {
-      feeCategoryId: number;
-      dueDate: string;
-      amount?: number;
-      billingMonth?: number;
-      billingYear?: number;
-    },
-  ): Promise<{ success: boolean; message: string }> => {
-    const response = await apiRequest(
-      `/finance/admin/students/${studentId}/fees`,
-      { method: "POST", body: JSON.stringify(data) },
-    );
-    return response;
-  },
-
-  updateStudentFeeCustom: async (
-    feeId: number,
-    data: { dueDate?: string; status?: string },
-  ): Promise<{ success: boolean; message: string }> => {
-    const response = await apiRequest(`/finance/admin/students/fees/${feeId}`, {
-      method: "PUT",
-      body: JSON.stringify(data),
-    });
-    return response;
-  },
-
-  deleteStudentFeeCustom: async (
-    feeId: number,
-  ): Promise<{ success: boolean; message: string }> => {
-    const response = await apiRequest(`/finance/admin/students/fees/${feeId}`, {
-      method: "DELETE",
-    });
-    return response;
-  },
-
-  // Update fee status manually (NEW)
-  updateFeeStatus: async (
-    feeId: number,
-    data: { status: string; notes?: string },
-  ): Promise<{ success: boolean; message: string }> => {
-    const response = await apiRequest(
-      `/finance/admin/student-fees/${feeId}/status`,
-      { method: "PUT", body: JSON.stringify(data) },
-    );
-    return response;
-  },
-
-  // Bulk update fee status (NEW)
-  bulkUpdateFeeStatus: async (data: {
-    feeIds: number[];
-    status: string;
-    notes?: string;
-  }): Promise<{
-    success: boolean;
-    data: { count: number };
-    message: string;
-  }> => {
-    const response = await apiRequest(
-      "/finance/admin/student-fees/bulk-status",
-      { method: "PUT", body: JSON.stringify(data) },
-    );
-    return response;
-  },
-
-  // =============================
-  // PAYMENT MANAGEMENT
-  // =============================
-
-  getPaymentHistory: async (params?: {
+  // ==================== PAYMENT HISTORY ====================
+  async getPaymentHistory(params?: {
     search?: string;
     startDate?: string;
     endDate?: string;
+    studentId?: number;
+    paymentMethod?: string;
     page?: number;
     limit?: number;
-  }): Promise<{
-    success: boolean;
-    data: {
-      id: number;
-      studentName: string;
-      amount: number;
-      date: string;
-      feeTitle: string;
-      paymentMethod: string;
-      status: string;
-    }[];
-    total?: number;
-    page?: number;
-    totalPages?: number;
-  }> => {
-    const queryParams = new URLSearchParams();
-    if (params?.search) queryParams.append("search", params.search);
-    if (params?.startDate) queryParams.append("startDate", params.startDate);
-    if (params?.endDate) queryParams.append("endDate", params.endDate);
-    if (params?.page) queryParams.append("page", params.page.toString());
-    if (params?.limit) queryParams.append("limit", params.limit.toString());
-    const response = await apiRequest(
-      `/finance/admin/payments/history?${queryParams.toString()}`,
-      { method: "GET" },
-    );
-    return response;
-  },
+  }): Promise<{ success: boolean; data: PaymentHistoryResponse["data"] }> {
+    const query = new URLSearchParams();
+    if (params?.search) query.append("search", params.search);
+    if (params?.startDate) query.append("startDate", params.startDate);
+    if (params?.endDate) query.append("endDate", params.endDate);
+    if (params?.studentId)
+      query.append("studentId", params.studentId.toString());
+    if (params?.paymentMethod)
+      query.append("paymentMethod", params.paymentMethod);
+    if (params?.page) query.append("page", params.page.toString());
+    if (params?.limit) query.append("limit", params.limit.toString());
+    const qs = query.toString();
+    return this.request(`/payment-history${qs ? `?${qs}` : ""}`);
+  }
+  // Add this method to the FinanceApi class in financeApi.ts
 
-  getPaymentHistoryWithFilters: async (params?: {
-    search?: string;
-    startDate?: string;
-    endDate?: string;
-    page?: number;
-    limit?: number;
-  }): Promise<{
-    success: boolean;
-    data: {
-      id: number;
-      studentName: string;
-      amount: number;
-      date: string;
-      feeTitle: string;
-      paymentMethod: string;
-      status: string;
-    }[];
-    total?: number;
-    page?: number;
-    totalPages?: number;
-  }> => {
-    return financeApi.getPaymentHistory(params);
-  },
+  // src/config/financeApi.ts - Add/replace this method
 
-  getRecentPayments: async (
-    limit: number = 10,
-  ): Promise<{
-    success: boolean;
-    data: {
-      id: number;
-      studentName: string;
-      amount: number;
-      date: string;
-      feeTitle: string;
-      status: string;
-    }[];
-  }> => {
-    const response = await apiRequest(
-      `/finance/admin/payments/recent?limit=${limit}`,
-      { method: "GET" },
-    );
-    return response;
-  },
+  // ==================== STUDENTS ====================
+  async getStudentsByClass(classId: number): Promise<Student[]> {
+    try {
+      console.log(`📡 Fetching students for class ${classId}...`);
+      const result = await this.request<{
+        success: boolean;
+        data: any;
+      }>(`/students-by-class/${classId}`);
 
-  getPaymentReceipt: async (
-    paymentId: number,
-  ): Promise<{ success: boolean; data: PaymentReceipt }> => {
-    const response = await apiRequest(
-      `/finance/admin/payments/${paymentId}/receipt`,
-      { method: "GET" },
-    );
-    return response;
-  },
+      console.log(`📡 Students response:`, JSON.stringify(result, null, 2));
 
-  confirmPayment: async (data: {
-    studentFeeId: number;
-    amount: number;
-    paymentMethod: string;
-    referenceNo?: string;
-    notes?: string;
-  }): Promise<{
-    success: boolean;
-    data: { id: number; amount: number };
-    message: string;
-  }> => {
-    const response = await apiRequest("/finance/admin/payments/confirm", {
-      method: "POST",
-      body: JSON.stringify(data),
-    });
-    return response;
-  },
+      // Handle different response formats
+      let studentsData: any[] = [];
 
-  recordPayment: async (data: {
-    studentId: number;
-    studentFeeId?: number;
-    amount: number;
-    paymentMethod: string;
-    referenceNo?: string;
-    notes?: string;
-    feeType?: string;
-  }): Promise<{
-    success: boolean;
-    data: { paymentId: number };
-    message: string;
-  }> => {
-    const response = await apiRequest("/finance/admin/payments", {
-      method: "POST",
-      body: JSON.stringify(data),
-    });
-    return response;
-  },
+      if (result && typeof result === "object") {
+        const response = result as any;
 
-  recordBulkPayments: async (data: {
+        // Check for data property that might be an array or object
+        if (response.data) {
+          if (Array.isArray(response.data)) {
+            studentsData = response.data;
+          } else if (typeof response.data === "object") {
+            // If data is an object with students property
+            if (Array.isArray(response.data.students)) {
+              studentsData = response.data.students;
+            } else {
+              // Try to extract array from data object
+              const values = Object.values(response.data);
+              if (values.length > 0 && Array.isArray(values[0])) {
+                studentsData = values[0];
+              }
+            }
+          }
+        }
+
+        // If response itself is an array
+        if (Array.isArray(response)) {
+          studentsData = response;
+        }
+      }
+
+      // Map students to expected format
+      return studentsData.map((item: any) => {
+        // Try to find the user object in different possible locations
+        let user = item.user || item.User || item._user || {};
+
+        // If user is not found, try to construct from available data
+        if (!user || typeof user !== "object") {
+          user = {
+            fullName:
+              item.fullName ||
+              item.name ||
+              item.full_name ||
+              `دانش‌آموز #${item.id}`,
+            email: item.email || "",
+            phone: item.phone || "",
+          };
+        }
+
+        // If user exists but fullName is missing, try other fields
+        if (!user.fullName) {
+          user.fullName =
+            item.fullName ||
+            item.name ||
+            item.full_name ||
+            item.studentName ||
+            `دانش‌آموز #${item.id}`;
+        }
+
+        return {
+          id: item.id,
+          userId: item.userId || item.user_id || item.user?.id || 0,
+          classId: item.classId || item.class_id || item.class?.id || null,
+          status: item.status || "ACTIVE",
+          studentNumber:
+            item.studentNumber ||
+            item.student_number ||
+            item.rollNumber ||
+            item.roll_number ||
+            null,
+          user: {
+            fullName: user.fullName || `دانش‌آموز #${item.id}`,
+            email: user.email || item.email || "",
+            phone: user.phone || item.phone || "",
+          },
+          class: item.class || item.Class || null,
+        };
+      });
+    } catch (error) {
+      console.error("❌ Failed to fetch students:", error);
+      return [];
+    }
+  }
+  // ==================== BULK COLLECTION ====================
+  async getClassesList(): Promise<{ success: boolean; data: ClassItem[] }> {
+    return this.request("/classes-list");
+  }
+
+  async getStudentsForBulkCollection(
+    classId: number,
+  ): Promise<{ success: boolean; data: BulkStudent[] }> {
+    return this.request(`/bulk-collection-students?classId=${classId}`);
+  }
+
+  async recordBulkPayments(data: {
     classId: number;
     payments: {
       studentId: number;
       amount: number;
       paymentMethod: string;
       studentFeeId?: number;
+      confirmedBy?: number;
     }[];
-  }): Promise<{
-    success: boolean;
-    data: { count: number };
-    message: string;
-  }> => {
-    const response = await apiRequest("/finance/admin/payments/bulk", {
+  }): Promise<{ success: boolean; data: any }> {
+    return this.request("/bulk-payments", {
       method: "POST",
       body: JSON.stringify(data),
     });
-    return response;
-  },
+  }
 
-  // =============================
-  // FEE COLLECTION & STATISTICS
-  // =============================
-
-  getClassesList: async (): Promise<{
-    success: boolean;
-    data: { id: number; name: string; section: string }[];
-  }> => {
-    const response = await apiRequest("/finance/admin/classes/list", {
-      method: "GET",
-    });
-    return response;
-  },
-
-  getClasses: async (): Promise<{
-    success: boolean;
-    data: { id: number; name: string; section: string }[];
-  }> => {
-    return financeApi.getClassesList();
-  },
-
-  // Get students for single fee collection (NEW)
-  getStudentsForSingleCollection: async (
-    classId: number,
-  ): Promise<{
-    success: boolean;
-    data: {
-      id: number;
-      name: string;
-      rollNumber: string;
-      feeId: number | null;
+  // ==================== BULK PAYMENT ====================
+  async processBulkPayment(data: {
+    payments: {
+      studentId: number;
       amount: number;
+      month?: string;
+      year?: number;
+      feeType?: "monthly" | "one-time";
     }[];
-  }> => {
-    const response = await apiRequest(
-      `/finance/admin/classes/${classId}/students/single-collection`,
-      { method: "GET" },
-    );
-    return response;
-  },
-
-  getStudentsWithPendingFees: async (
-    classId: number,
-  ): Promise<{
-    success: boolean;
-    data: {
-      id: number;
-      name: string;
-      rollNumber: string;
-      pendingFees: {
-        id: number;
-        title: string;
-        amount: number;
-        dueDate: string;
-        billingMonth?: number;
-        billingYear?: number;
-      }[];
-    }[];
-  }> => {
-    const response = await apiRequest(
-      `/finance/admin/classes/${classId}/students/pending-fees`,
-      { method: "GET" },
-    );
-    return response;
-  },
-
-  getStudentsForBulkCollection: async (
-    classId: number,
-  ): Promise<{
-    success: boolean;
-    data: {
-      id: number;
-      name: string;
-      rollNumber: string;
-      feeId: number | null;
-      amount: number;
-    }[];
-  }> => {
-    const response = await apiRequest(
-      `/finance/admin/classes/${classId}/students/bulk-collection`,
-      { method: "GET" },
-    );
-    return response;
-  },
-
-  getFeeStatistics: async (): Promise<{
-    success: boolean;
-    data: FeeStatistics;
-  }> => {
-    const response = await apiRequest("/finance/admin/fees/statistics", {
-      method: "GET",
+    paymentMethod: string;
+    notes?: string;
+  }): Promise<{ success: boolean; data: any }> {
+    return this.request("/monthly-payments/bulk", {
+      method: "POST",
+      body: JSON.stringify(data),
     });
-    return response;
-  },
+  }
 
-  // =============================
-  // SALARY MANAGEMENT
-  // =============================
+  // ==================== AFGHAN MONTHS ====================
+  async getAfghanMonths(): Promise<{ success: boolean; data: AfghanMonth[] }> {
+    return this.request("/afghan-months");
+  }
 
-  getTeachersForSalary: async (): Promise<{
-    success: boolean;
-    data: {
-      id: number;
-      name: string;
-      email: string;
-      phone: string;
-      hourlyRate: number;
-      baseSalary: number;
-      overtimeRate: number;
-      totalEarned: number;
-      pendingAmount: number;
-      lastSalary?: {
-        month: number;
-        year: number;
-        amount: number;
-        status: string;
-      };
-    }[];
-  }> => {
-    const response = await apiRequest("/finance/admin/teachers-salary", {
-      method: "GET",
+  // ==================== SALARY MANAGEMENT ====================
+  async getSalaries(params?: {
+    teacherId?: number;
+    month?: number;
+    year?: number;
+    status?: string;
+  }): Promise<{ success: boolean; data: any[] }> {
+    const query = new URLSearchParams();
+    if (params?.teacherId)
+      query.append("teacherId", params.teacherId.toString());
+    if (params?.month) query.append("month", params.month.toString());
+    if (params?.year) query.append("year", params.year.toString());
+    if (params?.status) query.append("status", params.status);
+    const qs = query.toString();
+    return this.request(`/salaries${qs ? `?${qs}` : ""}`);
+  }
+
+  async createSalary(data: any): Promise<{ success: boolean; data: any }> {
+    return this.request("/salaries", {
+      method: "POST",
+      body: JSON.stringify(data),
     });
-    return response;
-  },
+  }
 
-  getTeacherSalaryInfo: async (
-    teacherId: number,
-  ): Promise<{ success: boolean; data: TeacherSalary }> => {
-    const response = await apiRequest(
-      `/finance/admin/teachers/${teacherId}/salary`,
-      { method: "GET" },
-    );
-    return response;
-  },
-
-  getTeacherSalaries: async (
-    teacherId: number,
-  ): Promise<{ success: boolean; data: Salary[] }> => {
-    const response = await apiRequest(
-      `/finance/admin/teachers/${teacherId}/salaries`,
-      { method: "GET" },
-    );
-    return response;
-  },
-
-  updateTeacherSalaryConfig: async (
-    teacherId: number,
-    data: { hourlyRate?: number; baseSalary?: number; overtimeRate?: number },
-  ): Promise<{ success: boolean; message: string }> => {
-    const response = await apiRequest(
-      `/finance/admin/teachers/${teacherId}/salary`,
-      { method: "PUT", body: JSON.stringify(data) },
-    );
-    return response;
-  },
-
-  generateMonthlySalaries: async (data: {
+  async generateSalaries(data: {
     month: number;
     year: number;
-    overtimeHours?: number;
-    bonusAmount?: number;
-  }): Promise<{
-    success: boolean;
-    message: string;
-    data?: {
-      created: MonthlySalary[];
-      skipped: { teacherId: number; name: string; reason: string }[];
-    };
-    count?: number;
-  }> => {
-    const response = await apiRequest("/finance/admin/salaries/generate", {
+  }): Promise<{ success: boolean; data: any }> {
+    return this.request("/salaries/generate", {
       method: "POST",
       body: JSON.stringify(data),
     });
-    return response;
-  },
+  }
 
-  getSalariesList: async (params?: {
-    month?: number;
-    year?: number;
-    status?: string;
-    teacherId?: number;
-    page?: number;
-    limit?: number;
-  }): Promise<{
-    success: boolean;
-    data: {
-      salaries: Salary[];
-      total: number;
-      page: number;
-      totalPages: number;
-    };
-  }> => {
-    const queryParams = new URLSearchParams();
-    if (params?.month) queryParams.append("month", params.month.toString());
-    if (params?.year) queryParams.append("year", params.year.toString());
-    if (params?.status) queryParams.append("status", params.status);
-    if (params?.teacherId)
-      queryParams.append("teacherId", params.teacherId.toString());
-    if (params?.page) queryParams.append("page", params.page.toString());
-    if (params?.limit) queryParams.append("limit", params.limit.toString());
-    const response = await apiRequest(
-      `/finance/admin/salaries?${queryParams.toString()}`,
-      { method: "GET" },
-    );
-    return response;
-  },
-
-  getSalaries: async (params?: {
-    teacherId?: number;
-    month?: number;
-    year?: number;
-    status?: string;
-    page?: number;
-    limit?: number;
-  }): Promise<{ success: boolean; data: MonthlySalary[]; total?: number }> => {
-    const queryParams = new URLSearchParams();
-    if (params?.teacherId)
-      queryParams.append("teacherId", params.teacherId.toString());
-    if (params?.month) queryParams.append("month", params.month.toString());
-    if (params?.year) queryParams.append("year", params.year.toString());
-    if (params?.status) queryParams.append("status", params.status);
-    if (params?.page) queryParams.append("page", params.page.toString());
-    if (params?.limit) queryParams.append("limit", params.limit.toString());
-    const response = await apiRequest(
-      `/finance/admin/salaries/list?${queryParams.toString()}`,
-      { method: "GET" },
-    );
-    return response;
-  },
-
-  getSalaryById: async (
-    salaryId: number,
-  ): Promise<{ success: boolean; data: MonthlySalary }> => {
-    const response = await apiRequest(`/finance/admin/salaries/${salaryId}`, {
-      method: "GET",
-    });
-    return response;
-  },
-
-  paySalary: async (data: {
+  async recordSalaryPayment(data: {
     salaryId: number;
     amount: number;
     paymentMethod: string;
     referenceNo?: string;
     notes?: string;
-    isEarlyPayment?: boolean;
-    earlyDiscount?: number;
-  }): Promise<{ success: boolean; message: string; data?: SalaryPayment }> => {
-    const response = await apiRequest("/finance/admin/salaries/pay", {
+    confirmedBy: number;
+  }): Promise<{ success: boolean; data: any }> {
+    return this.request("/salaries/payment", {
       method: "POST",
       body: JSON.stringify(data),
     });
-    return response;
-  },
+  }
 
-  recordOvertime: async (data: {
-    teacherId: number;
-    month: number;
-    year: number;
-    hours: number;
-    rate?: number;
-  }): Promise<{ success: boolean; message: string; data?: MonthlySalary }> => {
-    const response = await apiRequest("/finance/admin/teachers/overtime", {
-      method: "POST",
-      body: JSON.stringify(data),
-    });
-    return response;
-  },
-
-  getSalaryStatistics: async (): Promise<{
-    success: boolean;
-    data: SalaryStatistics;
-  }> => {
-    const response = await apiRequest("/finance/admin/salaries/statistics", {
-      method: "GET",
-    });
-    return response;
-  },
-
-  // =============================
-  // FINANCIAL REPORTS
-  // =============================
-
-  getIncomeStatement: async (params?: {
-    year?: number;
-  }): Promise<IncomeStatement> => {
-    const queryParams = new URLSearchParams();
-    if (params?.year) queryParams.append("year", params.year.toString());
-    const response = await apiRequest(
-      `/finance/admin/reports/income-statement?${queryParams.toString()}`,
-      { method: "GET" },
-    );
-    if (response.success && response.data) {
-      return response.data;
-    }
-    return {
-      year: params?.year || new Date().getFullYear(),
-      summary: { totalIncome: 0, totalExpenses: 0, netProfit: 0 },
-      monthlyData: [],
-    };
-  },
-
-  getOutstandingFees: async (params?: {
-    classId?: number;
-    studentId?: number;
-  }): Promise<{
-    totalOutstanding: number;
-    count: number;
-    items: OutstandingFee[];
-  }> => {
-    const queryParams = new URLSearchParams();
-    if (params?.classId)
-      queryParams.append("classId", params.classId.toString());
-    if (params?.studentId)
-      queryParams.append("studentId", params.studentId.toString());
-    const response = await apiRequest(
-      `/finance/admin/reports/outstanding?${queryParams.toString()}`,
-      { method: "GET" },
-    );
-    return response.data || { totalOutstanding: 0, count: 0, items: [] };
-  },
-
-  getCashFlowReport: async (params?: {
+  // ==================== EXPENSE MANAGEMENT ====================
+  async getExpenses(params?: {
+    categoryId?: number;
     startDate?: string;
     endDate?: string;
-  }): Promise<{ success: boolean; data: CashFlowData }> => {
-    const queryParams = new URLSearchParams();
-    if (params?.startDate) queryParams.append("startDate", params.startDate);
-    if (params?.endDate) queryParams.append("endDate", params.endDate);
-    const response = await apiRequest(
-      `/finance/admin/reports/cash-flow?${queryParams.toString()}`,
-      { method: "GET" },
-    );
-    return response;
-  },
-
-  getDailyCollections: async (
-    date: string,
-  ): Promise<{ success: boolean; data: DailyCollection }> => {
-    const response = await apiRequest(
-      `/finance/admin/reports/daily-collections?date=${date}`,
-      { method: "GET" },
-    );
-    return response;
-  },
-
-  getMonthlyCollections: async (
-    year: number,
-  ): Promise<{
-    success: boolean;
-    data: {
-      year: number;
-      months: MonthlyCollection[];
-      summary: {
-        totalYearly: number;
-        totalCount: number;
-        bestMonth: string;
-        bestMonthAmount: number;
-        averageMonthly: number;
-      };
-    };
-  }> => {
-    const response = await apiRequest(
-      `/finance/admin/reports/monthly-collections?year=${year}`,
-      { method: "GET" },
-    );
-    return response;
-  },
-
-  getCollectionsByClass: async (): Promise<{
-    success: boolean;
-    data: {
-      classes: ClassCollection[];
-      summary: {
-        totalCollected: number;
-        totalExpected: number;
-        overallRate: number;
-        totalStudents: number;
-      };
-    };
-  }> => {
-    const response = await apiRequest(
-      "/finance/admin/reports/collections-by-class",
-      { method: "GET" },
-    );
-    return response;
-  },
-
-  getAgingReport: async (): Promise<{ success: boolean; data: AgingData }> => {
-    const response = await apiRequest("/finance/admin/reports/aging", {
-      method: "GET",
-    });
-    return response;
-  },
-
-  getOutstandingFeesReport: async (): Promise<{
-    success: boolean;
-    data: OutstandingReportData;
-  }> => {
-    const response = await apiRequest(
-      "/finance/admin/reports/outstanding-detailed",
-      { method: "GET" },
-    );
-    return response;
-  },
-
-  exportReport: async (options: {
-    reportType: string;
-    format: string;
-    dateRange: { start: string; end: string };
-    includeCharts: boolean;
-    includeDetails: boolean;
-  }): Promise<{
-    success: boolean;
-    data?: { url: string; filename: string };
-  }> => {
-    const response = await apiRequest("/finance/admin/reports/export", {
-      method: "POST",
-      body: JSON.stringify(options),
-    });
-    return response;
-  },
-};
-
-// =============================
-// USER MANAGEMENT API
-// =============================
-
-export const userApi = {
-  getAllUsers: async (params?: {
-    role?: string;
-    search?: string;
     page?: number;
     limit?: number;
-  }): Promise<PaginatedResponse<User>> => {
-    const queryParams = new URLSearchParams();
-    if (params?.role) queryParams.append("role", params.role);
-    if (params?.search) queryParams.append("search", params.search);
-    if (params?.page) queryParams.append("page", params.page.toString());
-    if (params?.limit) queryParams.append("limit", params.limit.toString());
-    const response = await apiRequest(
-      `/finance/admin/users?${queryParams.toString()}`,
-      { method: "GET" },
-    );
-    return response;
-  },
+  }): Promise<{ success: boolean; data: any }> {
+    const query = new URLSearchParams();
+    if (params?.categoryId)
+      query.append("categoryId", params.categoryId.toString());
+    if (params?.startDate) query.append("startDate", params.startDate);
+    if (params?.endDate) query.append("endDate", params.endDate);
+    if (params?.page) query.append("page", params.page.toString());
+    if (params?.limit) query.append("limit", params.limit.toString());
+    const qs = query.toString();
+    return this.request(`/expenses${qs ? `?${qs}` : ""}`);
+  }
 
-  getUserById: async (
-    userId: number,
-  ): Promise<{ success: boolean; data: User }> => {
-    const response = await apiRequest(`/finance/admin/users/${userId}`, {
-      method: "GET",
-    });
-    return response;
-  },
-
-  updateUser: async (
-    userId: number,
-    data: {
-      fullName?: string;
-      email?: string;
-      phone?: string;
-      profileImage?: string;
-    },
-  ): Promise<{ success: boolean; data: User; message: string }> => {
-    const response = await apiRequest(`/finance/admin/users/${userId}`, {
-      method: "PUT",
+  async createExpense(data: any): Promise<{ success: boolean; data: any }> {
+    return this.request("/expenses", {
+      method: "POST",
       body: JSON.stringify(data),
     });
-    return response;
-  },
+  }
 
-  updateStudentProfile: async (
-    userId: number,
-    data: {
-      bio?: string;
-      grade?: string;
-      school?: string;
-      birthDate?: string;
-      parentContact?: string;
-      address?: string;
-      interests?: string[];
-      classId?: number;
-      status?: string;
-    },
-  ): Promise<{ success: boolean; message: string }> => {
-    const response = await apiRequest(
-      `/finance/admin/users/${userId}/student-profile`,
-      { method: "PUT", body: JSON.stringify(data) },
-    );
-    return response;
-  },
+  async getExpenseCategories(): Promise<{ success: boolean; data: any[] }> {
+    return this.request("/expense-categories");
+  }
 
-  updateTeacherProfile: async (
-    userId: number,
-    data: {
-      bio?: string;
-      experience?: string;
-      hourlyRate?: number;
-      baseSalary?: number;
-      overtimeRate?: number;
-      certification?: string;
-      availability?: boolean;
-      isActive?: boolean;
-    },
-  ): Promise<{ success: boolean; message: string }> => {
-    const response = await apiRequest(
-      `/finance/admin/users/${userId}/teacher-profile`,
-      { method: "PUT", body: JSON.stringify(data) },
-    );
-    return response;
-  },
-};
-
-// =============================
-// CLASS MANAGEMENT API
-// =============================
-
-export const classApi = {
-  getAllClasses: async (params?: {
-    academicYearId?: number;
-    page?: number;
-    limit?: number;
-  }): Promise<PaginatedResponse<Class>> => {
-    const queryParams = new URLSearchParams();
-    if (params?.academicYearId)
-      queryParams.append("academicYearId", params.academicYearId.toString());
-    if (params?.page) queryParams.append("page", params.page.toString());
-    if (params?.limit) queryParams.append("limit", params.limit.toString());
-    const response = await apiRequest(
-      `/finance/admin/classes?${queryParams.toString()}`,
-      { method: "GET" },
-    );
-    return response;
-  },
-
-  createClass: async (data: {
+  async createExpenseCategory(data: {
     name: string;
-    section?: string;
-    academicYearId?: number;
-    teacherId?: number;
     description?: string;
-    thumbnail?: string;
-  }): Promise<{ success: boolean; data: Class; message: string }> => {
-    const response = await apiRequest("/finance/admin/classes", {
+  }): Promise<{ success: boolean; data: any }> {
+    return this.request("/expense-categories", {
       method: "POST",
       body: JSON.stringify(data),
     });
-    return response;
-  },
+  }
 
-  updateClass: async (
-    classId: number,
-    data: {
-      name?: string;
-      section?: string;
-      academicYearId?: number | null;
-      teacherId?: number | null;
-      description?: string;
-      thumbnail?: string;
-      isActive?: boolean;
-    },
-  ): Promise<{ success: boolean; data: Class; message: string }> => {
-    const response = await apiRequest(`/finance/admin/classes/${classId}`, {
+  async updateExpenseCategory(
+    id: number,
+    data: { name: string; description?: string },
+  ): Promise<{ success: boolean; data: any }> {
+    return this.request(`/expense-categories/${id}`, {
       method: "PUT",
       body: JSON.stringify(data),
     });
-    return response;
-  },
+  }
 
-  deleteClass: async (
-    classId: number,
-  ): Promise<{ success: boolean; message: string }> => {
-    const response = await apiRequest(`/finance/admin/classes/${classId}`, {
+  async deleteExpenseCategory(
+    id: number,
+  ): Promise<{ success: boolean; message: string }> {
+    return this.request(`/expense-categories/${id}`, {
       method: "DELETE",
     });
-    return response;
-  },
+  }
 
-  assignStudentToClass: async (data: {
-    studentId: number;
-    classId: number;
-  }): Promise<{ success: boolean; message: string }> => {
-    const response = await apiRequest("/finance/admin/student-class", {
-      method: "POST",
-      body: JSON.stringify(data),
-    });
-    return response;
-  },
-
-  removeStudentFromClass: async (
-    studentId: number,
-  ): Promise<{ success: boolean; message: string }> => {
-    const response = await apiRequest(
-      `/finance/admin/student-class/${studentId}`,
-      { method: "DELETE" },
-    );
-    return response;
-  },
-};
-
-// =============================
-// SUBJECT MANAGEMENT API
-// =============================
-
-export const subjectApi = {
-  getAllSubjects: async (): Promise<{ success: boolean; data: Subject[] }> => {
-    const response = await apiRequest("/finance/admin/subjects", {
-      method: "GET",
-    });
-    return response;
-  },
-
-  createSubject: async (data: {
-    name: string;
-  }): Promise<{ success: boolean; data: Subject; message: string }> => {
-    const response = await apiRequest("/finance/admin/subjects", {
-      method: "POST",
-      body: JSON.stringify(data),
-    });
-    return response;
-  },
-
-  updateSubject: async (
-    subjectId: number,
-    data: { name: string },
-  ): Promise<{ success: boolean; data: Subject; message: string }> => {
-    const response = await apiRequest(`/finance/admin/subjects/${subjectId}`, {
-      method: "PUT",
-      body: JSON.stringify(data),
-    });
-    return response;
-  },
-
-  deleteSubject: async (
-    subjectId: number,
-  ): Promise<{ success: boolean; message: string }> => {
-    const response = await apiRequest(`/finance/admin/subjects/${subjectId}`, {
-      method: "DELETE",
-    });
-    return response;
-  },
-
-  assignTeacherSubject: async (data: {
-    teacherId: number;
-    subjectId: number;
-  }): Promise<{ success: boolean; message: string }> => {
-    const response = await apiRequest("/finance/admin/teacher-subject", {
-      method: "POST",
-      body: JSON.stringify(data),
-    });
-    return response;
-  },
-
-  removeTeacherSubject: async (
-    teacherId: number,
-    subjectId: number,
-  ): Promise<{ success: boolean; message: string }> => {
-    const response = await apiRequest(
-      `/finance/admin/teacher-subject/${teacherId}/${subjectId}`,
-      { method: "DELETE" },
-    );
-    return response;
-  },
-};
-
-// =============================
-// TEACHER SALARY API
-// =============================
-
-export const teacherSalaryApi = {
-  getTeacherSalaryInfo: async (
-    teacherId: number,
-  ): Promise<{ success: boolean; data: TeacherSalary }> => {
-    const response = await apiRequest(
-      `/finance/admin/teachers/${teacherId}/salary`,
-      { method: "GET" },
-    );
-    return response;
-  },
-
-  updateTeacherSalaryConfig: async (
-    teacherId: number,
-    data: { hourlyRate?: number; baseSalary?: number; overtimeRate?: number },
-  ): Promise<{ success: boolean; message: string }> => {
-    const response = await apiRequest(
-      `/finance/admin/teachers/${teacherId}/salary`,
-      { method: "PUT", body: JSON.stringify(data) },
-    );
-    return response;
-  },
-};
-
-// =============================
-// PARENT-CHILD MANAGEMENT API
-// =============================
-
-export const parentChildApi = {
-  addParentChild: async (data: {
-    parentId: number;
-    studentId: number;
-  }): Promise<{ success: boolean; message: string }> => {
-    const response = await apiRequest("/finance/admin/parent-child", {
-      method: "POST",
-      body: JSON.stringify(data),
-    });
-    return response;
-  },
-
-  removeParentChild: async (
-    parentId: number,
-    studentId: number,
-  ): Promise<{ success: boolean; message: string }> => {
-    const response = await apiRequest(
-      `/finance/admin/parent-child/${parentId}/${studentId}`,
-      { method: "DELETE" },
-    );
-    return response;
-  },
-};
-
-// =============================
-// STUDENT FEE CUSTOMIZATION API
-// =============================
-
-export const studentFeeCustomApi = {
-  addStudentCustomFee: async (
-    studentId: number,
-    data: {
-      feeCategoryId: number;
-      dueDate: string;
-      amount?: number;
-      billingMonth?: number;
-      billingYear?: number;
-    },
-  ): Promise<{ success: boolean; message: string }> => {
-    const response = await apiRequest(
-      `/finance/admin/students/${studentId}/fees`,
-      { method: "POST", body: JSON.stringify(data) },
-    );
-    return response;
-  },
-
-  updateStudentFee: async (
-    feeId: number,
-    data: { dueDate?: string; status?: string },
-  ): Promise<{ success: boolean; message: string }> => {
-    const response = await apiRequest(`/finance/admin/students/fees/${feeId}`, {
-      method: "PUT",
-      body: JSON.stringify(data),
-    });
-    return response;
-  },
-
-  deleteStudentFee: async (
-    feeId: number,
-  ): Promise<{ success: boolean; message: string }> => {
-    const response = await apiRequest(`/finance/admin/students/fees/${feeId}`, {
-      method: "DELETE",
-    });
-    return response;
-  },
-
-  getStudentFeeDetails: async (
-    studentId: number,
-  ): Promise<{ success: boolean; data: StudentFeeDetails }> => {
-    const response = await apiRequest(
-      `/finance/admin/students/${studentId}/fees`,
-      { method: "GET" },
-    );
-    return response;
-  },
-};
-
-// =============================
-// FEE PAYMENT MANAGEMENT API
-// =============================
-
-export const feePaymentApi = {
-  recordPayment: async (data: {
-    studentFeeId: number;
-    amount: number;
-    paymentMethod?: string;
-    transactionId?: string;
-    notes?: string;
-  }): Promise<{
+  async getExpenseStatistics(): Promise<{
     success: boolean;
-    data: { id: number; amount: number };
-    message: string;
-  }> => {
-    const response = await apiRequest("/finance/admin/fee-payments", {
-      method: "POST",
-      body: JSON.stringify(data),
-    });
-    return response;
-  },
+    data: ExpenseStats;
+  }> {
+    return this.request("/expense-statistics");
+  }
 
-  getStudentPayments: async (
-    studentId: number,
-  ): Promise<{ success: boolean; data: Payment[] }> => {
-    const response = await apiRequest(
-      `/finance/admin/students/${studentId}/payments`,
-      { method: "GET" },
-    );
-    return response;
-  },
+  // ==================== TRANSACTIONS & REPORTS ====================
+  async getTransactions(params?: {
+    type?: string;
+    category?: string;
+    startDate?: string;
+    endDate?: string;
+  }): Promise<{ success: boolean; data: any[] }> {
+    const query = new URLSearchParams();
+    if (params?.type) query.append("type", params.type);
+    if (params?.category) query.append("category", params.category);
+    if (params?.startDate) query.append("startDate", params.startDate);
+    if (params?.endDate) query.append("endDate", params.endDate);
+    const qs = query.toString();
+    return this.request(`/transactions${qs ? `?${qs}` : ""}`);
+  }
 
-  getAllPayments: async (params?: {
-    status?: string;
-    fromDate?: string;
-    toDate?: string;
-    page?: number;
-    limit?: number;
-  }): Promise<PaginatedResponse<Payment>> => {
-    const queryParams = new URLSearchParams();
-    if (params?.status) queryParams.append("status", params.status);
-    if (params?.fromDate) queryParams.append("fromDate", params.fromDate);
-    if (params?.toDate) queryParams.append("toDate", params.toDate);
-    if (params?.page) queryParams.append("page", params.page.toString());
-    if (params?.limit) queryParams.append("limit", params.limit.toString());
-    const response = await apiRequest(
-      `/finance/admin/fee-payments?${queryParams.toString()}`,
-      { method: "GET" },
-    );
-    return response;
-  },
+  async getCashFlowReport(params?: {
+    startDate?: string;
+    endDate?: string;
+  }): Promise<{ success: boolean; data: any }> {
+    const query = new URLSearchParams();
+    if (params?.startDate) query.append("startDate", params.startDate);
+    if (params?.endDate) query.append("endDate", params.endDate);
+    const qs = query.toString();
+    return this.request(`/reports/cash-flow${qs ? `?${qs}` : ""}`);
+  }
+
+  async getIncomeStatement(params?: {
+    year?: number;
+    month?: number;
+  }): Promise<{ success: boolean; data: any }> {
+    const query = new URLSearchParams();
+    if (params?.year) query.append("year", params.year.toString());
+    if (params?.month) query.append("month", params.month.toString());
+    const qs = query.toString();
+    return this.request(`/reports/income-statement${qs ? `?${qs}` : ""}`);
+  }
+
+  async getDailyCollection(params?: {
+    date?: string;
+  }): Promise<{ success: boolean; data: any }> {
+    const query = new URLSearchParams();
+    if (params?.date) query.append("date", params.date);
+    const qs = query.toString();
+    return this.request(`/reports/daily-collection${qs ? `?${qs}` : ""}`);
+  }
+
+  async getMonthlyCollection(params?: {
+    year?: number;
+  }): Promise<{ success: boolean; data: any }> {
+    const query = new URLSearchParams();
+    if (params?.year) query.append("year", params.year.toString());
+    const qs = query.toString();
+    return this.request(`/reports/monthly-collection${qs ? `?${qs}` : ""}`);
+  }
+
+  async getCollectionByClass(params?: {
+    academicYearId?: number;
+  }): Promise<{ success: boolean; data: any }> {
+    const query = new URLSearchParams();
+    if (params?.academicYearId)
+      query.append("academicYearId", params.academicYearId.toString());
+    const qs = query.toString();
+    return this.request(`/reports/collections-by-class${qs ? `?${qs}` : ""}`);
+  }
+
+  async getOutstandingAging(): Promise<{ success: boolean; data: any }> {
+    return this.request("/reports/outstanding-aging");
+  }
+
+  async exportReport(params: {
+    type: string;
+    startDate?: string;
+    endDate?: string;
+    format?: string;
+  }): Promise<{ success: boolean; data: any }> {
+    const query = new URLSearchParams();
+    query.append("type", params.type);
+    if (params.startDate) query.append("startDate", params.startDate);
+    if (params.endDate) query.append("endDate", params.endDate);
+    if (params.format) query.append("format", params.format);
+    const qs = query.toString();
+    return this.request(`/reports/export${qs ? `?${qs}` : ""}`);
+  }
+
+  // ==================== DEBUG ====================
+  async debugCheckFeePlans(params?: {
+    classId?: number;
+  }): Promise<{ success: boolean; data: any }> {
+    const query = new URLSearchParams();
+    if (params?.classId) query.append("classId", params.classId.toString());
+    const qs = query.toString();
+    return this.request(`/debug/fee-plans${qs ? `?${qs}` : ""}`);
+  }
+}
+
+// ==================== EXPORT ====================
+export const financeApi = new FinanceApi();
+
+// ==================== HELPERS ====================
+export const formatCurrency = (amount: number): string => {
+  return new Intl.NumberFormat("fa-AF", {
+    style: "currency",
+    currency: "AFN",
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(amount);
+};
+
+export const getMonthName = (monthKey: string): string => {
+  const monthNames: Record<string, string> = {
+    HAMAL: "حمل",
+    SAWR: "ثور",
+    JAWZA: "جوزا",
+    SARATAN: "سرطان",
+    ASAD: "اسد",
+    SUNBULA: "سنبله",
+    MIZAN: "میزان",
+    AQRAB: "عقرب",
+    QAWS: "قوس",
+    JADI: "جدی",
+    DALWA: "دلو",
+    HOOT: "حوت",
+  };
+  return monthNames[monthKey] || monthKey;
+};
+
+export const getFeeTypeIcon = (type: string): string => {
+  const icons: Record<string, string> = {
+    MONTHLY_TUITION: "school",
+    MONTHLY_TRANSPORT: "bus",
+    ONE_TIME_ADMISSION: "person-add",
+    ONE_TIME_REGISTRATION: "clipboard",
+    ONE_TIME_BOOKS: "book",
+    ONE_TIME_UNIFORM: "shirt",
+    ONE_TIME_EXAM: "clipboard",
+    ANNUAL: "calendar",
+    OTHER: "add-circle",
+  };
+  return icons[type] || "receipt";
+};
+
+export const getFeeTypeLabel = (type: string): string => {
+  const labels: Record<string, string> = {
+    MONTHLY_TUITION: "شهریه ماهانه",
+    MONTHLY_TRANSPORT: "حمل و نقل ماهانه",
+    ONE_TIME_ADMISSION: "هزینه پذیرش",
+    ONE_TIME_REGISTRATION: "هزینه ثبت نام",
+    ONE_TIME_BOOKS: "کتاب‌ها",
+    ONE_TIME_UNIFORM: "یونیفورم",
+    ONE_TIME_EXAM: "هزینه امتحانات",
+    ANNUAL: "هزینه سالانه",
+    OTHER: "سایر",
+  };
+  return labels[type] || type;
+};
+
+export const getAfghanMonths = (): { key: string; name: string }[] => {
+  return [
+    { key: "HAMAL", name: "حمل" },
+    { key: "SAWR", name: "ثور" },
+    { key: "JAWZA", name: "جوزا" },
+    { key: "SARATAN", name: "سرطان" },
+    { key: "ASAD", name: "اسد" },
+    { key: "SUNBULA", name: "سنبله" },
+    { key: "MIZAN", name: "میزان" },
+    { key: "AQRAB", name: "عقرب" },
+    { key: "QAWS", name: "قوس" },
+    { key: "JADI", name: "جدی" },
+    { key: "DALWA", name: "دلو" },
+    { key: "HOOT", name: "حوت" },
+  ];
+};
+
+export const getFeeStatusColor = (status: string): string => {
+  const colors: Record<string, string> = {
+    PAID: "#10b981",
+    PARTIAL: "#f59e0b",
+    PENDING: "#ef4444",
+    OVERDUE: "#dc2626",
+    CANCELLED: "#6b7280",
+    ACTIVE: "#3b82f6",
+    COMPLETED: "#10b981",
+    DRAFT: "#9ca3af",
+  };
+  return colors[status] || "#6b7280";
+};
+
+export const getFeeStatusLabel = (status: string): string => {
+  const labels: Record<string, string> = {
+    PAID: "پرداخت شده",
+    PARTIAL: "پرداخت ناقص",
+    PENDING: "در انتظار",
+    OVERDUE: "معوق",
+    CANCELLED: "لغو شده",
+    ACTIVE: "فعال",
+    COMPLETED: "تکمیل شده",
+    DRAFT: "پیش‌نویس",
+  };
+  return labels[status] || status;
 };

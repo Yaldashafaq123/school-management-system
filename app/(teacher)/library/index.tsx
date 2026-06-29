@@ -1,11 +1,11 @@
-// app/(teacher)/library/index.tsx
+// app/(teacher)/library/index.tsx (Updated version)
+
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
-  FlatList,
   Modal,
   RefreshControl,
   ScrollView,
@@ -26,50 +26,61 @@ interface Book {
   title: string;
   author: string;
   description: string;
-  fileUrl: string;
   coverImage: string;
   categoryId: number;
-  category: { name: string; color: string };
-  grade: number | null;
   subject: string;
+  grade: number;
+  pages: number;
+  fileSize: string;
+  fileFormat: string;
+  fileUrl: string;
   isPublished: boolean;
   createdAt: string;
+  category?: {
+    id: number;
+    name: string;
+    icon: string;
+    color: string;
+  };
 }
 
-interface Category {
+interface BookCategory {
   id: number;
   name: string;
   icon: string;
   color: string;
 }
 
-interface Class {
+interface ClassInfo {
   id: number;
   name: string;
-  section: string;
+  section?: string;
 }
 
 export default function TeacherLibraryScreen() {
   const router = useRouter();
   const { user } = useAuth();
+  const [books, setBooks] = useState<Book[]>([]);
+  const [categories, setCategories] = useState<BookCategory[]>([]);
+  const [classes, setClasses] = useState<ClassInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [books, setBooks] = useState<Book[]>([]);
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [classes, setClasses] = useState<Class[]>([]);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [selectedCategory, setSelectedCategory] = useState<string>("all");
+  const [searchQuery, setSearchQuery] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
+  // Form states
   const [formData, setFormData] = useState({
     title: "",
     author: "",
     description: "",
-    fileUrl: "",
     categoryId: "",
-    classId: "",
     subject: "",
     grade: "",
+    fileUrl: "",
     coverImage: "",
+    classId: "",
   });
 
   useEffect(() => {
@@ -79,20 +90,98 @@ export default function TeacherLibraryScreen() {
   const loadData = async () => {
     try {
       setLoading(true);
-      const [booksRes, categoriesRes, classesRes] = await Promise.all([
-        apiRequest("/teacher/library/books"),
-        apiRequest("/teacher/library/categories"),
-        apiRequest("/teacher/library/classes"),
-      ]);
-
-      if (booksRes.success) setBooks(booksRes.data?.books || []);
-      if (categoriesRes.success) setCategories(categoriesRes.data || []);
-      if (classesRes.success) setClasses(classesRes.data || []);
+      await Promise.all([fetchBooks(), fetchCategories(), fetchClasses()]);
     } catch (error) {
       console.error("Error loading data:", error);
       Alert.alert("خطا", "مشکلی در بارگذاری اطلاعات پیش آمد");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchBooks = async () => {
+    try {
+      const response = await apiRequest("/teacher/library/books");
+      console.log("Books response:", response);
+
+      // Handle different response formats
+      let booksData = [];
+      if (response && response.success) {
+        booksData = response.data || response.books || [];
+      } else if (response && response.data) {
+        booksData = response.data.books || response.data || [];
+      } else if (Array.isArray(response)) {
+        booksData = response;
+      } else if (response && response.books) {
+        booksData = response.books;
+      }
+
+      setBooks(booksData);
+    } catch (error) {
+      console.error("Error fetching books:", error);
+      setBooks([]);
+    }
+  };
+
+  const fetchCategories = async () => {
+    try {
+      const response = await apiRequest("/teacher/library/categories");
+      console.log("Categories response:", response);
+
+      let categoriesData = [];
+      if (response && response.success) {
+        categoriesData = response.data || [];
+      } else if (Array.isArray(response)) {
+        categoriesData = response;
+      } else if (response && response.data && Array.isArray(response.data)) {
+        categoriesData = response.data;
+      }
+
+      if (categoriesData.length > 0) {
+        setCategories(categoriesData);
+      } else {
+        // Default categories
+        setCategories([
+          { id: 1, name: "داستانی", icon: "book", color: "#FF6B6B" },
+          { id: 2, name: "علمی", icon: "flask", color: "#4ECDC4" },
+          { id: 3, name: "تاریخی", icon: "time", color: "#45B7D1" },
+          { id: 4, name: "آموزشی", icon: "school", color: "#96CEB4" },
+          { id: 5, name: "مذهبی", icon: "moon", color: "#FFEAA7" },
+          { id: 6, name: "کودک", icon: "happy", color: "#DDA0DD" },
+          { id: 7, name: "رمان", icon: "book", color: "#FF6B6B" },
+          { id: 8, name: "شعر", icon: "musical-notes", color: "#F59E0B" },
+        ]);
+      }
+    } catch (error) {
+      console.error("Error fetching categories:", error);
+      // Set default categories on error
+      setCategories([
+        { id: 1, name: "داستانی", icon: "book", color: "#FF6B6B" },
+        { id: 2, name: "علمی", icon: "flask", color: "#4ECDC4" },
+        { id: 3, name: "تاریخی", icon: "time", color: "#45B7D1" },
+        { id: 4, name: "آموزشی", icon: "school", color: "#96CEB4" },
+        { id: 5, name: "مذهبی", icon: "moon", color: "#FFEAA7" },
+        { id: 6, name: "کودک", icon: "happy", color: "#DDA0DD" },
+      ]);
+    }
+  };
+
+  const fetchClasses = async () => {
+    try {
+      const response = await apiRequest("/teacher/library/classes");
+      console.log("Classes response:", response);
+
+      let classesData = [];
+      if (response && response.success) {
+        classesData = response.data || [];
+      } else if (Array.isArray(response)) {
+        classesData = response;
+      }
+
+      setClasses(classesData);
+    } catch (error) {
+      console.error("Error fetching classes:", error);
+      setClasses([]);
     }
   };
 
@@ -103,8 +192,19 @@ export default function TeacherLibraryScreen() {
   };
 
   const handleAddBook = async () => {
-    if (!formData.title || !formData.fileUrl || !formData.categoryId) {
-      Alert.alert("خطا", "لطفا عنوان، لینک و دسته‌بندی را وارد کنید");
+    // Validate form
+    if (!formData.title) {
+      Alert.alert("خطا", "لطفاً عنوان کتاب را وارد کنید");
+      return;
+    }
+
+    if (!formData.fileUrl) {
+      Alert.alert("خطا", "لطفاً لینک کتاب را وارد کنید");
+      return;
+    }
+
+    if (!formData.categoryId) {
+      Alert.alert("خطا", "لطفاً دسته‌بندی کتاب را انتخاب کنید");
       return;
     }
 
@@ -114,59 +214,33 @@ export default function TeacherLibraryScreen() {
         method: "POST",
         body: JSON.stringify({
           title: formData.title,
-          author: formData.author || "معلم مدرسه",
-          description: formData.description,
-          fileUrl: formData.fileUrl,
+          author: formData.author || "معلم مکتب",
+          description: formData.description || "",
           categoryId: parseInt(formData.categoryId),
-          classId: formData.classId ? parseInt(formData.classId) : null,
-          subject: formData.subject,
+          subject: formData.subject || "",
           grade: formData.grade ? parseInt(formData.grade) : null,
+          fileUrl: formData.fileUrl,
           coverImage: formData.coverImage || null,
+          classId: formData.classId ? parseInt(formData.classId) : null,
         }),
       });
 
-      if (response.success) {
+      console.log("Add book response:", response);
+
+      if (response && response.success) {
         Alert.alert("موفقیت", "کتاب با موفقیت اضافه شد");
         setShowAddModal(false);
         resetForm();
-        loadData();
+        await fetchBooks();
       } else {
-        Alert.alert("خطا", response.message || "مشکلی در افزودن کتاب پیش آمد");
+        Alert.alert("خطا", response?.message || "مشکلی در افزودن کتاب پیش آمد");
       }
-    } catch (error) {
-      Alert.alert("خطا", "مشکلی در افزودن کتاب پیش آمد");
+    } catch (error: any) {
+      console.error("Error adding book:", error);
+      Alert.alert("خطا", error?.message || "مشکلی در افزودن کتاب پیش آمد");
     } finally {
       setSubmitting(false);
     }
-  };
-
-  const handleDeleteBook = (bookId: number, bookTitle: string) => {
-    Alert.alert(
-      "حذف کتاب",
-      `آیا از حذف کتاب "${bookTitle}" اطمینان دارید؟`,
-      [
-        { text: "لغو", style: "cancel" },
-        {
-          text: "حذف",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              const response = await apiRequest(`/teacher/library/books/${bookId}`, {
-                method: "DELETE",
-              });
-              if (response.success) {
-                Alert.alert("موفقیت", "کتاب با موفقیت حذف شد");
-                loadData();
-              } else {
-                Alert.alert("خطا", response.message || "مشکلی در حذف کتاب پیش آمد");
-              }
-            } catch (error) {
-              Alert.alert("خطا", "مشکلی در حذف کتاب پیش آمد");
-            }
-          },
-        },
-      ]
-    );
   };
 
   const resetForm = () => {
@@ -174,62 +248,93 @@ export default function TeacherLibraryScreen() {
       title: "",
       author: "",
       description: "",
-      fileUrl: "",
       categoryId: "",
-      classId: "",
       subject: "",
       grade: "",
+      fileUrl: "",
       coverImage: "",
+      classId: "",
     });
   };
 
-  const renderBookCard = ({ item }: { item: Book }) => (
-    <View style={styles.bookCard}>
-      <View style={styles.bookInfo}>
-        <Text style={styles.bookTitle}>{item.title}</Text>
-        <Text style={styles.bookAuthor}>{item.author}</Text>
-        <View style={styles.bookMeta}>
-          <View style={[styles.categoryBadge, { backgroundColor: `${item.category?.color || Colors.primary}20` }]}>
-            <Text style={[styles.categoryText, { color: item.category?.color || Colors.primary }]}>
-              {item.category?.name || "عمومی"}
-            </Text>
-          </View>
-          {item.grade && (
-            <View style={styles.gradeBadge}>
-              <Text style={styles.gradeText}>پایه {item.grade}</Text>
-            </View>
-          )}
-        </View>
-        <Text style={styles.bookLink} numberOfLines={1}>
-          <Ionicons name="link" size={12} color={Colors.textSecondary} />
-          {" "}{item.fileUrl}
-        </Text>
-      </View>
-      <TouchableOpacity
-        style={styles.deleteButton}
-        onPress={() => handleDeleteBook(item.id, item.title)}
-      >
-        <Ionicons name="trash-outline" size={22} color={Colors.danger} />
-      </TouchableOpacity>
-    </View>
-  );
+  const handleDeleteBook = (bookId: number, bookTitle: string) => {
+    Alert.alert("حذف کتاب", `آیا از حذف کتاب "${bookTitle}" مطمئن هستید؟`, [
+      { text: "لغو", style: "cancel" },
+      {
+        text: "حذف",
+        style: "destructive",
+        onPress: async () => {
+          try {
+            const response = await apiRequest(
+              `/teacher/library/books/${bookId}`,
+              {
+                method: "DELETE",
+              },
+            );
+
+            if (response && response.success) {
+              Alert.alert("موفقیت", "کتاب با موفقیت حذف شد");
+              await fetchBooks();
+            } else {
+              Alert.alert(
+                "خطا",
+                response?.message || "مشکلی در حذف کتاب پیش آمد",
+              );
+            }
+          } catch (error) {
+            console.error("Error deleting book:", error);
+            Alert.alert("خطا", "مشکلی در حذف کتاب پیش آمد");
+          }
+        },
+      },
+    ]);
+  };
+
+  // Safely filter books - make sure books is an array
+  const filteredBooks = Array.isArray(books)
+    ? books.filter((book) => {
+        const matchesCategory =
+          selectedCategory === "all" ||
+          book.categoryId?.toString() === selectedCategory;
+        const matchesSearch =
+          book.title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          book.author?.toLowerCase().includes(searchQuery.toLowerCase());
+        return matchesCategory && matchesSearch;
+      })
+    : [];
+
+  const getCategoryName = (categoryId: number) => {
+    const category = categories.find((c) => c.id === categoryId);
+    return category ? category.name : "عمومی";
+  };
+
+  const getCategoryColor = (categoryId: number) => {
+    const category = categories.find((c) => c.id === categoryId);
+    return category?.color || Colors.primary;
+  };
 
   if (loading) {
     return (
-      <SafeAreaView style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={Colors.primary} />
-        <Text style={styles.loadingText}>در حال بارگذاری...</Text>
+      <SafeAreaView style={styles.container} edges={["top"]}>
+        <Header title="کتابخانه دیجیتال" />
+        <View style={styles.centerContainer}>
+          <ActivityIndicator size="large" color={Colors.primary} />
+          <Text style={styles.loadingText}>در حال بارگذاری...</Text>
+        </View>
       </SafeAreaView>
     );
   }
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={["top"]}>
       <Header
-        title="مدیریت کتابخانه"
+        title="کتابخانه دیجیتال"
         rightComponent={
-          <TouchableOpacity onPress={() => setShowAddModal(true)}>
-            <Ionicons name="add" size={24} color={Colors.primary} />
+          <TouchableOpacity
+            onPress={() => setShowAddModal(true)}
+            style={styles.addButton}
+          >
+            <Ionicons name="add-circle" size={28} color={Colors.primary} />
           </TouchableOpacity>
         }
       />
@@ -237,320 +342,670 @@ export default function TeacherLibraryScreen() {
       <ScrollView
         style={styles.content}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} colors={[Colors.primary]} />
+          <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
         }
       >
-        <View style={styles.statsContainer}>
-          <View style={styles.statCard}>
-            <Text style={styles.statValue}>{books.length}</Text>
-            <Text style={styles.statLabel}>کل کتاب‌ها</Text>
-          </View>
-          <View style={styles.statCard}>
-            <Text style={styles.statValue}>{categories.length}</Text>
-            <Text style={styles.statLabel}>دسته‌بندی</Text>
-          </View>
-        </View>
-
-        <View style={styles.booksContainer}>
-          <Text style={styles.sectionTitle}>کتاب‌های کتابخانه</Text>
-          {books.length === 0 ? (
-            <View style={styles.emptyState}>
-              <Ionicons name="book-outline" size={60} color={Colors.textSecondary} />
-              <Text style={styles.emptyStateText}>هیچ کتابی یافت نشد</Text>
-              <TouchableOpacity style={styles.addButton} onPress={() => setShowAddModal(true)}>
-                <Text style={styles.addButtonText}>افزودن کتاب جدید</Text>
-              </TouchableOpacity>
-            </View>
-          ) : (
-            <FlatList
-              data={books}
-              keyExtractor={(item) => item.id.toString()}
-              renderItem={renderBookCard}
-              scrollEnabled={false}
-            />
+        {/* Search Bar */}
+        <View style={styles.searchContainer}>
+          <Ionicons name="search" size={20} color={Colors.textSecondary} />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="جستجوی کتاب بر اساس عنوان یا نویسنده..."
+            placeholderTextColor={Colors.textSecondary}
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            textAlign="right"
+          />
+          {searchQuery.length > 0 && (
+            <TouchableOpacity onPress={() => setSearchQuery("")}>
+              <Ionicons
+                name="close-circle"
+                size={20}
+                color={Colors.textSecondary}
+              />
+            </TouchableOpacity>
           )}
         </View>
+
+        {/* Categories Filter */}
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.categoriesContainer}
+          contentContainerStyle={styles.categoriesContent}
+        >
+          <TouchableOpacity
+            style={[
+              styles.categoryChip,
+              selectedCategory === "all" && styles.categoryChipActive,
+            ]}
+            onPress={() => setSelectedCategory("all")}
+          >
+            <Ionicons
+              name="grid"
+              size={16}
+              color={selectedCategory === "all" ? "#fff" : Colors.text}
+            />
+            <Text
+              style={[
+                styles.categoryText,
+                selectedCategory === "all" && styles.categoryTextActive,
+              ]}
+            >
+              همه
+            </Text>
+          </TouchableOpacity>
+          {categories.map((category) => (
+            <TouchableOpacity
+              key={category.id}
+              style={[
+                styles.categoryChip,
+                selectedCategory === category.id.toString() &&
+                  styles.categoryChipActive,
+              ]}
+              onPress={() => setSelectedCategory(category.id.toString())}
+            >
+              <Ionicons
+                name={category.icon as any}
+                size={16}
+                color={
+                  selectedCategory === category.id.toString()
+                    ? "#fff"
+                    : Colors.text
+                }
+              />
+              <Text
+                style={[
+                  styles.categoryText,
+                  selectedCategory === category.id.toString() &&
+                    styles.categoryTextActive,
+                ]}
+              >
+                {category.name}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+
+        {/* Books Count */}
+        <View style={styles.countContainer}>
+          <Text style={styles.countText}>
+            {filteredBooks.length} کتاب یافت شد
+          </Text>
+        </View>
+
+        {/* Books Grid */}
+        {filteredBooks.length === 0 ? (
+          <View style={styles.emptyState}>
+            <Ionicons name="library" size={64} color={Colors.textSecondary} />
+            <Text style={styles.emptyStateTitle}>کتابی یافت نشد</Text>
+            <Text style={styles.emptyStateText}>
+              {searchQuery
+                ? "با عبارت دیگری جستجو کنید"
+                : "هنوز کتابی اضافه نشده است"}
+            </Text>
+            <TouchableOpacity
+              style={styles.addBookButton}
+              onPress={() => setShowAddModal(true)}
+            >
+              <Ionicons name="add-circle" size={20} color="#fff" />
+              <Text style={styles.addBookButtonText}>افزودن کتاب جدید</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <View style={styles.booksGrid}>
+            {filteredBooks.map((book) => (
+              <View key={book.id} style={styles.bookCard}>
+                <View style={styles.bookHeader}>
+                  <View
+                    style={[
+                      styles.bookIcon,
+                      {
+                        backgroundColor: `${getCategoryColor(book.categoryId)}20`,
+                      },
+                    ]}
+                  >
+                    <Ionicons
+                      name="book"
+                      size={32}
+                      color={getCategoryColor(book.categoryId)}
+                    />
+                  </View>
+                  <TouchableOpacity
+                    onPress={() => handleDeleteBook(book.id, book.title)}
+                    style={styles.deleteButton}
+                  >
+                    <Ionicons
+                      name="trash-outline"
+                      size={20}
+                      color={Colors.danger}
+                    />
+                  </TouchableOpacity>
+                </View>
+
+                <Text style={styles.bookTitle} numberOfLines={2}>
+                  {book.title}
+                </Text>
+                <Text style={styles.bookAuthor}>نویسنده: {book.author}</Text>
+
+                {book.subject && (
+                  <Text style={styles.bookSubject}>موضوع: {book.subject}</Text>
+                )}
+
+                {book.grade && (
+                  <Text style={styles.bookGrade}>پایه: {book.grade}</Text>
+                )}
+
+                <View style={styles.bookMeta}>
+                  <View style={styles.metaItem}>
+                    <Ionicons
+                      name="folder"
+                      size={14}
+                      color={Colors.textSecondary}
+                    />
+                    <Text style={styles.metaText}>
+                      {getCategoryName(book.categoryId)}
+                    </Text>
+                  </View>
+                  {book.pages && (
+                    <View style={styles.metaItem}>
+                      <Ionicons
+                        name="document-text"
+                        size={14}
+                        color={Colors.textSecondary}
+                      />
+                      <Text style={styles.metaText}>{book.pages} صفحه</Text>
+                    </View>
+                  )}
+                </View>
+
+                <TouchableOpacity
+                  style={styles.viewButton}
+                  onPress={() => {
+                    if (book.fileUrl) {
+                      router.push({
+                        pathname: "/(teacher)/book-viewer",
+                        params: { url: book.fileUrl, title: book.title },
+                      });
+                    } else {
+                      Alert.alert("خطا", "لینک کتاب موجود نیست");
+                    }
+                  }}
+                >
+                  <Ionicons name="eye" size={18} color="#fff" />
+                  <Text style={styles.viewButtonText}>مشاهده کتاب</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.copyLinkButton}
+                  onPress={() => {
+                    if (book.fileUrl) {
+                      Alert.alert("لینک کتاب", book.fileUrl);
+                    }
+                  }}
+                >
+                  <Ionicons name="link" size={16} color={Colors.primary} />
+                  <Text style={styles.copyLinkText}>کپی لینک</Text>
+                </TouchableOpacity>
+              </View>
+            ))}
+          </View>
+        )}
       </ScrollView>
 
-      {/* Add Book Modal */}
-      <Modal visible={showAddModal} animationType="slide" transparent={true}>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>افزودن کتاب جدید</Text>
-              <TouchableOpacity onPress={() => setShowAddModal(false)}>
-                <Ionicons name="close" size={24} color={Colors.text} />
-              </TouchableOpacity>
-            </View>
+      {/* Add Book Modal - keep the same as before */}
+      <Modal
+        visible={showAddModal}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setShowAddModal(false)}
+      >
+        <SafeAreaView style={styles.modalContainer}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>افزودن کتاب جدید</Text>
+            <TouchableOpacity onPress={() => setShowAddModal(false)}>
+              <Ionicons name="close" size={28} color={Colors.text} />
+            </TouchableOpacity>
+          </View>
 
-            <ScrollView style={styles.modalBody}>
+          <ScrollView style={styles.modalContent}>
+            <View style={styles.formGroup}>
               <Text style={styles.label}>عنوان کتاب *</Text>
               <TextInput
                 style={styles.input}
                 value={formData.title}
-                onChangeText={(text) => setFormData({ ...formData, title: text })}
-                placeholder="مثال: ریاضی پایه هفتم"
+                onChangeText={(text) =>
+                  setFormData({ ...formData, title: text })
+                }
+                placeholder="مثال: مثنوی معنوی"
+                placeholderTextColor={Colors.textSecondary}
                 textAlign="right"
               />
+            </View>
 
+            <View style={styles.formGroup}>
               <Text style={styles.label}>نویسنده</Text>
               <TextInput
                 style={styles.input}
                 value={formData.author}
-                onChangeText={(text) => setFormData({ ...formData, author: text })}
-                placeholder="نام نویسنده"
+                onChangeText={(text) =>
+                  setFormData({ ...formData, author: text })
+                }
+                placeholder="مثال: مولانا"
+                placeholderTextColor={Colors.textSecondary}
                 textAlign="right"
               />
+              <Text style={styles.helperText}>
+                اختیاری - در صورت خالی ماندن، نام معلم ثبت می‌شود
+              </Text>
+            </View>
 
-              <Text style={styles.label}>لینک کتاب (تلگرام، PDF، و...) *</Text>
+            <View style={styles.formGroup}>
+              <Text style={styles.label}>دسته‌بندی *</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                <View style={styles.categoriesRow}>
+                  {categories.map((category) => (
+                    <TouchableOpacity
+                      key={category.id}
+                      style={[
+                        styles.categoryOption,
+                        formData.categoryId === category.id.toString() &&
+                          styles.categoryOptionActive,
+                      ]}
+                      onPress={() =>
+                        setFormData({
+                          ...formData,
+                          categoryId: category.id.toString(),
+                        })
+                      }
+                    >
+                      <Ionicons
+                        name={category.icon as any}
+                        size={16}
+                        color={
+                          formData.categoryId === category.id.toString()
+                            ? "#fff"
+                            : Colors.text
+                        }
+                      />
+                      <Text
+                        style={[
+                          styles.categoryOptionText,
+                          formData.categoryId === category.id.toString() &&
+                            styles.categoryOptionTextActive,
+                        ]}
+                      >
+                        {category.name}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </ScrollView>
+            </View>
+
+            <View style={styles.formGroup}>
+              <Text style={styles.label}>لینک کتاب *</Text>
               <TextInput
                 style={styles.input}
                 value={formData.fileUrl}
-                onChangeText={(text) => setFormData({ ...formData, fileUrl: text })}
-                placeholder="https://t.me/... یا https://example.com/book.pdf"
+                onChangeText={(text) =>
+                  setFormData({ ...formData, fileUrl: text })
+                }
+                placeholder="https://example.com/book.pdf"
+                placeholderTextColor={Colors.textSecondary}
                 textAlign="left"
                 autoCapitalize="none"
               />
               <Text style={styles.helperText}>
-                می‌توانید لینک تلگرام، لینک فایل PDF یا هر لینک دیگری وارد کنید
+                لینک مستقیم فایل PDF یا کتاب الکترونیکی
               </Text>
+            </View>
 
-              <Text style={styles.label}>دسته‌بندی *</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categoriesScroll}>
-                {categories.map((cat) => (
-                  <TouchableOpacity
-                    key={cat.id}
-                    style={[
-                      styles.categoryOption,
-                      formData.categoryId === cat.id.toString() && styles.categoryOptionActive,
-                    ]}
-                    onPress={() => setFormData({ ...formData, categoryId: cat.id.toString() })}
-                  >
-                    <Ionicons name={cat.icon as any} size={20} color={cat.color} />
-                    <Text style={styles.categoryOptionText}>{cat.name}</Text>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-
-              <Text style={styles.label}>صنف (اختیاری)</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.classesScroll}>
-                <TouchableOpacity
-                  style={[
-                    styles.classOption,
-                    formData.classId === "" && styles.classOptionActive,
-                  ]}
-                  onPress={() => setFormData({ ...formData, classId: "" })}
-                >
-                  <Text style={styles.classOptionText}>همه صنوف</Text>
-                </TouchableOpacity>
-                {classes.map((cls) => (
-                  <TouchableOpacity
-                    key={cls.id}
-                    style={[
-                      styles.classOption,
-                      formData.classId === cls.id.toString() && styles.classOptionActive,
-                    ]}
-                    onPress={() => setFormData({ ...formData, classId: cls.id.toString() })}
-                  >
-                    <Text style={styles.classOptionText}>{cls.name}</Text>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-
-              <Text style={styles.label}>پایه تحصیلی (اختیاری)</Text>
-              <TextInput
-                style={styles.input}
-                value={formData.grade}
-                onChangeText={(text) => setFormData({ ...formData, grade: text })}
-                placeholder="مثال: 7"
-                keyboardType="numeric"
-                textAlign="right"
-              />
-
-              <Text style={styles.label}>توضیحات (اختیاری)</Text>
-              <TextInput
-                style={[styles.input, styles.textArea]}
-                value={formData.description}
-                onChangeText={(text) => setFormData({ ...formData, description: text })}
-                placeholder="توضیحات درباره کتاب"
-                multiline
-                numberOfLines={3}
-                textAlign="right"
-              />
-
+            <View style={styles.formGroup}>
               <Text style={styles.label}>لینک تصویر جلد (اختیاری)</Text>
               <TextInput
                 style={styles.input}
                 value={formData.coverImage}
-                onChangeText={(text) => setFormData({ ...formData, coverImage: text })}
+                onChangeText={(text) =>
+                  setFormData({ ...formData, coverImage: text })
+                }
                 placeholder="https://example.com/cover.jpg"
+                placeholderTextColor={Colors.textSecondary}
                 textAlign="left"
+                autoCapitalize="none"
               />
-            </ScrollView>
+            </View>
+
+            <View style={styles.formRow}>
+              <View style={[styles.formGroup, { flex: 1, marginRight: 8 }]}>
+                <Text style={styles.label}>موضوع</Text>
+                <TextInput
+                  style={styles.input}
+                  value={formData.subject}
+                  onChangeText={(text) =>
+                    setFormData({ ...formData, subject: text })
+                  }
+                  placeholder="مثال: ادبیات"
+                  placeholderTextColor={Colors.textSecondary}
+                  textAlign="right"
+                />
+              </View>
+
+              <View style={[styles.formGroup, { flex: 1, marginLeft: 8 }]}>
+                <Text style={styles.label}>پایه (اختیاری)</Text>
+                <TextInput
+                  style={styles.input}
+                  value={formData.grade}
+                  onChangeText={(text) =>
+                    setFormData({ ...formData, grade: text })
+                  }
+                  placeholder="مثال: 10"
+                  placeholderTextColor={Colors.textSecondary}
+                  keyboardType="numeric"
+                  textAlign="right"
+                />
+              </View>
+            </View>
+
+            {classes.length > 0 && (
+              <View style={styles.formGroup}>
+                <Text style={styles.label}>صنف (اختیاری)</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                  <View style={styles.categoriesRow}>
+                    <TouchableOpacity
+                      style={[
+                        styles.categoryOption,
+                        formData.classId === "" && styles.categoryOptionActive,
+                      ]}
+                      onPress={() => setFormData({ ...formData, classId: "" })}
+                    >
+                      <Text
+                        style={[
+                          styles.categoryOptionText,
+                          formData.classId === "" &&
+                            styles.categoryOptionTextActive,
+                        ]}
+                      >
+                        همه صنوف
+                      </Text>
+                    </TouchableOpacity>
+                    {classes.map((cls) => (
+                      <TouchableOpacity
+                        key={cls.id}
+                        style={[
+                          styles.categoryOption,
+                          formData.classId === cls.id.toString() &&
+                            styles.categoryOptionActive,
+                        ]}
+                        onPress={() =>
+                          setFormData({
+                            ...formData,
+                            classId: cls.id.toString(),
+                          })
+                        }
+                      >
+                        <Text
+                          style={[
+                            styles.categoryOptionText,
+                            formData.classId === cls.id.toString() &&
+                              styles.categoryOptionTextActive,
+                          ]}
+                        >
+                          {cls.name} {cls.section ? `- ${cls.section}` : ""}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </ScrollView>
+              </View>
+            )}
+
+            <View style={styles.formGroup}>
+              <Text style={styles.label}>توضیحات (اختیاری)</Text>
+              <TextInput
+                style={[styles.input, styles.textArea]}
+                value={formData.description}
+                onChangeText={(text) =>
+                  setFormData({ ...formData, description: text })
+                }
+                placeholder="توضیحات کتاب..."
+                placeholderTextColor={Colors.textSecondary}
+                multiline
+                numberOfLines={4}
+                textAlign="right"
+              />
+            </View>
 
             <TouchableOpacity
-              style={[styles.modalSubmitButton, submitting && styles.modalSubmitButtonDisabled]}
+              style={[
+                styles.submitButton,
+                submitting && styles.submitButtonDisabled,
+              ]}
               onPress={handleAddBook}
               disabled={submitting}
             >
-              <Text style={styles.modalSubmitButtonText}>
-                {submitting ? "در حال افزودن..." : "افزودن کتاب"}
-              </Text>
+              {submitting ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <>
+                  <Ionicons name="save" size={20} color="#fff" />
+                  <Text style={styles.submitButtonText}>افزودن کتاب</Text>
+                </>
+              )}
             </TouchableOpacity>
-          </View>
-        </View>
+          </ScrollView>
+        </SafeAreaView>
       </Modal>
     </SafeAreaView>
   );
 }
 
+// Styles remain the same as before
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: Colors.background,
   },
-  content: {
-    flex: 1,
-  },
-  loadingContainer: {
+  centerContainer: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    backgroundColor: Colors.background,
+  },
+  content: {
+    flex: 1,
+    padding: 16,
   },
   loadingText: {
     marginTop: 12,
     fontSize: 14,
     color: Colors.textSecondary,
   },
-  statsContainer: {
-    flexDirection: "row",
-    padding: 16,
-    gap: 12,
+  addButton: {
+    padding: 4,
   },
-  statCard: {
-    flex: 1,
-    backgroundColor: Colors.card,
-    padding: 16,
-    borderRadius: 12,
+  searchContainer: {
+    flexDirection: "row",
     alignItems: "center",
+    backgroundColor: Colors.card,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: Colors.border,
+    marginBottom: 16,
   },
-  statValue: {
-    fontSize: 24,
-    fontWeight: "bold",
+  searchInput: {
+    flex: 1,
+    fontSize: 16,
     color: Colors.text,
-    marginBottom: 4,
+    marginHorizontal: 12,
   },
-  statLabel: {
-    fontSize: 12,
+  categoriesContainer: {
+    marginBottom: 16,
+  },
+  categoriesContent: {
+    gap: 8,
+  },
+  categoryChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: Colors.card,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    gap: 8,
+  },
+  categoryChipActive: {
+    backgroundColor: Colors.primary,
+    borderColor: Colors.primary,
+  },
+  categoryText: {
+    fontSize: 14,
+    color: Colors.text,
+  },
+  categoryTextActive: {
+    color: "#fff",
+    fontWeight: "bold",
+  },
+  countContainer: {
+    marginBottom: 16,
+  },
+  countText: {
+    fontSize: 14,
     color: Colors.textSecondary,
   },
-  booksContainer: {
-    padding: 16,
+  emptyState: {
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 48,
+    backgroundColor: Colors.card,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderStyle: "dashed",
   },
-  sectionTitle: {
+  emptyStateTitle: {
     fontSize: 18,
     fontWeight: "bold",
     color: Colors.text,
-    marginBottom: 16,
-    textAlign: "right",
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  emptyStateText: {
+    fontSize: 14,
+    color: Colors.textSecondary,
+    marginBottom: 20,
+  },
+  addBookButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: Colors.primary,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 8,
+    gap: 8,
+  },
+  addBookButtonText: {
+    color: "#fff",
+    fontSize: 14,
+    fontWeight: "bold",
+  },
+  booksGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "space-between",
   },
   bookCard: {
-    flexDirection: "row",
+    width: "48%",
     backgroundColor: Colors.card,
     borderRadius: 12,
+    padding: 12,
+    marginBottom: 16,
     borderWidth: 1,
     borderColor: Colors.border,
-    padding: 12,
+  },
+  bookHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     marginBottom: 12,
   },
-  bookInfo: {
-    flex: 1,
+  bookIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  deleteButton: {
+    padding: 4,
   },
   bookTitle: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: "bold",
     color: Colors.text,
     marginBottom: 4,
-    textAlign: "right",
   },
   bookAuthor: {
     fontSize: 12,
     color: Colors.textSecondary,
     marginBottom: 8,
-    textAlign: "right",
+  },
+  bookSubject: {
+    fontSize: 11,
+    color: Colors.textSecondary,
+    marginBottom: 4,
+  },
+  bookGrade: {
+    fontSize: 11,
+    color: Colors.textSecondary,
+    marginBottom: 8,
   },
   bookMeta: {
     flexDirection: "row",
-    gap: 8,
-    marginBottom: 8,
-    justifyContent: "flex-end",
+    justifyContent: "space-between",
+    marginBottom: 12,
   },
-  categoryBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
+  metaItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
   },
-  categoryText: {
+  metaText: {
     fontSize: 10,
+    color: Colors.textSecondary,
+  },
+  viewButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: Colors.primary,
+    paddingVertical: 8,
+    borderRadius: 8,
+    gap: 6,
+    marginBottom: 8,
+  },
+  viewButtonText: {
+    color: "#fff",
+    fontSize: 12,
     fontWeight: "bold",
   },
-  gradeBadge: {
-    backgroundColor: `${Colors.primary}20`,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
+  copyLinkButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 6,
+    gap: 4,
   },
-  gradeText: {
-    fontSize: 10,
+  copyLinkText: {
+    fontSize: 11,
     color: Colors.primary,
   },
-  bookLink: {
-    fontSize: 11,
-    color: Colors.textSecondary,
-    textAlign: "right",
-  },
-  deleteButton: {
-    justifyContent: "center",
-    paddingHorizontal: 8,
-  },
-  emptyState: {
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 60,
-  },
-  emptyStateText: {
-    fontSize: 16,
-    color: Colors.textSecondary,
-    marginTop: 16,
-    marginBottom: 20,
-    textAlign: "center",
-  },
-  addButton: {
-    backgroundColor: Colors.primary,
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderRadius: 8,
-  },
-  addButtonText: {
-    color: "#fff",
-    fontSize: 14,
-    fontWeight: "bold",
-  },
-  modalOverlay: {
+  modalContainer: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.5)",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  modalContent: {
-    width: "90%",
-    maxHeight: "80%",
-    backgroundColor: Colors.card,
-    borderRadius: 20,
-    overflow: "hidden",
+    backgroundColor: Colors.background,
   },
   modalHeader: {
     flexDirection: "row",
@@ -561,23 +1016,29 @@ const styles = StyleSheet.create({
     borderBottomColor: Colors.border,
   },
   modalTitle: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: "bold",
     color: Colors.text,
   },
-  modalBody: {
+  modalContent: {
+    flex: 1,
     padding: 20,
+  },
+  formGroup: {
+    marginBottom: 20,
+  },
+  formRow: {
+    flexDirection: "row",
+    gap: 16,
   },
   label: {
     fontSize: 14,
-    fontWeight: "500",
+    fontWeight: "600",
     color: Colors.text,
     marginBottom: 8,
-    marginTop: 12,
-    textAlign: "right",
   },
   input: {
-    backgroundColor: Colors.background,
+    backgroundColor: Colors.card,
     borderWidth: 1,
     borderColor: Colors.border,
     borderRadius: 8,
@@ -586,69 +1047,56 @@ const styles = StyleSheet.create({
     color: Colors.text,
   },
   textArea: {
-    minHeight: 80,
+    height: 100,
     textAlignVertical: "top",
   },
   helperText: {
     fontSize: 11,
     color: Colors.textSecondary,
     marginTop: 4,
-    textAlign: "right",
   },
-  categoriesScroll: {
+  categoriesRow: {
     flexDirection: "row",
-    marginBottom: 8,
+    gap: 8,
   },
   categoryOption: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: Colors.background,
+    backgroundColor: Colors.card,
     paddingHorizontal: 12,
     paddingVertical: 8,
-    borderRadius: 20,
+    borderRadius: 8,
     borderWidth: 1,
     borderColor: Colors.border,
-    marginRight: 8,
     gap: 6,
   },
   categoryOptionActive: {
+    backgroundColor: Colors.primary,
     borderColor: Colors.primary,
-    backgroundColor: `${Colors.primary}10`,
   },
   categoryOptionText: {
     fontSize: 12,
     color: Colors.text,
   },
-  classesScroll: {
+  categoryOptionTextActive: {
+    color: "#fff",
+    fontWeight: "bold",
+  },
+  submitButton: {
     flexDirection: "row",
-    marginBottom: 8,
-  },
-  classOption: {
-    backgroundColor: Colors.background,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    marginRight: 8,
-  },
-  classOptionActive: {
-    borderColor: Colors.primary,
-    backgroundColor: `${Colors.primary}10`,
-  },
-  classOptionText: {
-    fontSize: 12,
-    color: Colors.text,
-  },
-  modalSubmitButton: {
-    backgroundColor: Colors.primary,
-    padding: 16,
     alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: Colors.primary,
+    paddingVertical: 14,
+    borderRadius: 8,
+    gap: 8,
+    marginTop: 20,
+    marginBottom: 40,
   },
-  modalSubmitButtonDisabled: {
-    opacity: 0.6,
+  submitButtonDisabled: {
+    opacity: 0.7,
   },
-  modalSubmitButtonText: {
+  submitButtonText: {
     color: "#fff",
     fontSize: 16,
     fontWeight: "bold",

@@ -20,21 +20,12 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-type FilterOption = {
-  id: string;
-  label: string;
-  icon: string;
-};
-
 export default function CoursesScreen() {
   const router = useRouter();
   const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [enrolling, setEnrolling] = useState<number | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedFilter, setSelectedFilter] = useState("all");
-  const [availableCourses, setAvailableCourses] = useState<Course[]>([]);
   const [enrolledCourses, setEnrolledCourses] = useState<Course[]>([]);
   const [filteredCourses, setFilteredCourses] = useState<Course[]>([]);
   const [classInfo, setClassInfo] = useState<{
@@ -42,31 +33,18 @@ export default function CoursesScreen() {
     name: string;
   } | null>(null);
 
-  const filters: FilterOption[] = [
-    { id: "all", label: "همه دوره‌ها", icon: "apps" },
-    { id: "available", label: "دوره‌های موجود", icon: "book-outline" },
-    { id: "enrolled", label: "دوره‌های من", icon: "checkmark-circle" },
-  ];
-
   useEffect(() => {
     loadData();
   }, []);
 
   useEffect(() => {
     filterCourses();
-  }, [searchQuery, selectedFilter, availableCourses, enrolledCourses]);
+  }, [searchQuery, enrolledCourses]);
 
   const loadData = async () => {
     try {
       setLoading(true);
-
-      // First load enrolled courses
       await loadEnrolledCourses();
-
-      // Then load available courses
-      await loadAvailableCourses();
-
-      // Load student class info
       await loadStudentClass();
     } catch (error) {
       console.error("Error loading data:", error);
@@ -92,48 +70,12 @@ export default function CoursesScreen() {
     }
   };
 
-  const loadAvailableCourses = async () => {
-    try {
-      const response = await studentApi.getStudentCourses({
-        limit: 100,
-      });
-
-      if (response.success && response.data) {
-        const courses = response.data.items || [];
-
-        // Mark which courses are already enrolled
-        const enrolledIds = new Set(enrolledCourses.map((c) => c.id));
-        const coursesWithEnrollmentStatus = courses.map((course) => ({
-          ...course,
-          enrolled: enrolledIds.has(course.id),
-          progress: enrolledIds.has(course.id)
-            ? enrolledCourses.find((ec) => ec.id === course.id)?.progress || 0
-            : 0,
-        }));
-
-        setAvailableCourses(coursesWithEnrollmentStatus);
-      }
-    } catch (error) {
-      console.error("Error loading available courses:", error);
-      setAvailableCourses([]);
-    }
-  };
-
   const loadEnrolledCourses = async () => {
     try {
       const response = await studentApi.getMyCourses();
       if (response.success && response.data) {
         const courses = response.data;
         setEnrolledCourses(courses);
-
-        // Update available courses with enrollment status if they're already loaded
-        setAvailableCourses((prev) =>
-          prev.map((course) => ({
-            ...course,
-            enrolled: courses.some((ec) => ec.id === course.id),
-            progress: courses.find((ec) => ec.id === course.id)?.progress || 0,
-          })),
-        );
       }
     } catch (error) {
       console.error("Error loading enrolled courses:", error);
@@ -147,47 +89,8 @@ export default function CoursesScreen() {
     setRefreshing(false);
   };
 
-  const handleEnroll = async (courseId: number) => {
-    Alert.alert("ثبت‌نام در دوره", "آیا می‌خواهید در این دوره ثبت‌نام کنید؟", [
-      { text: "لغو", style: "cancel" },
-      {
-        text: "ثبت‌نام",
-        onPress: async () => {
-          setEnrolling(courseId);
-          try {
-            const response = await studentApi.enrollCourse(courseId);
-            if (response.success) {
-              Alert.alert("موفقیت", "ثبت‌نام با موفقیت انجام شد");
-              // Refresh data after enrollment
-              await loadEnrolledCourses();
-              await loadAvailableCourses();
-            } else {
-              Alert.alert("خطا", response.message || "ثبت‌نام ناموفق بود");
-            }
-          } catch (error) {
-            console.error("Error enrolling:", error);
-            Alert.alert("خطا", "مشکلی در ثبت‌نام پیش آمد");
-          } finally {
-            setEnrolling(null);
-          }
-        },
-      },
-    ]);
-  };
-
   const filterCourses = () => {
-    let filtered: Course[] = [];
-
-    // Determine which courses to show based on selected filter
-    if (selectedFilter === "enrolled") {
-      filtered = [...enrolledCourses];
-    } else if (selectedFilter === "available") {
-      // Show only courses that the student is NOT enrolled in
-      filtered = availableCourses.filter((course) => !course.enrolled);
-    } else {
-      // Show all courses (available)
-      filtered = [...availableCourses];
-    }
+    let filtered = [...enrolledCourses];
 
     // Apply search filter
     if (searchQuery) {
@@ -203,9 +106,11 @@ export default function CoursesScreen() {
   };
 
   const stats = {
-    total: availableCourses.length,
-    enrolled: enrolledCourses.length,
-    available: availableCourses.filter((c) => !c.enrolled).length,
+    total: enrolledCourses.length,
+    completed: enrolledCourses.filter((c) => c.progress === 100).length,
+    inProgress: enrolledCourses.filter(
+      (c) => c.progress > 0 && c.progress < 100,
+    ).length,
   };
 
   const transformCourseForCard = (course: Course) => ({
@@ -221,7 +126,7 @@ export default function CoursesScreen() {
     subject_id: course.subject_id,
     is_general: course.is_general || false,
     progress: course.progress || 0,
-    enrolled: course.enrolled || false,
+    enrolled: true,
     slug: course.title.toLowerCase().replace(/\s/g, "-"),
     instructor: course.teacher_name || "نامشخص",
     revenue: 0,
@@ -237,7 +142,7 @@ export default function CoursesScreen() {
   if (loading) {
     return (
       <SafeAreaView style={styles.container} edges={["top"]}>
-        <Header title="دوره‌ها" />
+        <Header title="دوره‌های من" />
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={Colors.primary} />
           <Text style={styles.loadingText}>در حال بارگذاری دوره‌ها...</Text>
@@ -249,7 +154,7 @@ export default function CoursesScreen() {
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
       <Header
-        title="دوره‌ها"
+        title="دوره‌های من"
         rightComponent={
           <TouchableOpacity onPress={handleRefresh}>
             <Ionicons name="refresh" size={24} color={Colors.text} />
@@ -271,7 +176,7 @@ export default function CoursesScreen() {
         {classInfo && (
           <View style={styles.classBanner}>
             <Ionicons name="school" size={20} color={Colors.primary} />
-            <Text style={styles.classBannerText}>صنف  {classInfo.name}</Text>
+            <Text style={styles.classBannerText}>صنف {classInfo.name}</Text>
           </View>
         )}
 
@@ -283,15 +188,15 @@ export default function CoursesScreen() {
           </View>
           <View style={styles.statItem}>
             <Text style={[styles.statValue, { color: Colors.primary }]}>
-              {stats.enrolled}
+              {stats.inProgress}
             </Text>
-            <Text style={styles.statLabel}>ثبت‌نام شده</Text>
+            <Text style={styles.statLabel}>در حال یادگیری</Text>
           </View>
           <View style={styles.statItem}>
             <Text style={[styles.statValue, { color: Colors.success }]}>
-              {stats.available}
+              {stats.completed}
             </Text>
-            <Text style={styles.statLabel}>موجود</Text>
+            <Text style={styles.statLabel}>تکمیل شده</Text>
           </View>
         </View>
 
@@ -300,7 +205,7 @@ export default function CoursesScreen() {
           <Ionicons name="search" size={20} color={Colors.textSecondary} />
           <TextInput
             style={styles.searchInput}
-            placeholder="جستجوی دوره..."
+            placeholder="جستجوی دوره‌های من..."
             placeholderTextColor={Colors.textSecondary}
             value={searchQuery}
             onChangeText={setSearchQuery}
@@ -317,49 +222,11 @@ export default function CoursesScreen() {
           )}
         </View>
 
-        {/* Filters */}
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          style={styles.filtersContainer}
-          contentContainerStyle={styles.filtersContent}
-        >
-          {filters.map((filter) => (
-            <TouchableOpacity
-              key={filter.id}
-              style={[
-                styles.filterChip,
-                selectedFilter === filter.id && styles.filterChipActive,
-              ]}
-              onPress={() => setSelectedFilter(filter.id)}
-            >
-              <Ionicons
-                name={filter.icon as any}
-                size={16}
-                color={selectedFilter === filter.id ? "#fff" : Colors.text}
-              />
-              <Text
-                style={[
-                  styles.filterText,
-                  selectedFilter === filter.id && styles.filterTextActive,
-                ]}
-              >
-                {filter.label}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-
         {/* Courses Grid */}
         <View style={styles.coursesContainer}>
           <View style={styles.coursesHeader}>
             <Text style={styles.coursesTitle}>
-              {selectedFilter === "enrolled"
-                ? "دوره‌های من"
-                : selectedFilter === "available"
-                  ? "دوره‌های موجود برای ثبت‌نام"
-                  : "همه دوره‌ها"}
-              ({filteredCourses.length})
+              دوره‌های من ({filteredCourses.length})
             </Text>
           </View>
 
@@ -374,20 +241,8 @@ export default function CoursesScreen() {
               <Text style={styles.emptyStateText}>
                 {searchQuery
                   ? "با عبارت دیگری جستجو کنید"
-                  : selectedFilter === "enrolled"
-                    ? "هنوز در دوره‌ای ثبت‌نام نکرده‌اید"
-                    : "دوره‌ای برای نمایش وجود ندارد"}
+                  : "هنوز در دوره‌ای ثبت‌نام نکرده‌اید"}
               </Text>
-              {selectedFilter === "enrolled" && stats.available > 0 && (
-                <TouchableOpacity
-                  style={styles.exploreButton}
-                  onPress={() => setSelectedFilter("available")}
-                >
-                  <Text style={styles.exploreButtonText}>
-                    مشاهده دوره‌های موجود
-                  </Text>
-                </TouchableOpacity>
-              )}
             </View>
           ) : (
             <View style={styles.coursesGrid}>
@@ -395,47 +250,46 @@ export default function CoursesScreen() {
                 <View key={course.id} style={styles.courseCardWrapper}>
                   <CourseCard
                     course={transformCourseForCard(course)}
-                    onPress={() =>
-                      router.push(`/(student)/course/${course.id}`)
-                    }
-                    showProgress={course.enrolled}
-                  />
+                    onPress={async () => {
+                      try {
+                        // Enroll first if not enrolled
+                        if (!course.enrolled) {
+                          const result = await studentApi.enrollCourse(
+                            course.id,
+                          );
 
-                  {/* Show Enroll Button for non-enrolled courses */}
-                  {!course.enrolled && (
+                          if (!result.success) {
+                            Alert.alert("خطا", "ثبت نام در دوره انجام نشد");
+                            return;
+                          }
+                        }
+
+                        // Open course after successful enrollment
+                        router.push(`/(student)/course/${course.id}`);
+                      } catch (error) {
+                        console.error(error);
+                        Alert.alert("خطا", "مشکلی پیش آمد");
+                      }
+                    }}
+                    showProgress={true}
+                  />
+                  {/* Show Continue Button for courses in progress */}
+                  {course.progress > 0 && course.progress < 100 && (
                     <TouchableOpacity
-                      style={styles.enrollButton}
-                      onPress={() => handleEnroll(course.id)}
-                      disabled={enrolling === course.id}
+                      style={styles.continueButton}
+                      onPress={() =>
+                        router.push(`/(student)/course/${course.id}`)
+                      }
                     >
-                      {enrolling === course.id ? (
-                        <ActivityIndicator size="small" color="#fff" />
-                      ) : (
-                        <>
-                          <Ionicons name="add-circle" size={18} color="#fff" />
-                          <Text style={styles.enrollButtonText}>ثبت‌نام</Text>
-                        </>
-                      )}
+                      <Ionicons name="play-circle" size={18} color="#fff" />
+                      <Text style={styles.continueButtonText}>
+                        ادامه یادگیری
+                      </Text>
                     </TouchableOpacity>
                   )}
 
-                  {/* Show Continue Button for enrolled courses in progress */}
-                  {course.enrolled &&
-                    course.progress > 0 &&
-                    course.progress < 100 && (
-                      <TouchableOpacity
-                        style={styles.continueButton}
-                        onPress={() =>
-                          router.push(`/(student)/course/${course.id}/lesson`)
-                        }
-                      >
-                        <Ionicons name="play-circle" size={18} color="#fff" />
-                        <Text style={styles.continueButtonText}>ادامه</Text>
-                      </TouchableOpacity>
-                    )}
-
-                  {/* Show Progress Badge for enrolled courses */}
-                  {course.enrolled && course.progress === 100 && (
+                  {/* Show Completed Badge for completed courses */}
+                  {course.progress === 100 && (
                     <View style={styles.completedBadge}>
                       <Ionicons
                         name="checkmark-circle"
@@ -444,6 +298,19 @@ export default function CoursesScreen() {
                       />
                       <Text style={styles.completedBadgeText}>تکمیل شده</Text>
                     </View>
+                  )}
+
+                  {/* Show Start Button for courses not started */}
+                  {(!course.progress || course.progress === 0) && (
+                    <TouchableOpacity
+                      style={styles.startButton}
+                      onPress={() =>
+                        router.push(`/(student)/course/${course.id}`)
+                      }
+                    >
+                      <Ionicons name="play-circle" size={18} color="#fff" />
+                      <Text style={styles.startButtonText}>شروع یادگیری</Text>
+                    </TouchableOpacity>
                   )}
                 </View>
               ))}
@@ -533,37 +400,6 @@ const styles = StyleSheet.create({
     color: Colors.text,
     marginHorizontal: 12,
   },
-  filtersContainer: {
-    marginHorizontal: 16,
-    marginBottom: 20,
-  },
-  filtersContent: {
-    gap: 8,
-  },
-  filterChip: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: Colors.card,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    gap: 8,
-    marginRight: 8,
-  },
-  filterChipActive: {
-    backgroundColor: Colors.primary,
-    borderColor: Colors.primary,
-  },
-  filterText: {
-    fontSize: 14,
-    color: Colors.text,
-  },
-  filterTextActive: {
-    color: "#fff",
-    fontWeight: "bold",
-  },
   coursesContainer: {
     paddingHorizontal: 16,
     marginBottom: 24,
@@ -586,7 +422,7 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     position: "relative",
   },
-  enrollButton: {
+  continueButton: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
@@ -597,12 +433,12 @@ const styles = StyleSheet.create({
     borderBottomRightRadius: 12,
     marginTop: -8,
   },
-  enrollButtonText: {
+  continueButtonText: {
     color: "#fff",
     fontSize: 12,
     fontWeight: "bold",
   },
-  continueButton: {
+  startButton: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
@@ -613,7 +449,7 @@ const styles = StyleSheet.create({
     borderBottomRightRadius: 12,
     marginTop: -8,
   },
-  continueButtonText: {
+  startButtonText: {
     color: "#fff",
     fontSize: 12,
     fontWeight: "bold",
@@ -656,16 +492,5 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
     textAlign: "center",
     marginBottom: 20,
-  },
-  exploreButton: {
-    backgroundColor: Colors.primary,
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 8,
-  },
-  exploreButtonText: {
-    color: "#fff",
-    fontSize: 14,
-    fontWeight: "bold",
   },
 });

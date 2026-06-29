@@ -1,190 +1,336 @@
-import { Header } from "@/components/Header";
-import { Colors } from "@/constants/Colors";
+// app/(admin)/financial/reports/index.tsx
 import { Ionicons } from "@expo/vector-icons";
+import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
-import { StyleSheet, Text, TouchableOpacity, View, ScrollView } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import {
+    ScrollView,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
+} from "react-native";
 
-interface ReportItem {
-  title: string;
-  description: string;
-  icon: string;
-  color: string;
-  path: string;
-  badge?: string;
-}
-
-const reportItems: ReportItem[] = [
+const REPORT_CATEGORIES = [
   {
-    title: "صورت سود و زیان",
-    description: "گزارش درآمد و هزینه‌ها به تفکیک ماه‌های سال",
-    icon: "bar-chart",
-    color: Colors.success,
-    path: "/(admin)/financial/reports/income-statement",
+    title: "گزارشات روزانه و ماهانه",
+    items: [
+      {
+        id: "daily",
+        title: "راپور روزانه",
+        subtitle: "وصولی امروز به تفکیک",
+        icon: "today-outline",
+        route: "/financial/reports/daily",
+        color: "#3b82f6",
+        gradient: ["#3b82f6", "#2563eb"],
+      },
+      {
+        id: "monthly",
+        title: "راپور ماهانه",
+        subtitle: "وصولی ماه جاری",
+        icon: "calendar-outline",
+        route: "/financial/reports/monthly",
+        color: "#8b5cf6",
+        gradient: ["#8b5cf6", "#7c3aed"],
+      },
+    ],
   },
   {
-    title: "گزارش جریان نقدی",
-    description: "ورودی و خروجی وجوه نقد در بازه زمانی مشخص",
-    icon: "trending-up",
-    color: Colors.primary,
-    path: "/(admin)/financial/reports/cash-flow",
+    title: "گزارشات تحلیلی",
+    items: [
+      {
+        id: "outstanding",
+        title: "بدهکارها",
+        subtitle: "شاگردان بدهکار و معوق",
+        icon: "alert-circle-outline",
+        route: "/financial/reports/outstanding",
+        color: "#ef4444",
+        gradient: ["#ef4444", "#dc2626"],
+      },
+      {
+        id: "class-wise",
+        title: "راپور صنف‌ها",
+        subtitle: "وصولی به تفکیک صنف",
+        icon: "people-outline",
+        route: "/financial/reports/class-wise",
+        color: "#10b981",
+        gradient: ["#10b981", "#059669"],
+      },
+      {
+        id: "income-statement",
+        title: "صورت عایدات",
+        subtitle: "عایدات و مصارف",
+        icon: "stats-chart-outline",
+        route: "/financial/reports/income-statement",
+        color: "#f59e0b",
+        gradient: ["#f59e0b", "#d97706"],
+      },
+    ],
   },
   {
-    title: "دریافتی روزانه",
-    description: "گزارش جمع‌آوری شهریه به تفکیک روز",
-    icon: "today",
-    color: Colors.info,
-    path: "/(admin)/financial/reports/collections/daily",
-  },
-  {
-    title: "دریافتی ماهانه",
-    description: "خلاصه درآمد ماهانه و مقایسه با ماه‌های قبل",
-    icon: "calendar",
-    color: Colors.warning,
-    path: "/(admin)/financial/reports/collections/monthly",
-  },
-  {
-    title: "دریافتی به تفکیک صنف",
-    description: "مقایسه وصولی شهریه بین صنوف مختلف",
-    icon: "school",
-    color: Colors.success,
-    path: "/(admin)/financial/reports/collections/by-class",
-  },
-  {
-    title: "گزارش فیس‌های معوقه",
-    description: "لیست دانش‌آموزان با شهریه پرداخت نشده",
-    icon: "alert-circle",
-    color: Colors.danger,
-    path: "/(admin)/financial/reports/outstanding",
-  },
-  {
-    title: "گزارش پیری معوقات",
-    description: "تفکیک معوقات بر اساس ۳۰، ۶۰ و ۹۰ روز",
-    icon: "time",
-    color: Colors.warning,
-    path: "/(admin)/financial/reports/outstanding/aging",
-  },
-  {
-    title: "هزینه‌ها به تفکیک دسته",
-    description: "تحلیل هزینه‌ها بر اساس دسته‌بندی",
-    icon: "pie-chart",
-    color: Colors.danger,
-    path: "/(admin)/financial/expenses",
+    title: "صادرات",
+    items: [
+      {
+        id: "export",
+        title: "صدور راپور",
+        subtitle: "Excel / PDF",
+        icon: "download-outline",
+        route: "/financial/reports/export",
+        color: "#06b6d4",
+        gradient: ["#06b6d4", "#0891b2"],
+      },
+    ],
   },
 ];
 
-export default function ReportsMenu() {
+export default function ReportsMenuScreen() {
   const router = useRouter();
 
-  const navigateTo = (path: string) => {
-    router.push(path as any);
-  };
-
   return (
-    <SafeAreaView style={styles.container} edges={["top"]}>
-      <Header title="گزارشات مالی" showBack />
+    <View style={styles.container}>
+      {/* Header */}
+      <View style={styles.header}>
+        <TouchableOpacity onPress={() => router.back()}>
+          <Ionicons name="arrow-back" size={24} color="#1e293b" />
+        </TouchableOpacity>
+        <Text style={styles.title}>راپورهای مالی</Text>
+        <View style={{ width: 40 }} />
+      </View>
 
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        {/* Header */}
-        <View style={styles.header}>
-          <View style={styles.headerIconContainer}>
-            <Ionicons name="analytics" size={36} color={Colors.primary} />
+      <ScrollView
+        style={styles.scrollView}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Hero Banner */}
+        <View style={styles.heroBanner}>
+          <LinearGradient
+            colors={["#1e293b", "#334155"]}
+            style={styles.heroGradient}
+          >
+            <Ionicons name="analytics" size={40} color="#fff" />
+            <Text style={styles.heroTitle}>گزارشات و تحلیل‌ها</Text>
+            <Text style={styles.heroSubtitle}>مشاهده و تحلیل عملکرد مالی</Text>
+          </LinearGradient>
+        </View>
+
+        {/* Report Categories */}
+        {REPORT_CATEGORIES.map((category, catIndex) => (
+          <View key={catIndex} style={styles.categorySection}>
+            <Text style={styles.categoryTitle}>{category.title}</Text>
+            <View style={styles.reportsGrid}>
+              {category.items.map((report) => (
+                <TouchableOpacity
+                  key={report.id}
+                  style={styles.reportCard}
+                  onPress={() => router.push(report.route as any)}
+                  activeOpacity={0.7}
+                >
+                  <LinearGradient
+                    colors={report.gradient as [string, string]}
+                    style={styles.reportGradient}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                  >
+                    <View style={styles.reportIcon}>
+                      <Ionicons
+                        name={report.icon as any}
+                        size={28}
+                        color="#fff"
+                      />
+                    </View>
+                    <View style={styles.reportInfo}>
+                      <Text style={styles.reportTitle}>{report.title}</Text>
+                      <Text style={styles.reportSubtitle}>
+                        {report.subtitle}
+                      </Text>
+                    </View>
+                    <Ionicons
+                      name="chevron-forward"
+                      size={20}
+                      color="rgba(255,255,255,0.7)"
+                    />
+                  </LinearGradient>
+                </TouchableOpacity>
+              ))}
+            </View>
           </View>
-          <Text style={styles.title}>گزارشات مالی</Text>
-          <Text style={styles.subtitle}>
-            گزارشات جامع برای تحلیل و تصمیم‌گیری مالی مدرسه
-          </Text>
-        </View>
+        ))}
 
-        {/* Report Cards Grid */}
-        <View style={styles.grid}>
-          {reportItems.map((item, index) => (
+        {/* Quick Stats */}
+        <View style={styles.quickStatsSection}>
+          <Text style={styles.categoryTitle}>دسترسی سریع</Text>
+          <View style={styles.quickStatsGrid}>
             <TouchableOpacity
-              key={index}
-              style={styles.card}
-              onPress={() => navigateTo(item.path)}
-              activeOpacity={0.7}
+              style={styles.quickStatCard}
+              onPress={() => router.push("/financial/reports/daily")}
             >
-              <View style={[styles.cardIcon, { backgroundColor: `${item.color}15` }]}>
-                <Ionicons name={item.icon as any} size={28} color={item.color} />
-              </View>
-              <View style={styles.cardContent}>
-                <Text style={styles.cardTitle}>{item.title}</Text>
-                <Text style={styles.cardDescription} numberOfLines={2}>
-                  {item.description}
-                </Text>
-              </View>
-              <View style={styles.cardArrow}>
-                <View style={[styles.arrowCircle, { backgroundColor: `${item.color}15` }]}>
-                  <Ionicons name="arrow-back" size={16} color={item.color} />
-                </View>
-              </View>
-            </TouchableOpacity>
-          ))}
-        </View>
-
-        {/* Export Section */}
-        <View style={styles.exportSection}>
-          <Text style={styles.exportTitle}>گزارشات قابل خروجی</Text>
-          <View style={styles.exportButtons}>
-            <TouchableOpacity
-              style={styles.exportBtn}
-              onPress={() => navigateTo("/(admin)/financial/reports/exports")}
-              activeOpacity={0.7}
-            >
-              <Ionicons name="document-text-outline" size={22} color={Colors.primary} />
-              <Text style={styles.exportBtnText}>خروجی PDF</Text>
+              <Ionicons name="today" size={24} color="#3b82f6" />
+              <Text style={styles.quickStatText}>امروز</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={styles.exportBtn}
-              onPress={() => navigateTo("/(admin)/financial/reports/exports")}
-              activeOpacity={0.7}
+              style={styles.quickStatCard}
+              onPress={() => router.push("/financial/reports/outstanding")}
             >
-              <Ionicons name="grid-outline" size={22} color={Colors.success} />
-              <Text style={styles.exportBtnText}>خروجی Excel</Text>
+              <Ionicons name="warning" size={24} color="#ef4444" />
+              <Text style={styles.quickStatText}>بدهکارها</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.quickStatCard}
+              onPress={() => router.push("/financial/reports/class-wise")}
+            >
+              <Ionicons name="people" size={24} color="#10b981" />
+              <Text style={styles.quickStatText}>صنف‌ها</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.quickStatCard}
+              onPress={() => router.push("/financial/reports/income-statement")}
+            >
+              <Ionicons name="stats-chart" size={24} color="#f59e0b" />
+              <Text style={styles.quickStatText}>عایدات</Text>
             </TouchableOpacity>
           </View>
         </View>
 
-        {/* Info Box */}
-        <View style={styles.infoBox}>
-          <Ionicons name="information-circle" size={18} color={Colors.primary} />
-          <Text style={styles.infoText}>
-            گزارشات مالی به شما کمک می‌کنند تا وضعیت درآمدها، هزینه‌ها، شهریه‌های معوقه
-            و روندهای مالی مدرسه را به صورت دقیق بررسی کنید.
-          </Text>
-        </View>
-
-        <View style={{ height: 20 }} />
+        <View style={{ height: 40 }} />
       </ScrollView>
-    </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.background },
-  content: { flex: 1, padding: 16 },
-  
-  header: { alignItems: "center", marginBottom: 24 },
-  headerIconContainer: { width: 72, height: 72, borderRadius: 36, backgroundColor: `${Colors.primary}15`, justifyContent: "center", alignItems: "center", marginBottom: 14 },
-  title: { fontSize: 22, fontWeight: "bold", color: Colors.text, fontFamily: "Vazirmatn", marginBottom: 8 },
-  subtitle: { fontSize: 13, color: Colors.textSecondary, fontFamily: "Vazirmatn", textAlign: "center", lineHeight: 22 },
-  
-  grid: { gap: 12, marginBottom: 24 },
-  card: { flexDirection: "row", alignItems: "center", backgroundColor: Colors.card, borderRadius: 14, padding: 16, shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.06, shadowRadius: 4, elevation: 3, gap: 14 },
-  cardIcon: { width: 52, height: 52, borderRadius: 26, justifyContent: "center", alignItems: "center" },
-  cardContent: { flex: 1 },
-  cardTitle: { fontSize: 16, fontWeight: "600", color: Colors.text, fontFamily: "Vazirmatn", marginBottom: 4 },
-  cardDescription: { fontSize: 12, color: Colors.textSecondary, fontFamily: "Vazirmatn", lineHeight: 18, textAlign: "right" },
-  cardArrow: { justifyContent: "center" },
-  arrowCircle: { width: 32, height: 32, borderRadius: 16, justifyContent: "center", alignItems: "center" },
-  
-  exportSection: { marginBottom: 20 },
-  exportTitle: { fontSize: 15, fontWeight: "600", color: Colors.text, fontFamily: "Vazirmatn", marginBottom: 12, textAlign: "right" },
-  exportButtons: { flexDirection: "row", gap: 12 },
-  exportBtn: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", backgroundColor: Colors.card, paddingVertical: 14, borderRadius: 12, gap: 8, borderWidth: 1, borderColor: Colors.border },
-  exportBtnText: { fontSize: 14, fontWeight: "500", color: Colors.text, fontFamily: "Vazirmatn" },
-  
-  infoBox: { flexDirection: "row", backgroundColor: `${Colors.primary}08`, borderRadius: 12, padding: 14, gap: 10, alignItems: "flex-start" },
-  infoText: { flex: 1, fontSize: 12, color: Colors.textSecondary, fontFamily: "Vazirmatn", lineHeight: 20, textAlign: "right" },
+  container: {
+    flex: 1,
+    backgroundColor: "#f1f5f9",
+  },
+  header: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: "#fff",
+    borderBottomWidth: 1,
+    borderBottomColor: "#e2e8f0",
+  },
+  title: {
+    fontSize: 20,
+    fontWeight: "700",
+    color: "#1e293b",
+    fontFamily: "VazirBold",
+  },
+  scrollView: {
+    flex: 1,
+  },
+
+  // Hero
+  heroBanner: {
+    margin: 16,
+    borderRadius: 20,
+    overflow: "hidden",
+    elevation: 4,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+  },
+  heroGradient: {
+    padding: 24,
+    alignItems: "center",
+  },
+  heroTitle: {
+    fontSize: 22,
+    fontWeight: "800",
+    color: "#fff",
+    marginTop: 12,
+    fontFamily: "VazirBold",
+  },
+  heroSubtitle: {
+    fontSize: 14,
+    color: "rgba(255,255,255,0.7)",
+    marginTop: 4,
+    fontFamily: "Vazir",
+  },
+
+  // Categories
+  categorySection: {
+    marginBottom: 8,
+  },
+  categoryTitle: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#334155",
+    paddingHorizontal: 16,
+    marginBottom: 12,
+    fontFamily: "VazirBold",
+  },
+  reportsGrid: {
+    paddingHorizontal: 16,
+    gap: 10,
+  },
+  reportCard: {
+    borderRadius: 16,
+    overflow: "hidden",
+    elevation: 3,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 6,
+  },
+  reportGradient: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 18,
+    gap: 14,
+  },
+  reportIcon: {
+    width: 52,
+    height: 52,
+    borderRadius: 14,
+    backgroundColor: "rgba(255,255,255,0.2)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  reportInfo: {
+    flex: 1,
+  },
+  reportTitle: {
+    fontSize: 17,
+    fontWeight: "700",
+    color: "#fff",
+    fontFamily: "VazirBold",
+  },
+  reportSubtitle: {
+    fontSize: 13,
+    color: "rgba(255,255,255,0.75)",
+    marginTop: 4,
+    fontFamily: "Vazir",
+  },
+
+  // Quick Stats
+  quickStatsSection: {
+    marginTop: 16,
+  },
+  quickStatsGrid: {
+    flexDirection: "row",
+    paddingHorizontal: 16,
+    gap: 8,
+  },
+  quickStatCard: {
+    flex: 1,
+    alignItems: "center",
+    backgroundColor: "#fff",
+    padding: 16,
+    borderRadius: 14,
+    elevation: 2,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    gap: 8,
+  },
+  quickStatText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#475569",
+    fontFamily: "Vazir",
+  },
 });

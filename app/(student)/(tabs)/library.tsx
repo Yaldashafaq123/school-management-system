@@ -1,34 +1,34 @@
 // app/(student)/library/index.tsx
-import React, { useState, useEffect, useCallback } from 'react';
+import { Header } from "@/components/Header";
+import { Colors } from "@/constants/Colors";
 import {
-  View,
-  Text,
-  StyleSheet,
+  Book,
+  BookCategory,
+  getCategoryColor,
+  studentLibraryApi,
+} from "@/src/config/studentLibraryApi";
+import { Ionicons } from "@expo/vector-icons";
+import { useCallback, useEffect, useState } from "react";
+import {
+  ActivityIndicator,
+  Image,
+  RefreshControl,
   ScrollView,
+  StyleSheet,
+  Text,
   TextInput,
   TouchableOpacity,
-  RefreshControl,
-  Image,
-  ActivityIndicator,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
-import { Colors } from '@/constants/Colors';
-import { Header } from '@/components/Header';
-import { 
-  studentLibraryApi, 
-  Book, 
-  BookCategory,
-  getCategoryColor 
-} from '@/src/config/studentLibraryApi';
+  View,
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 export default function LibraryScreen() {
   const [loading, setLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [selectedGrade, setSelectedGrade] = useState<number | null>(null);
   const [refreshing, setRefreshing] = useState(false);
-  const [viewType, setViewType] = useState<'grid' | 'list'>('grid');
+  const [viewType, setViewType] = useState<"grid" | "list">("grid");
   const [categories, setCategories] = useState<BookCategory[]>([]);
   const [books, setBooks] = useState<Book[]>([]);
   const [recentReads, setRecentReads] = useState<Book[]>([]);
@@ -48,7 +48,7 @@ export default function LibraryScreen() {
         setFilteredBooks(response.data.books || []);
       }
     } catch (error) {
-      console.error('Error loading library:', error);
+      console.error("Error loading library:", error);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -64,19 +64,20 @@ export default function LibraryScreen() {
     let filtered = books;
 
     if (searchQuery) {
-      filtered = filtered.filter(book =>
-        book.title.includes(searchQuery) ||
-        book.author.includes(searchQuery) ||
-        book.description.includes(searchQuery)
+      filtered = filtered.filter(
+        (book) =>
+          book.title.includes(searchQuery) ||
+          book.author.includes(searchQuery) ||
+          book.description.includes(searchQuery),
       );
     }
 
     if (selectedCategory) {
-      filtered = filtered.filter(book => book.category === selectedCategory);
+      filtered = filtered.filter((book) => book.category === selectedCategory);
     }
 
     if (selectedGrade) {
-      filtered = filtered.filter(book => book.grade === selectedGrade);
+      filtered = filtered.filter((book) => book.grade === selectedGrade);
     }
 
     setFilteredBooks(filtered);
@@ -92,23 +93,23 @@ export default function LibraryScreen() {
       const response = await studentLibraryApi.toggleFavorite(bookId);
       if (response.success) {
         // Update local state
-        setBooks(prevBooks =>
-          prevBooks.map(book =>
+        setBooks((prevBooks) =>
+          prevBooks.map((book) =>
             book.id === bookId
               ? { ...book, isFavorite: response.isFavorite }
-              : book
-          )
+              : book,
+          ),
         );
-        setFilteredBooks(prevBooks =>
-          prevBooks.map(book =>
+        setFilteredBooks((prevBooks) =>
+          prevBooks.map((book) =>
             book.id === bookId
               ? { ...book, isFavorite: response.isFavorite }
-              : book
-          )
+              : book,
+          ),
         );
       }
     } catch (error) {
-      console.error('Error toggling favorite:', error);
+      console.error("Error toggling favorite:", error);
     }
   };
 
@@ -123,7 +124,7 @@ export default function LibraryScreen() {
               onPress={() => toggleFavorite(book.id)}
             >
               <Ionicons
-                name={book.isFavorite ? 'heart' : 'heart-outline'}
+                name={book.isFavorite ? "heart" : "heart-outline"}
                 size={20}
                 color={book.isFavorite ? Colors.danger : Colors.text}
               />
@@ -136,7 +137,7 @@ export default function LibraryScreen() {
               </View>
             )}
           </View>
-          
+
           <View style={styles.bookInfo}>
             <Text style={styles.bookTitle} numberOfLines={1}>
               {book.title}
@@ -144,26 +145,38 @@ export default function LibraryScreen() {
             <Text style={styles.bookAuthor} numberOfLines={1}>
               {book.author}
             </Text>
-            
+
             <View style={styles.bookMeta}>
               <View style={styles.metaItem}>
-                <Ionicons name="school" size={12} color={Colors.textSecondary} />
+                <Ionicons
+                  name="school"
+                  size={12}
+                  color={Colors.textSecondary}
+                />
                 <Text style={styles.metaText}>پایه {book.grade}</Text>
               </View>
               <View style={styles.metaItem}>
-                <Ionicons name="document" size={12} color={Colors.textSecondary} />
+                <Ionicons
+                  name="document"
+                  size={12}
+                  color={Colors.textSecondary}
+                />
                 <Text style={styles.metaText}>{book.pages} صفحه</Text>
               </View>
             </View>
-            
-            <View style={[
-              styles.categoryTag,
-              { backgroundColor: `${getCategoryColor(book.category)}20` }
-            ]}>
-              <Text style={[
-                styles.categoryText,
-                { color: getCategoryColor(book.category) }
-              ]}>
+
+            <View
+              style={[
+                styles.categoryTag,
+                { backgroundColor: `${getCategoryColor(book.category)}20` },
+              ]}
+            >
+              <Text
+                style={[
+                  styles.categoryText,
+                  { color: getCategoryColor(book.category) },
+                ]}
+              >
                 {book.category}
               </Text>
             </View>
@@ -178,19 +191,22 @@ export default function LibraryScreen() {
       {filteredBooks.map((book) => (
         <TouchableOpacity key={book.id} style={styles.bookCardList}>
           <View style={styles.bookImageContainerList}>
-            <Image source={{ uri: book.coverImage }} style={styles.bookImageList} />
+            <Image
+              source={{ uri: book.coverImage }}
+              style={styles.bookImageList}
+            />
             {book.lastRead && (
               <View style={styles.progressBar}>
                 <View
                   style={[
                     styles.progressFill,
-                    { width: `${book.readingProgress || 0}%` }
+                    { width: `${book.readingProgress || 0}%` },
                   ]}
                 />
               </View>
             )}
           </View>
-          
+
           <View style={styles.bookInfoList}>
             <View style={styles.bookHeader}>
               <View>
@@ -199,45 +215,61 @@ export default function LibraryScreen() {
               </View>
               <TouchableOpacity onPress={() => toggleFavorite(book.id)}>
                 <Ionicons
-                  name={book.isFavorite ? 'heart' : 'heart-outline'}
+                  name={book.isFavorite ? "heart" : "heart-outline"}
                   size={20}
                   color={book.isFavorite ? Colors.danger : Colors.textSecondary}
                 />
               </TouchableOpacity>
             </View>
-            
+
             <Text style={styles.bookDescription} numberOfLines={2}>
               {book.description}
             </Text>
-            
+
             <View style={styles.bookDetails}>
               <View style={styles.detailItem}>
-                <Ionicons name="school" size={14} color={Colors.textSecondary} />
+                <Ionicons
+                  name="school"
+                  size={14}
+                  color={Colors.textSecondary}
+                />
                 <Text style={styles.detailText}>پایه {book.grade}</Text>
               </View>
               <View style={styles.detailItem}>
-                <Ionicons name="document" size={14} color={Colors.textSecondary} />
+                <Ionicons
+                  name="document"
+                  size={14}
+                  color={Colors.textSecondary}
+                />
                 <Text style={styles.detailText}>{book.pages} صفحه</Text>
               </View>
               <View style={styles.detailItem}>
-                <Ionicons name="download" size={14} color={Colors.textSecondary} />
+                <Ionicons
+                  name="download"
+                  size={14}
+                  color={Colors.textSecondary}
+                />
                 <Text style={styles.detailText}>{book.fileSize}</Text>
               </View>
             </View>
-            
+
             <View style={styles.bookFooter}>
-              <View style={[
-                styles.categoryTagList,
-                { backgroundColor: `${getCategoryColor(book.category)}20` }
-              ]}>
-                <Text style={[
-                  styles.categoryTextList,
-                  { color: getCategoryColor(book.category) }
-                ]}>
+              <View
+                style={[
+                  styles.categoryTagList,
+                  { backgroundColor: `${getCategoryColor(book.category)}20` },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.categoryTextList,
+                    { color: getCategoryColor(book.category) },
+                  ]}
+                >
                   {book.category}
                 </Text>
               </View>
-              
+
               <View style={styles.actionButtons}>
                 <TouchableOpacity style={styles.readButton}>
                   <Ionicons name="book" size={16} color="#fff" />
@@ -256,7 +288,7 @@ export default function LibraryScreen() {
 
   if (loading) {
     return (
-      <SafeAreaView style={styles.container} edges={['top']}>
+      <SafeAreaView style={styles.container} edges={["top"]}>
         <Header title="کتابخانه دیجیتال" />
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={Colors.primary} />
@@ -267,14 +299,16 @@ export default function LibraryScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
+    <SafeAreaView style={styles.container} edges={["top"]}>
       <Header
         title="کتابخانه دیجیتال"
         rightComponent={
           <View style={styles.headerRight}>
-            <TouchableOpacity onPress={() => setViewType(viewType === 'grid' ? 'list' : 'grid')}>
+            <TouchableOpacity
+              onPress={() => setViewType(viewType === "grid" ? "list" : "grid")}
+            >
               <Ionicons
-                name={viewType === 'grid' ? 'list' : 'grid'}
+                name={viewType === "grid" ? "list" : "grid"}
                 size={24}
                 color={Colors.text}
               />
@@ -307,8 +341,12 @@ export default function LibraryScreen() {
             onChangeText={setSearchQuery}
           />
           {searchQuery.length > 0 && (
-            <TouchableOpacity onPress={() => setSearchQuery('')}>
-              <Ionicons name="close-circle" size={20} color={Colors.textSecondary} />
+            <TouchableOpacity onPress={() => setSearchQuery("")}>
+              <Ionicons
+                name="close-circle"
+                size={20}
+                color={Colors.textSecondary}
+              />
             </TouchableOpacity>
           )}
         </View>
@@ -327,16 +365,21 @@ export default function LibraryScreen() {
                   key={category.id}
                   style={[
                     styles.categoryCard,
-                    selectedCategory === category.name && styles.categoryCardActive,
+                    selectedCategory === category.name &&
+                      styles.categoryCardActive,
                   ]}
-                  onPress={() => setSelectedCategory(
-                    selectedCategory === category.name ? null : category.name
-                  )}
+                  onPress={() =>
+                    setSelectedCategory(
+                      selectedCategory === category.name ? null : category.name,
+                    )
+                  }
                 >
-                  <View style={[
-                    styles.categoryIcon,
-                    { backgroundColor: `${category.color}20` }
-                  ]}>
+                  <View
+                    style={[
+                      styles.categoryIcon,
+                      { backgroundColor: `${category.color}20` },
+                    ]}
+                  >
                     <Ionicons
                       name={category.icon as any}
                       size={24}
@@ -344,7 +387,9 @@ export default function LibraryScreen() {
                     />
                   </View>
                   <Text style={styles.categoryName}>{category.name}</Text>
-                  <Text style={styles.categoryCount}>{category.count} کتاب</Text>
+                  <Text style={styles.categoryCount}>
+                    {category.count} کتاب
+                  </Text>
                 </TouchableOpacity>
               ))}
             </ScrollView>
@@ -367,10 +412,12 @@ export default function LibraryScreen() {
                 ]}
                 onPress={() => setSelectedGrade(null)}
               >
-                <Text style={[
-                  styles.gradeChipText,
-                  selectedGrade === null && styles.gradeChipTextActive,
-                ]}>
+                <Text
+                  style={[
+                    styles.gradeChipText,
+                    selectedGrade === null && styles.gradeChipTextActive,
+                  ]}
+                >
                   همه پایه‌ها
                 </Text>
               </TouchableOpacity>
@@ -381,14 +428,16 @@ export default function LibraryScreen() {
                     styles.gradeChip,
                     selectedGrade === grade && styles.gradeChipActive,
                   ]}
-                  onPress={() => setSelectedGrade(
-                    selectedGrade === grade ? null : grade
-                  )}
+                  onPress={() =>
+                    setSelectedGrade(selectedGrade === grade ? null : grade)
+                  }
                 >
-                  <Text style={[
-                    styles.gradeChipText,
-                    selectedGrade === grade && styles.gradeChipTextActive,
-                  ]}>
+                  <Text
+                    style={[
+                      styles.gradeChipText,
+                      selectedGrade === grade && styles.gradeChipTextActive,
+                    ]}
+                  >
                     پایه {grade}
                   </Text>
                 </TouchableOpacity>
@@ -404,7 +453,9 @@ export default function LibraryScreen() {
             <View style={styles.filterChips}>
               {selectedCategory && (
                 <View style={styles.filterChip}>
-                  <Text style={styles.filterChipText}>موضوع: {selectedCategory}</Text>
+                  <Text style={styles.filterChipText}>
+                    موضوع: {selectedCategory}
+                  </Text>
                   <TouchableOpacity onPress={() => setSelectedCategory(null)}>
                     <Ionicons name="close" size={14} color={Colors.text} />
                   </TouchableOpacity>
@@ -412,7 +463,9 @@ export default function LibraryScreen() {
               )}
               {selectedGrade && (
                 <View style={styles.filterChip}>
-                  <Text style={styles.filterChipText}>پایه: {selectedGrade}</Text>
+                  <Text style={styles.filterChipText}>
+                    پایه: {selectedGrade}
+                  </Text>
                   <TouchableOpacity onPress={() => setSelectedGrade(null)}>
                     <Ionicons name="close" size={14} color={Colors.text} />
                   </TouchableOpacity>
@@ -420,8 +473,10 @@ export default function LibraryScreen() {
               )}
               {searchQuery && (
                 <View style={styles.filterChip}>
-                  <Text style={styles.filterChipText}>جستجو: {searchQuery}</Text>
-                  <TouchableOpacity onPress={() => setSearchQuery('')}>
+                  <Text style={styles.filterChipText}>
+                    جستجو: {searchQuery}
+                  </Text>
+                  <TouchableOpacity onPress={() => setSearchQuery("")}>
                     <Ionicons name="close" size={14} color={Colors.text} />
                   </TouchableOpacity>
                 </View>
@@ -434,20 +489,22 @@ export default function LibraryScreen() {
         <View style={styles.section}>
           <View style={styles.resultsHeader}>
             <Text style={styles.sectionTitle}>کتاب‌ها</Text>
-            <Text style={styles.resultsCount}>
-              {filteredBooks.length} کتاب
-            </Text>
+            <Text style={styles.resultsCount}>{filteredBooks.length} کتاب</Text>
           </View>
 
           {filteredBooks.length === 0 ? (
             <View style={styles.emptyState}>
-              <Ionicons name="book-outline" size={60} color={Colors.textSecondary} />
+              <Ionicons
+                name="book-outline"
+                size={60}
+                color={Colors.textSecondary}
+              />
               <Text style={styles.emptyStateText}>کتابی یافت نشد</Text>
               <Text style={styles.emptyStateSubtext}>
                 سعی کنید فیلترهای جستجو را تغییر دهید
               </Text>
             </View>
-          ) : viewType === 'grid' ? (
+          ) : viewType === "grid" ? (
             renderGridView()
           ) : (
             renderListView()
@@ -465,7 +522,10 @@ export default function LibraryScreen() {
             >
               {recentReads.map((book) => (
                 <TouchableOpacity key={book.id} style={styles.recentBookCard}>
-                  <Image source={{ uri: book.coverImage }} style={styles.recentBookImage} />
+                  <Image
+                    source={{ uri: book.coverImage }}
+                    style={styles.recentBookImage}
+                  />
                   <View style={styles.recentBookInfo}>
                     <Text style={styles.recentBookTitle} numberOfLines={1}>
                       {book.title}
@@ -494,8 +554,8 @@ const styles = StyleSheet.create({
   },
   loadingContainer: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
   },
   loadingText: {
     marginTop: 12,
@@ -506,12 +566,12 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   headerRight: {
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: 16,
   },
   searchContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     backgroundColor: Colors.card,
     margin: 16,
     paddingHorizontal: 16,
@@ -525,14 +585,14 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: Colors.text,
     marginHorizontal: 12,
-    textAlign: 'right',
+    textAlign: "right",
   },
   section: {
     marginBottom: 24,
   },
   sectionTitle: {
     fontSize: 18,
-    fontWeight: 'bold',
+    fontWeight: "bold",
     color: Colors.text,
     marginHorizontal: 16,
     marginBottom: 12,
@@ -542,7 +602,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   categoryCard: {
-    alignItems: 'center',
+    alignItems: "center",
     backgroundColor: Colors.card,
     padding: 16,
     borderRadius: 12,
@@ -552,19 +612,19 @@ const styles = StyleSheet.create({
   },
   categoryCardActive: {
     borderColor: Colors.primary,
-    backgroundColor: 'rgba(59, 130, 246, 0.1)',
+    backgroundColor: "rgba(59, 130, 246, 0.1)",
   },
   categoryIcon: {
     width: 48,
     height: 48,
     borderRadius: 24,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
     marginBottom: 8,
   },
   categoryName: {
     fontSize: 14,
-    fontWeight: 'bold',
+    fontWeight: "bold",
     color: Colors.text,
     marginBottom: 4,
   },
@@ -593,8 +653,8 @@ const styles = StyleSheet.create({
     color: Colors.text,
   },
   gradeChipTextActive: {
-    color: '#fff',
-    fontWeight: 'bold',
+    color: "#fff",
+    fontWeight: "bold",
   },
   activeFilters: {
     backgroundColor: Colors.card,
@@ -607,18 +667,18 @@ const styles = StyleSheet.create({
   },
   activeFiltersTitle: {
     fontSize: 14,
-    fontWeight: 'bold',
+    fontWeight: "bold",
     color: Colors.text,
     marginBottom: 8,
   },
   filterChips: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
+    flexDirection: "row",
+    flexWrap: "wrap",
     gap: 8,
   },
   filterChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     backgroundColor: Colors.background,
     paddingHorizontal: 12,
     paddingVertical: 8,
@@ -632,9 +692,9 @@ const styles = StyleSheet.create({
     color: Colors.text,
   },
   resultsHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     marginHorizontal: 16,
     marginBottom: 12,
   },
@@ -643,14 +703,14 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
   },
   emptyState: {
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     paddingVertical: 60,
     paddingHorizontal: 40,
   },
   emptyStateText: {
     fontSize: 18,
-    fontWeight: 'bold',
+    fontWeight: "bold",
     color: Colors.text,
     marginTop: 16,
     marginBottom: 8,
@@ -658,44 +718,44 @@ const styles = StyleSheet.create({
   emptyStateSubtext: {
     fontSize: 14,
     color: Colors.textSecondary,
-    textAlign: 'center',
+    textAlign: "center",
   },
   booksGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
+    flexDirection: "row",
+    flexWrap: "wrap",
     paddingHorizontal: 16,
     gap: 12,
   },
   bookCardGrid: {
-    width: '48%',
+    width: "48%",
     backgroundColor: Colors.card,
     borderRadius: 12,
     borderWidth: 1,
     borderColor: Colors.border,
-    overflow: 'hidden',
+    overflow: "hidden",
   },
   bookImageContainer: {
-    position: 'relative',
+    position: "relative",
     height: 160,
   },
   bookImage: {
-    width: '100%',
-    height: '100%',
-    resizeMode: 'cover',
+    width: "100%",
+    height: "100%",
+    resizeMode: "cover",
   },
   favoriteButton: {
-    position: 'absolute',
+    position: "absolute",
     top: 8,
     left: 8,
-    backgroundColor: 'rgba(255, 255, 255, 0.8)',
+    backgroundColor: "rgba(255, 255, 255, 0.8)",
     width: 32,
     height: 32,
     borderRadius: 16,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
   },
   lastReadBadge: {
-    position: 'absolute',
+    position: "absolute",
     bottom: 8,
     left: 8,
     backgroundColor: Colors.primary,
@@ -705,15 +765,15 @@ const styles = StyleSheet.create({
   },
   lastReadText: {
     fontSize: 10,
-    color: '#fff',
-    fontWeight: 'bold',
+    color: "#fff",
+    fontWeight: "bold",
   },
   bookInfo: {
     padding: 12,
   },
   bookTitle: {
     fontSize: 14,
-    fontWeight: 'bold',
+    fontWeight: "bold",
     color: Colors.text,
     marginBottom: 4,
   },
@@ -723,13 +783,13 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   bookMeta: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    justifyContent: "space-between",
     marginBottom: 8,
   },
   metaItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 4,
   },
   metaText: {
@@ -737,38 +797,38 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
   },
   categoryTag: {
-    alignSelf: 'flex-start',
+    alignSelf: "flex-start",
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 6,
   },
   categoryText: {
     fontSize: 10,
-    fontWeight: 'bold',
+    fontWeight: "bold",
   },
   booksList: {
     paddingHorizontal: 16,
     gap: 12,
   },
   bookCardList: {
-    flexDirection: 'row',
+    flexDirection: "row",
     backgroundColor: Colors.card,
     borderRadius: 12,
     borderWidth: 1,
     borderColor: Colors.border,
-    overflow: 'hidden',
+    overflow: "hidden",
   },
   bookImageContainerList: {
-    position: 'relative',
+    position: "relative",
     width: 100,
   },
   bookImageList: {
-    width: '100%',
+    width: "100%",
     height: 140,
-    resizeMode: 'cover',
+    resizeMode: "cover",
   },
   progressBar: {
-    position: 'absolute',
+    position: "absolute",
     bottom: 0,
     left: 0,
     right: 0,
@@ -776,7 +836,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.border,
   },
   progressFill: {
-    height: '100%',
+    height: "100%",
     backgroundColor: Colors.primary,
   },
   bookInfoList: {
@@ -784,14 +844,14 @@ const styles = StyleSheet.create({
     padding: 12,
   },
   bookHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
     marginBottom: 8,
   },
   bookTitleList: {
     fontSize: 16,
-    fontWeight: 'bold',
+    fontWeight: "bold",
     color: Colors.text,
     marginBottom: 4,
   },
@@ -806,13 +866,13 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
   bookDetails: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    justifyContent: "space-between",
     marginBottom: 12,
   },
   detailItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 4,
   },
   detailText: {
@@ -820,9 +880,9 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
   },
   bookFooter: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
   },
   categoryTagList: {
     paddingHorizontal: 8,
@@ -831,15 +891,15 @@ const styles = StyleSheet.create({
   },
   categoryTextList: {
     fontSize: 12,
-    fontWeight: 'bold',
+    fontWeight: "bold",
   },
   actionButtons: {
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: 8,
   },
   readButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     backgroundColor: Colors.primary,
     paddingHorizontal: 12,
     paddingVertical: 6,
@@ -848,43 +908,43 @@ const styles = StyleSheet.create({
   },
   readButtonText: {
     fontSize: 12,
-    color: '#fff',
-    fontWeight: 'bold',
+    color: "#fff",
+    fontWeight: "bold",
   },
   downloadButton: {
     width: 32,
     height: 32,
-    backgroundColor: 'rgba(59, 130, 246, 0.1)',
+    backgroundColor: "rgba(59, 130, 246, 0.1)",
     borderRadius: 8,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
   },
   recentBooksContainer: {
     paddingHorizontal: 16,
     gap: 12,
   },
   recentBookCard: {
-    flexDirection: 'row',
+    flexDirection: "row",
     backgroundColor: Colors.card,
     borderRadius: 12,
     borderWidth: 1,
     borderColor: Colors.border,
     width: 280,
-    overflow: 'hidden',
+    overflow: "hidden",
   },
   recentBookImage: {
     width: 80,
     height: 120,
-    resizeMode: 'cover',
+    resizeMode: "cover",
   },
   recentBookInfo: {
     flex: 1,
     padding: 12,
-    justifyContent: 'center',
+    justifyContent: "center",
   },
   recentBookTitle: {
     fontSize: 14,
-    fontWeight: 'bold',
+    fontWeight: "bold",
     color: Colors.text,
     marginBottom: 8,
   },

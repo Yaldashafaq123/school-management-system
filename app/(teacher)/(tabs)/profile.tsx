@@ -1,3 +1,4 @@
+// app/(tabs)/teacher/profile.tsx
 import { useAuth } from "@/contexts/AuthContext";
 import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
@@ -22,47 +23,50 @@ import { Header } from "../../../components/Header";
 import { Colors } from "../../../constants/Colors";
 import { apiRequest, BASE_URL } from "../../../src/config/api";
 
-// Define teacher profile interface
+// Teacher profile data matching your Prisma schema
 interface TeacherProfileData {
   id: number;
+  userId: number;
   fullName: string;
   email: string;
   phone: string;
-  profile_image?: string;
+  profileImage?: string;
   bio?: string;
-  education?: string[];
-  subjects?: string[];
   experience?: string;
   hourlyRate?: number;
   certification?: string;
   availability?: boolean;
-  verified?: boolean;
   rating?: number;
-  totalStudents?: number;
-  totalCourses?: number;
-  totalHours?: number;
-  qualifications?: Qualification[];
-  bankInfo?: BankInfo;
+  isActive?: boolean;
+  joiningDate?: string;
+  educations?: TeacherEducation[];
+  subjects?: TeacherSubject[];
+  classes?: ClassInfo[];
 }
 
-interface Qualification {
+interface TeacherEducation {
   id: number;
   title: string;
-  institution: string;
-  year: number;
-  document?: string;
 }
 
-interface BankInfo {
-  accountNumber: string;
-  cardNumber: string;
-  shabaNumber: string;
-  bankName: string;
+interface TeacherSubject {
+  id: number;
+  subjectId: number;
+  subject: {
+    id: number;
+    name: string;
+  };
 }
 
-const defaultProfileImage = "/assets/images/favicon.png";
+interface ClassInfo {
+  id: number;
+  name: string;
+  section?: string;
+}
 
-// ✅ REMOVED duplicate teacherMenu from here (lines 32-45)
+// Default image - use a valid URL or local asset
+const defaultProfileImage =
+  "https://via.placeholder.com/200/3B82F6/FFFFFF?text=معلم";
 
 const teachingSubjects = [
   "ریاضی",
@@ -88,9 +92,12 @@ export default function TeacherProfile() {
   const { user, token, logout } = useAuth();
   const [loading, setLoading] = useState(false);
   const [fetchLoading, setFetchLoading] = useState(true);
+
+  // IMPORTANT: Initialize with user's profile image or default
   const [profileImage, setProfileImage] = useState(
     user?.profile_image || defaultProfileImage,
   );
+
   const [isEditing, setIsEditing] = useState(false);
   const [showSubjectsModal, setShowSubjectsModal] = useState(false);
   const [teacherProfile, setTeacherProfile] =
@@ -107,11 +114,6 @@ export default function TeacherProfile() {
     hourlyRate: 0,
     certification: "",
     availability: true,
-    verified: false,
-    totalStudents: 0,
-    totalCourses: 0,
-    totalHours: 0,
-    rating: 0,
   });
 
   const [notifications, setNotifications] = useState({
@@ -124,7 +126,7 @@ export default function TeacherProfile() {
     marketingEmails: false,
   });
 
-  // Fetch teacher profile data - wrap in useCallback
+  // Fetch teacher profile data
   const fetchTeacherProfile = useCallback(async () => {
     try {
       setFetchLoading(true);
@@ -135,7 +137,11 @@ export default function TeacherProfile() {
         },
       });
 
-      console.log("Teacher profile:", response);
+      console.log(
+        "Teacher profile response:",
+        JSON.stringify(response, null, 2),
+      );
+
       const profileData = response.data || response;
       setTeacherProfile(profileData);
 
@@ -145,56 +151,66 @@ export default function TeacherProfile() {
         email: profileData.email || user?.email || "",
         phone: profileData.phone || user?.phone || "",
         bio: profileData.bio || "",
-        education: profileData.education || [],
-        subjects: profileData.subjects || [],
+        education:
+          profileData.educations?.map((e: TeacherEducation) => e.title) || [],
+        subjects:
+          profileData.subjects?.map((s: TeacherSubject) => s.subject.name) ||
+          [],
         experience: profileData.experience || "",
         hourlyRate: profileData.hourlyRate || 0,
         certification: profileData.certification || "",
         availability: profileData.availability ?? true,
-        verified: profileData.verified ?? false,
-        totalStudents: profileData.totalStudents || 0,
-        totalCourses: profileData.totalCourses || 0,
-        totalHours: profileData.totalHours || 0,
-        rating: profileData.rating || 0,
       });
 
-      // Update profile image if available
-      if (profileData.profile_image) {
-        setProfileImage(profileData.profile_image);
+      // CRITICAL: Update profile image from response
+      if (profileData.profileImage) {
+        // Check if it's a full URL or relative path
+        let imageUrl = profileData.profileImage;
+        if (!imageUrl.startsWith("http")) {
+          // If it's a relative path, prepend BASE_URL
+          imageUrl = `${BASE_URL}${imageUrl}`;
+        }
+        console.log("Setting profile image to:", imageUrl);
+        setProfileImage(imageUrl);
+      } else if (user?.profile_image) {
+        // Fallback to user profile image from auth context
+        let imageUrl = user.profile_image;
+        if (!imageUrl.startsWith("http")) {
+          imageUrl = `${BASE_URL}${imageUrl}`;
+        }
+        setProfileImage(imageUrl);
       }
     } catch (error: any) {
       console.error("Error fetching teacher profile:", error);
       // Fallback to user data from auth context
       setTeacherProfile({
         id: user?.id || 0,
+        userId: user?.id || 0,
         fullName: user?.fullName || "",
         email: user?.email || "",
         phone: user?.phone || "",
-        profile_image: user?.profile_image,
+        profileImage: user?.profile_image,
         bio: "",
-        education: [],
-        subjects: ["ریاضی"],
         experience: "۱۲ سال",
         hourlyRate: 60000,
         certification: "استاد",
         availability: true,
-        verified: true,
         rating: 4.9,
-        totalStudents: 245,
-        totalCourses: 8,
-        totalHours: 480,
+        isActive: true,
       });
+
+      // Set fallback image
+      if (user?.profile_image) {
+        let imageUrl = user.profile_image;
+        if (!imageUrl.startsWith("http")) {
+          imageUrl = `${BASE_URL}${imageUrl}`;
+        }
+        setProfileImage(imageUrl);
+      }
     } finally {
       setFetchLoading(false);
     }
-  }, [
-    token,
-    user?.fullName,
-    user?.email,
-    user?.phone,
-    user?.id,
-    user?.profile_image,
-  ]);
+  }, [token, user]);
 
   useEffect(() => {
     if (token) {
@@ -218,17 +234,18 @@ export default function TeacherProfile() {
     });
 
     if (!result.canceled) {
+      // Set image locally first for immediate feedback
       setProfileImage(result.assets[0].uri);
-      // Upload image to server
+      // Upload to server
       await uploadProfileImage(result.assets[0].uri);
     }
   };
 
   const uploadProfileImage = async (imageUri: string) => {
     try {
-      const formData = new FormData();
+      setLoading(true);
 
-      // Get filename from URI
+      const formData = new FormData();
       const filename = imageUri.split("/").pop() || "profile.jpg";
       const match = /\.(\w+)$/.exec(filename);
       const type = match ? `image/${match[1]}` : "image/jpeg";
@@ -239,7 +256,7 @@ export default function TeacherProfile() {
         name: filename,
       } as any);
 
-      console.log("Uploading to:", `${BASE_URL}/teacher/profile/image`); // Debug log
+      console.log("Uploading to:", `${BASE_URL}/teacher/profile/image`);
 
       const response = await fetch(`${BASE_URL}/teacher/profile/image`, {
         method: "POST",
@@ -251,17 +268,37 @@ export default function TeacherProfile() {
       });
 
       const result = await response.json();
+      console.log("Upload response:", result);
 
       if (response.ok) {
         Alert.alert("موفقیت", "عکس پروفایل با موفقیت به‌روزرسانی شد.");
-        // Refresh profile to get updated image
-        fetchTeacherProfile();
+
+        // CRITICAL: Update image with the returned URL
+        if (result.image) {
+          let imageUrl = result.image;
+          if (!imageUrl.startsWith("http")) {
+            imageUrl = `${BASE_URL}${imageUrl}`;
+          }
+          console.log("Setting profile image to uploaded URL:", imageUrl);
+          setProfileImage(imageUrl);
+        } else if (result.data?.profileImage) {
+          let imageUrl = result.data.profileImage;
+          if (!imageUrl.startsWith("http")) {
+            imageUrl = `${BASE_URL}${imageUrl}`;
+          }
+          setProfileImage(imageUrl);
+        }
+
+        // Refresh profile to get updated data
+        await fetchTeacherProfile();
       } else {
         throw new Error(result.message || "Upload failed");
       }
     } catch (error) {
       console.error("Error uploading image:", error);
       Alert.alert("خطا", "در آپلود عکس خطایی رخ داد. لطفا مجددا تلاش کنید.");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -292,16 +329,13 @@ export default function TeacherProfile() {
 
       console.log("Profile update response:", response);
 
-      // Update local state with response data
-      if (response.data) {
-        setTeacherProfile(response.data);
+      if (response.success) {
+        Alert.alert("موفقیت", "پروفایل با موفقیت به‌روزرسانی شد.");
+        setIsEditing(false);
+        await fetchTeacherProfile();
+      } else {
+        throw new Error(response.message || "Update failed");
       }
-
-      Alert.alert("موفقیت", "پروفایل با موفقیت به‌روزرسانی شد.");
-      setIsEditing(false);
-
-      // Refresh profile data
-      fetchTeacherProfile();
     } catch (error: any) {
       console.error("Profile update error:", error);
       Alert.alert(
@@ -321,11 +355,7 @@ export default function TeacherProfile() {
         style: "destructive",
         onPress: async () => {
           try {
-            console.log("Logging out from TeacherProfile...");
             await logout();
-            console.log("Logout complete, redirecting to login...");
-
-            await new Promise((resolve) => setTimeout(resolve, 100));
             router.replace("/(auth)/login");
           } catch (error) {
             console.error("Logout error:", error);
@@ -341,10 +371,7 @@ export default function TeacherProfile() {
       "افزودن مدرک تحصیلی",
       "مدرک تحصیلی جدید را وارد کنید:",
       [
-        {
-          text: "لغو",
-          style: "cancel",
-        },
+        { text: "لغو", style: "cancel" },
         {
           text: "افزودن",
           onPress: (education?: string) => {
@@ -385,27 +412,26 @@ export default function TeacherProfile() {
   const stats = [
     {
       label: "تعداد دوره‌ها",
-      value: teacherProfile?.totalCourses || formData.totalCourses,
+      value: teacherProfile?.classes?.length || 0,
       icon: "book" as const,
     },
     {
       label: "دانش‌آموزان",
-      value: teacherProfile?.totalStudents || formData.totalStudents,
+      value: 0,
       icon: "people" as const,
     },
     {
       label: "ساعات تدریس",
-      value: teacherProfile?.totalHours || formData.totalHours,
+      value: 0,
       icon: "time" as const,
     },
     {
       label: "امتیاز",
-      value: teacherProfile?.rating || formData.rating,
+      value: teacherProfile?.rating || 0,
       icon: "star" as const,
     },
   ];
 
-  // ✅ KEEP ONLY THIS teacherMenu (the one inside the component)
   const teacherMenu = [
     {
       title: "تقویم تدریس",
@@ -430,7 +456,7 @@ export default function TeacherProfile() {
   if (fetchLoading) {
     return (
       <SafeAreaView style={styles.container} edges={["top"]}>
-        <Header title="پروفایل معلم" showBack />
+        <Header title="پروفایل معلم" />
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={Colors.primary} />
           <Text style={styles.loadingText}>در حال دریافت اطلاعات...</Text>
@@ -443,7 +469,6 @@ export default function TeacherProfile() {
     <SafeAreaView style={styles.container} edges={["top"]}>
       <Header
         title="پروفایل معلم"
-        showBack
         rightComponent={
           <TouchableOpacity onPress={() => setIsEditing(!isEditing)}>
             <Ionicons
@@ -466,8 +491,15 @@ export default function TeacherProfile() {
           <TouchableOpacity onPress={isEditing ? pickImage : undefined}>
             <View style={styles.profileImageContainer}>
               <Image
-                source={{ uri: profileImage }}
+                source={{
+                  uri: profileImage || defaultProfileImage,
+                }}
                 style={styles.profileImage}
+                onError={(e) => {
+                  console.error("Image load error:", e.nativeEvent.error);
+                  // Fallback to default if image fails to load
+                  setProfileImage(defaultProfileImage);
+                }}
               />
               {isEditing && (
                 <View style={styles.editImageBadge}>
@@ -482,7 +514,7 @@ export default function TeacherProfile() {
               <Text style={styles.profileName}>
                 {formData.fullName || teacherProfile?.fullName || "معلم"}
               </Text>
-              {(teacherProfile?.verified || formData.verified) && (
+              {user?.verified && (
                 <View style={styles.verifiedBadge}>
                   <Ionicons name="checkmark-circle" size={16} color="#10b981" />
                   <Text style={styles.verifiedText}>تایید شده</Text>
@@ -491,14 +523,15 @@ export default function TeacherProfile() {
             </View>
 
             <Text style={styles.profileTagline}>
-              معلم {(formData.subjects || [])[0] || ""} •{" "}
-              {formData.experience || " سال"} سابقه
+              معلم {formData.experience || "۰"} سال سابقه
             </Text>
 
             <View style={styles.ratingContainer}>
               <Ionicons name="star" size={16} color="#fbbf24" />
-              <Text style={styles.ratingText}>{formData.rating || 4.9}</Text>
-              <Text style={styles.ratingCount}>(۱۲۴ نظر)</Text>
+              <Text style={styles.ratingText}>
+                {teacherProfile?.rating || 0}
+              </Text>
+              <Text style={styles.ratingCount}>(۰ نظر)</Text>
             </View>
           </View>
         </LinearGradient>
@@ -589,12 +622,50 @@ export default function TeacherProfile() {
                 textAlign="right"
               />
             </View>
+
+            <View style={styles.formGroup}>
+              <Text style={styles.label}>گواهینامه</Text>
+              <TextInput
+                style={styles.input}
+                value={formData.certification}
+                onChangeText={(text) =>
+                  setFormData({ ...formData, certification: text })
+                }
+                placeholder="مدرک یا گواهینامه تدریس"
+                textAlign="right"
+              />
+            </View>
+
+            <View style={styles.formGroup}>
+              <Text style={styles.label}>نرخ ساعتی (افغانی)</Text>
+              <TextInput
+                style={styles.input}
+                value={String(formData.hourlyRate)}
+                onChangeText={(text) => {
+                  const num = parseInt(text) || 0;
+                  setFormData({ ...formData, hourlyRate: num });
+                }}
+                placeholder="مثال: ۵۰۰۰۰"
+                keyboardType="numeric"
+                textAlign="right"
+              />
+            </View>
           </View>
         ) : (
           <View style={styles.bioSection}>
             <Text style={styles.bioText}>
               {formData.bio || "معلم . دارای مدرک از دانشگاه ."}
             </Text>
+            {formData.certification && (
+              <Text style={styles.bioDetail}>
+                گواهینامه: {formData.certification}
+              </Text>
+            )}
+            {formData.hourlyRate > 0 && (
+              <Text style={styles.bioDetail}>
+                نرخ ساعتی: {formData.hourlyRate.toLocaleString()} افغانی
+              </Text>
+            )}
           </View>
         )}
 
@@ -891,39 +962,16 @@ const styles = StyleSheet.create({
     alignItems: "center",
     padding: 20,
   },
-  emptyText: {
-    fontSize: 14,
-    color: Colors.textSecondary,
-    textAlign: "center",
-    padding: 16,
-  },
-  centerContent: {
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 20,
-  },
   loadingText: {
     marginTop: 12,
     fontSize: 14,
     color: Colors.textSecondary,
   },
-  errorText: {
-    marginTop: 12,
-    fontSize: 16,
-    color: Colors.danger,
-    textAlign: "center",
-  },
-  retryButton: {
-    marginTop: 16,
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    backgroundColor: Colors.primary,
-    borderRadius: 8,
-  },
-  retryButtonText: {
-    color: "#fff",
+  emptyText: {
     fontSize: 14,
-    fontWeight: "bold",
+    color: Colors.textSecondary,
+    textAlign: "center",
+    padding: 16,
   },
   content: {
     flex: 1,
@@ -948,6 +996,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.2,
     shadowRadius: 4,
     elevation: 4,
+    backgroundColor: "#1e40af", // Fallback background color
   },
   editImageBadge: {
     position: "absolute",
@@ -994,7 +1043,7 @@ const styles = StyleSheet.create({
   profileTagline: {
     fontSize: 14,
     color: "rgba(255,255,255,0.9)",
-    marginBottom: 8,
+    marginBottom: 4,
   },
   ratingContainer: {
     flexDirection: "row",
@@ -1051,6 +1100,12 @@ const styles = StyleSheet.create({
     color: Colors.text,
     lineHeight: 24,
     textAlign: "justify",
+    marginBottom: 8,
+  },
+  bioDetail: {
+    fontSize: 13,
+    color: Colors.textSecondary,
+    marginTop: 4,
   },
   section: {
     padding: 20,

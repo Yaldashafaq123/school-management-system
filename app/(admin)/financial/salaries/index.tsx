@@ -1,219 +1,489 @@
-import { Header } from "@/components/Header";
-import { Colors } from "@/constants/Colors";
+// app/(admin)/financial/salaries/index.tsx
+import { EmptyState } from "@/components/finance/EmptyState";
+import { FilterBar } from "@/components/finance/FilterBar";
+import { FinanceCard } from "@/components/finance/FinanceCard";
 import { financeApi, formatCurrency } from "@/src/config/financeApi";
 import { Ionicons } from "@expo/vector-icons";
-import { useFocusEffect, useRouter } from "expo-router";
-import { useCallback, useState } from "react";
+import { useRouter } from "expo-router";
+import { useCallback, useEffect, useState } from "react";
 import {
-  ActivityIndicator,
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    FlatList,
+    RefreshControl,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
 
-interface SalaryStats {
-  totalPaidThisMonth: number;
-  totalPending: number;
-  totalTeachers: number;
-  paidCount: number;
-  pendingCount: number;
-  averageSalary: number;
-}
+const STATUS_FILTERS = [
+  { key: "all", label: "همه", icon: "list-outline" },
+  { key: "PENDING", label: "در انتظار", icon: "time-outline" },
+  { key: "PAID", label: "پرداخت شده", icon: "checkmark-circle-outline" },
+  { key: "PARTIAL", label: "ناقص", icon: "alert-circle-outline" },
+];
 
-export default function SalaryDashboard() {
+export default function SalariesListScreen() {
   const router = useRouter();
+  const [salaries, setSalaries] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [stats, setStats] = useState<SalaryStats | null>(null);
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
+  const [stats, setStats] = useState({ totalPending: 0, totalPaid: 0 });
 
-  const loadData = useCallback(async () => {
-    try {
-      const response = await financeApi.getSalaryStatistics();
-      if (response.success) {
-        setStats(response.data);
+  const fetchSalaries = useCallback(
+    async (pageNum: number = 1) => {
+      try {
+        const params: any = { page: pageNum, limit: 20 };
+        if (statusFilter !== "all") params.status = statusFilter;
+
+        const response = await financeApi.getSalaries(params);
+
+        if (response.success) {
+          const data = response.data || [];
+          if (pageNum === 1) {
+            setSalaries(data);
+          } else {
+            setSalaries((prev) => [...prev, ...data]);
+          }
+          setHasMore(data.length >= 20);
+
+          // Calculate stats
+          let pending = 0;
+          let paid = 0;
+          data.forEach((s: any) => {
+            if (s.status === "PENDING" || s.status === "PARTIAL") {
+              pending +=
+                Number(s.finalAmount || s.amount) - Number(s.paidAmount || 0);
+            } else if (s.status === "PAID") {
+              paid += Number(s.paidAmount || 0);
+            }
+          });
+          setStats({ totalPending: pending, totalPaid: paid });
+        }
+      } catch (error) {
+        console.error("Fetch salaries error:", error);
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
       }
-    } catch (error) {
-      console.error("Error loading salary stats:", error);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, []);
-
-  useFocusEffect(
-    useCallback(() => {
-      loadData();
-    }, [loadData])
+    },
+    [statusFilter],
   );
 
-  const handleRefresh = () => {
+  useEffect(() => {
+    setLoading(true);
+    setPage(1);
+    fetchSalaries(1);
+  }, [statusFilter]);
+
+  const onRefresh = () => {
     setRefreshing(true);
-    loadData();
+    setPage(1);
+    fetchSalaries(1);
   };
 
-  if (loading) {
+  const loadMore = () => {
+    if (hasMore && !loading) {
+      const nextPage = page + 1;
+      setPage(nextPage);
+      fetchSalaries(nextPage);
+    }
+  };
+
+  const getSalaryStatus = (salary: any) => {
+    if (salary.status === "PAID")
+      return { label: "پرداخت شده", color: "#10b981", bg: "#d1fae5" };
+    if (salary.status === "PARTIAL")
+      return { label: "پرداخت ناقص", color: "#f59e0b", bg: "#fef3c7" };
+    if (salary.status === "CANCELLED")
+      return { label: "لغو شده", color: "#6b7280", bg: "#f3f4f6" };
+    return { label: "در انتظار", color: "#ef4444", bg: "#fecaca" };
+  };
+
+  const renderSalary = ({ item }: { item: any }) => {
+    const totalAmount = Number(item.finalAmount || item.amount || 0);
+    const paidAmount = Number(item.paidAmount || 0);
+    const balance = totalAmount - paidAmount;
+    const percentage =
+      totalAmount > 0 ? Math.round((paidAmount / totalAmount) * 100) : 0;
+    const status = getSalaryStatus(item);
+
     return (
-      <SafeAreaView style={styles.container} edges={["top"]}>
-        <Header title="مدیریت معاشات" showBack />
-        <View style={styles.centerContainer}>
-          <ActivityIndicator size="large" color={Colors.primary} />
-          <Text style={styles.loadingText}>در حال بارگذاری...</Text>
+      <TouchableOpacity
+        style={styles.salaryCard}
+        onPress={() => router.push(`/financial/salaries/${item.id}`)}
+        activeOpacity={0.7}
+      >
+        {/* Header */}
+        <View style={styles.cardHeader}>
+          <View style={styles.teacherInfo}>
+            <View style={styles.teacherAvatar}>
+              <Ionicons name="person" size={22} color="#f97316" />
+            </View>
+            <View>
+              <Text style={styles.teacherName}>
+                {item.teacher?.user?.fullName || "نامشخص"}
+              </Text>
+              <Text style={styles.salaryPeriod}>
+                ماه {item.month} / {item.year}
+              </Text>
+            </View>
+          </View>
+          <View style={[styles.statusBadge, { backgroundColor: status.bg }]}>
+            <Text style={[styles.statusText, { color: status.color }]}>
+              {status.label}
+            </Text>
+          </View>
         </View>
-      </SafeAreaView>
+
+        {/* Amounts */}
+        <View style={styles.amountRow}>
+          <View style={styles.amountItem}>
+            <Text style={styles.amountLabel}>معاش اصلی</Text>
+            <Text style={styles.amountValue}>
+              {formatCurrency(Number(item.baseSalary || item.amount || 0))}
+            </Text>
+          </View>
+          {Number(item.bonusAmount || 0) > 0 && (
+            <View style={styles.amountItem}>
+              <Text style={styles.amountLabel}>بونس</Text>
+              <Text style={[styles.amountValue, { color: "#10b981" }]}>
+                +{formatCurrency(Number(item.bonusAmount))}
+              </Text>
+            </View>
+          )}
+          {Number(item.overtimeAmount || 0) > 0 && (
+            <View style={styles.amountItem}>
+              <Text style={styles.amountLabel}>اضافه‌کاری</Text>
+              <Text style={[styles.amountValue, { color: "#3b82f6" }]}>
+                +{formatCurrency(Number(item.overtimeAmount))}
+              </Text>
+            </View>
+          )}
+          <View style={styles.amountItem}>
+            <Text style={styles.amountLabel}>مجموع</Text>
+            <Text style={[styles.amountValue, styles.totalAmount]}>
+              {formatCurrency(totalAmount)}
+            </Text>
+          </View>
+        </View>
+
+        {/* Progress */}
+        {totalAmount > 0 && balance > 0 && (
+          <View style={styles.progressContainer}>
+            <View style={styles.progressBar}>
+              <View
+                style={[styles.progressFill, { width: `${percentage}%` }]}
+              />
+            </View>
+            <Text style={styles.progressText}>{percentage}%</Text>
+          </View>
+        )}
+
+        {/* Footer */}
+        <View style={styles.cardFooter}>
+          {balance > 0 && statusFilter !== "PAID" && (
+            <TouchableOpacity
+              style={styles.payButton}
+              onPress={() =>
+                router.push(`/financial/salaries/payment?id=${item.id}`)
+              }
+            >
+              <Ionicons name="wallet-outline" size={16} color="#fff" />
+              <Text style={styles.payText}>پرداخت</Text>
+            </TouchableOpacity>
+          )}
+          <Text style={styles.balanceText}>
+            {balance > 0
+              ? `باقیمانده: ${formatCurrency(balance)}`
+              : "تسویه شده"}
+          </Text>
+        </View>
+      </TouchableOpacity>
+    );
+  };
+
+  if (loading && salaries.length === 0) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#f97316" />
+        <Text style={styles.loadingText}>در حال بارگذاری معاشات...</Text>
+      </View>
     );
   }
 
-  const paymentRate = stats?.totalTeachers 
-    ? Math.round((stats.paidCount / stats.totalTeachers) * 100) 
-    : 0;
-
   return (
-    <SafeAreaView style={styles.container} edges={["top"]}>
-      <Header title="مدیریت معاشات" showBack />
+    <View style={styles.container}>
+      {/* Header */}
+      <View style={styles.header}>
+        <TouchableOpacity onPress={() => router.back()}>
+          <Ionicons name="arrow-back" size={24} color="#1e293b" />
+        </TouchableOpacity>
+        <Text style={styles.title}>معاشات اساتید</Text>
+        <TouchableOpacity
+          style={styles.generateButton}
+          onPress={() => router.push("/financial/salaries/generate")}
+        >
+          <Ionicons name="add-circle-outline" size={24} color="#fff" />
+        </TouchableOpacity>
+      </View>
 
-      <ScrollView
-        style={styles.content}
-        showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} colors={[Colors.primary]} />
-        }
-      >
-        {/* Stats Row */}
-        <View style={styles.statsRow}>
-          <View style={[styles.statCard, { borderTopColor: Colors.success }]}>
-            <View style={[styles.statIcon, { backgroundColor: `${Colors.success}15` }]}>
-              <Ionicons name="cash" size={22} color={Colors.success} />
-            </View>
-            <Text style={[styles.statValue, { color: Colors.success }]}>
-              {formatCurrency(stats?.totalPaidThisMonth || 0)}
-            </Text>
-            <Text style={styles.statLabel}>پرداخت شده این ماه</Text>
-          </View>
+      {/* Stats */}
+      <View style={styles.statsRow}>
+        <FinanceCard
+          title="معاشات معوق"
+          value={formatCurrency(stats.totalPending)}
+          gradientColors={["#ef4444", "#dc2626"]}
+          variant="compact"
+          icon="alert-circle-outline"
+        />
+        <FinanceCard
+          title="پرداخت شده"
+          value={formatCurrency(stats.totalPaid)}
+          gradientColors={["#10b981", "#059669"]}
+          variant="compact"
+          icon="checkmark-circle-outline"
+        />
+      </View>
 
-          <View style={[styles.statCard, { borderTopColor: Colors.danger }]}>
-            <View style={[styles.statIcon, { backgroundColor: `${Colors.danger}15` }]}>
-              <Ionicons name="hourglass" size={22} color={Colors.danger} />
-            </View>
-            <Text style={[styles.statValue, { color: Colors.danger }]}>
-              {formatCurrency(stats?.totalPending || 0)}
-            </Text>
-            <Text style={styles.statLabel}>معوقه</Text>
-          </View>
+      {/* Filter */}
+      <View style={styles.filterRow}>
+        <FilterBar
+          options={STATUS_FILTERS}
+          selected={statusFilter}
+          onSelect={setStatusFilter}
+        />
+      </View>
 
-          <View style={[styles.statCard, { borderTopColor: Colors.primary }]}>
-            <View style={[styles.statIcon, { backgroundColor: `${Colors.primary}15` }]}>
-              <Ionicons name="people" size={22} color={Colors.primary} />
-            </View>
-            <Text style={[styles.statValue, { color: Colors.primary }]}>
-              {stats?.totalTeachers || 0}
-            </Text>
-            <Text style={styles.statLabel}>معلم</Text>
-          </View>
-        </View>
-
-        {/* Payment Rate */}
-        <View style={styles.rateCard}>
-          <View style={styles.rateHeader}>
-            <Text style={styles.rateTitle}>نرخ پرداخت معاش این ماه</Text>
-            <Text style={[styles.rateValue, { color: paymentRate >= 70 ? Colors.success : Colors.warning }]}>
-              {paymentRate}%
-            </Text>
-          </View>
-          <View style={styles.progressBar}>
-            <View style={[styles.progressFill, { width: `${paymentRate}%`, backgroundColor: paymentRate >= 70 ? Colors.success : Colors.warning }]} />
-          </View>
-          <Text style={styles.rateSubtext}>
-            {stats?.paidCount || 0} از {stats?.totalTeachers || 0} معلم پرداخت شده
-          </Text>
-        </View>
-
-        {/* Quick Actions */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>دسترسی سریع</Text>
-          <View style={styles.actionsGrid}>
-            <TouchableOpacity
-              style={[styles.actionCard, { backgroundColor: Colors.primary }]}
-              onPress={() => router.push("/(admin)/financial/salaries/generate")}
-              activeOpacity={0.8}
-            >
-              <Ionicons name="calendar" size={28} color="white" />
-              <Text style={styles.actionText}>ایجاد معاش ماهیانه</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.actionCard, { backgroundColor: Colors.success }]}
-              onPress={() => router.push("/(admin)/financial/salaries/payments/record")}
-              activeOpacity={0.8}
-            >
-              <Ionicons name="cash" size={28} color="white" />
-              <Text style={styles.actionText}>پرداخت معاش</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.actionCard, { backgroundColor: Colors.warning }]}
-              onPress={() => router.push("/(admin)/financial/salaries/teachers")}
-              activeOpacity={0.8}
-            >
-              <Ionicons name="people" size={28} color="white" />
-              <Text style={styles.actionText}>مدیریت معلمین</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.actionCard, { backgroundColor: Colors.info }]}
-              onPress={() => router.push("/(admin)/financial/salaries/reports/monthly")}
-              activeOpacity={0.8}
-            >
-              <Ionicons name="document-text" size={28} color="white" />
-              <Text style={styles.actionText}>گزارشات</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        {/* Info Box */}
-        <View style={styles.infoBox}>
-          <Ionicons name="information-circle" size={18} color={Colors.primary} />
-          <Text style={styles.infoText}>
-            برای پرداخت معاش، ابتدا باید معاش ماهیانه را ایجاد کنید. پس از ایجاد، می‌توانید پرداخت را ثبت کنید.
-            معلمینی که حقوق پایه ندارند در لیست ایجاد معاش نمایش داده نمی‌شوند.
-          </Text>
-        </View>
-
-        <View style={{ height: 20 }} />
-      </ScrollView>
-    </SafeAreaView>
+      {/* List */}
+      {salaries.length === 0 ? (
+        <EmptyState
+          icon="cash-outline"
+          title="هیچ معاشی ثبت نشده"
+          subtitle="برای شروع، معاشات ماهانه را تولید کنید"
+          actionLabel="تولید معاشات"
+          onAction={() => router.push("/financial/salaries/generate")}
+        />
+      ) : (
+        <FlatList
+          data={salaries}
+          renderItem={renderSalary}
+          keyExtractor={(item) => item.id.toString()}
+          contentContainerStyle={styles.listContent}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+          }
+          onEndReached={loadMore}
+          onEndReachedThreshold={0.5}
+          ListFooterComponent={
+            loading ? (
+              <ActivityIndicator style={{ padding: 16 }} color="#f97316" />
+            ) : null
+          }
+        />
+      )}
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.background },
-  centerContainer: { flex: 1, justifyContent: "center", alignItems: "center" },
-  loadingText: { marginTop: 12, fontSize: 14, color: Colors.textSecondary, fontFamily: "Vazirmatn" },
-  content: { flex: 1, padding: 16 },
-  
-  statsRow: { flexDirection: "row", gap: 10, marginBottom: 16 },
-  statCard: { flex: 1, backgroundColor: Colors.card, borderRadius: 14, padding: 14, alignItems: "center", borderTopWidth: 3, shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 3, elevation: 2 },
-  statIcon: { width: 42, height: 42, borderRadius: 21, justifyContent: "center", alignItems: "center", marginBottom: 10 },
-  statValue: { fontSize: 14, fontWeight: "bold", fontFamily: "Vazirmatn", marginBottom: 4, textAlign: "center" },
-  statLabel: { fontSize: 10, color: Colors.textSecondary, fontFamily: "Vazirmatn" },
-  
-  rateCard: { backgroundColor: Colors.card, borderRadius: 14, padding: 16, marginBottom: 20 },
-  rateHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12 },
-  rateTitle: { fontSize: 14, fontWeight: "500", color: Colors.text, fontFamily: "Vazirmatn" },
-  rateValue: { fontSize: 20, fontWeight: "bold", fontFamily: "Vazirmatn" },
-  progressBar: { height: 8, backgroundColor: Colors.background, borderRadius: 4, overflow: "hidden", marginBottom: 8 },
-  progressFill: { height: "100%", borderRadius: 4 },
-  rateSubtext: { fontSize: 11, color: Colors.textSecondary, fontFamily: "Vazirmatn", textAlign: "center" },
-  
-  section: { marginBottom: 24 },
-  sectionTitle: { fontSize: 17, fontWeight: "bold", color: Colors.text, fontFamily: "Vazirmatn", marginBottom: 14 },
-  actionsGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
-  actionCard: { width: "48%", borderRadius: 14, padding: 18, alignItems: "center", gap: 8, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4, elevation: 3 },
-  actionText: { color: "white", fontSize: 13, fontWeight: "600", fontFamily: "Vazirmatn", textAlign: "center" },
-  
-  infoBox: { flexDirection: "row", backgroundColor: `${Colors.primary}08`, borderRadius: 12, padding: 14, gap: 10, alignItems: "flex-start" },
-  infoText: { flex: 1, fontSize: 11, color: Colors.textSecondary, fontFamily: "Vazirmatn", lineHeight: 20, textAlign: "right" },
+  container: {
+    flex: 1,
+    backgroundColor: "#f1f5f9",
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#f1f5f9",
+  },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 16,
+    color: "#64748b",
+    fontFamily: "Vazir",
+  },
+  header: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: "#fff",
+    borderBottomWidth: 1,
+    borderBottomColor: "#e2e8f0",
+  },
+  title: {
+    fontSize: 20,
+    fontWeight: "700",
+    color: "#1e293b",
+    fontFamily: "VazirBold",
+  },
+  generateButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: "#f97316",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  statsRow: {
+    flexDirection: "row",
+    padding: 12,
+    marginHorizontal: 4,
+  },
+  filterRow: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+  },
+  listContent: {
+    padding: 16,
+    paddingTop: 4,
+    gap: 12,
+  },
+
+  // Salary Card
+  salaryCard: {
+    backgroundColor: "#fff",
+    borderRadius: 16,
+    padding: 16,
+    elevation: 2,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+  },
+  cardHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 14,
+  },
+  teacherInfo: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  teacherAvatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: "#fff7ed",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  teacherName: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#1e293b",
+    fontFamily: "VazirBold",
+  },
+  salaryPeriod: {
+    fontSize: 13,
+    color: "#64748b",
+    marginTop: 2,
+    fontFamily: "Vazir",
+  },
+  statusBadge: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  statusText: {
+    fontSize: 12,
+    fontWeight: "600",
+    fontFamily: "Vazir",
+  },
+
+  // Amounts
+  amountRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 12,
+    marginBottom: 12,
+  },
+  amountItem: {
+    flex: 1,
+    minWidth: "40%",
+    backgroundColor: "#f8fafc",
+    padding: 10,
+    borderRadius: 10,
+  },
+  amountLabel: {
+    fontSize: 11,
+    color: "#94a3b8",
+    fontFamily: "Vazir",
+  },
+  amountValue: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: "#475569",
+    marginTop: 2,
+    fontFamily: "VazirBold",
+  },
+  totalAmount: {
+    color: "#1e293b",
+    fontSize: 17,
+  },
+
+  // Progress
+  progressContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 12,
+  },
+  progressBar: {
+    flex: 1,
+    height: 6,
+    backgroundColor: "#e2e8f0",
+    borderRadius: 3,
+    overflow: "hidden",
+  },
+  progressFill: {
+    height: "100%",
+    borderRadius: 3,
+    backgroundColor: "#f97316",
+  },
+  progressText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#64748b",
+    fontFamily: "Vazir",
+    minWidth: 36,
+  },
+
+  // Footer
+  cardFooter: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: "#f1f5f9",
+  },
+  payButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#f97316",
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 8,
+    gap: 6,
+  },
+  payText: {
+    color: "#fff",
+    fontSize: 13,
+    fontWeight: "600",
+    fontFamily: "Vazir",
+  },
+  balanceText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#64748b",
+    fontFamily: "Vazir",
+  },
 });

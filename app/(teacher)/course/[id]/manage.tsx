@@ -164,7 +164,7 @@ export default function CourseManagement() {
         <Header
           title="مدیریت دوره"
           showBack
-          onBackPress={() => router.push("/(teacher)/courses")}
+          onBackPress={() => router.back()} // ✅ FIXED: Use router.back() instead of push
         />
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={Colors.primary} />
@@ -484,7 +484,7 @@ export default function CourseManagement() {
       <Header
         title="مدیریت دوره"
         showBack
-        onBackPress={() => router.push("/(teacher)/courses")}
+        onBackPress={() => router.back()} // ✅ FIXED: Use router.back() instead of push
         rightComponent={
           <TouchableOpacity
             onPress={() => router.push(`/(teacher)/course/${id}` as any)}

@@ -1,14 +1,25 @@
 // app/_layout.tsx
+import { Ionicons } from "@expo/vector-icons";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as Application from "expo-application";
+import Constants from "expo-constants";
 import { Slot, useRouter, useSegments } from "expo-router";
 import { useEffect, useState } from "react";
-import { I18nManager, View, ActivityIndicator, Platform, Linking, Alert, Modal, Text, TouchableOpacity, StyleSheet } from "react-native";
+import {
+  ActivityIndicator,
+  Alert,
+  I18nManager,
+  Linking,
+  Modal,
+  Platform,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { AuthProvider, useAuth } from "../contexts/AuthContext";
-import * as Application from "expo-application";
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import Constants from "expo-constants";
-import { Ionicons } from "@expo/vector-icons";
-
+import { useRef } from "react";
 // Enable RTL for Farsi
 I18nManager.allowRTL(true);
 I18nManager.forceRTL(true);
@@ -38,7 +49,7 @@ function UpdateChecker({ children }: { children: React.ReactNode }) {
     const versionCode = Application.nativeBuildVersion || "1";
     return {
       version,
-      versionCode: parseInt(versionCode, 10)
+      versionCode: parseInt(versionCode, 10),
     };
   };
 
@@ -54,12 +65,9 @@ function UpdateChecker({ children }: { children: React.ReactNode }) {
 
   const openStore = (customUrl?: string) => {
     const storeUrl = customUrl || getStoreUrl();
-    Linking.openURL(storeUrl).catch(err => {
+    Linking.openURL(storeUrl).catch((err) => {
       console.error("Failed to open store:", err);
-      Alert.alert(
-        "خطا",
-        "نمی‌توان فروشگاه را باز کرد. لطفا دستی اقدام کنید."
-      );
+      Alert.alert("خطا", "نمی‌توان فروشگاه را باز کرد. لطفا دستی اقدام کنید.");
     });
   };
 
@@ -67,27 +75,30 @@ function UpdateChecker({ children }: { children: React.ReactNode }) {
     try {
       const currentVersion = getCurrentVersion();
       const platform = Platform.OS === "ios" ? "IOS" : "ANDROID";
-      
+
       const response = await fetch(
-        `${process.env.EXPO_PUBLIC_API_URL}/api/versions/check?platform=${platform}&currentVersion=${currentVersion.versionCode}`
+        `${process.env.EXPO_PUBLIC_API_URL}/api/versions/check?platform=${platform}&currentVersion=${currentVersion.versionCode}`,
       );
-      
+
       const result = await response.json();
-      
+
       if (result.success && result.data.updateAvailable) {
         setUpdateInfo(result.data);
-        
+
         // Store update info
-        await AsyncStorage.setItem("pending_update", JSON.stringify(result.data));
-        
+        await AsyncStorage.setItem(
+          "pending_update",
+          JSON.stringify(result.data),
+        );
+
         // If force update, show modal
         if (result.data.forceUpdate) {
           setShowForceUpdate(true);
         }
-        
+
         return result.data;
       }
-      
+
       return null;
     } catch (error) {
       console.error("Error checking for updates:", error);
@@ -98,37 +109,45 @@ function UpdateChecker({ children }: { children: React.ReactNode }) {
   const checkPendingUpdate = async () => {
     try {
       const pendingUpdate = await AsyncStorage.getItem("pending_update");
-      const dismissedVersion = await AsyncStorage.getItem("update_dismissed_version");
+      const dismissedVersion = await AsyncStorage.getItem(
+        "update_dismissed_version",
+      );
       const currentVersion = getCurrentVersion();
-      
+
       if (pendingUpdate) {
         const update = JSON.parse(pendingUpdate);
-        
+
         // If version is different from dismissed version and newer than current, show update
-        if (dismissedVersion !== update.versionCode.toString() && 
-            currentVersion.versionCode < update.versionCode) {
+        if (
+          dismissedVersion !== update.versionCode.toString() &&
+          currentVersion.versionCode < update.versionCode
+        ) {
           setUpdateInfo(update);
-          
+
           if (update.forceUpdate) {
             setShowForceUpdate(true);
           } else {
             // Show optional update alert
             Alert.alert(
               "به‌روزرسانی جدید",
-              update.message || `نسخه جدید ${update.latestVersion} منتشر شده است.\n\n${update.releaseNotes || ""}`,
+              update.message ||
+                `نسخه جدید ${update.latestVersion} منتشر شده است.\n\n${update.releaseNotes || ""}`,
               [
                 {
                   text: "بعداً",
                   style: "cancel",
                   onPress: () => {
-                    AsyncStorage.setItem("update_dismissed_version", update.versionCode.toString());
-                  }
+                    AsyncStorage.setItem(
+                      "update_dismissed_version",
+                      update.versionCode.toString(),
+                    );
+                  },
                 },
                 {
                   text: "بروزرسانی",
-                  onPress: () => openStore(update.downloadUrl)
-                }
-              ]
+                  onPress: () => openStore(update.downloadUrl),
+                },
+              ],
             );
           }
         }
@@ -146,18 +165,21 @@ function UpdateChecker({ children }: { children: React.ReactNode }) {
       setIsChecking(false);
       setIsLoading(false);
     };
-    
+
     initializeUpdateCheck();
   }, []);
 
   // Periodic update check (every 24 hours)
   useEffect(() => {
-    const interval = setInterval(async () => {
-      if (!showForceUpdate) {
-        await checkForUpdates();
-      }
-    }, 24 * 60 * 60 * 1000); // 24 hours
-    
+    const interval = setInterval(
+      async () => {
+        if (!showForceUpdate) {
+          await checkForUpdates();
+        }
+      },
+      24 * 60 * 60 * 1000,
+    ); // 24 hours
+
     return () => clearInterval(interval);
   }, [showForceUpdate]);
 
@@ -177,7 +199,7 @@ function UpdateChecker({ children }: { children: React.ReactNode }) {
   return (
     <>
       {children}
-      
+
       {/* Force Update Modal */}
       {updateInfo && showForceUpdate && (
         <Modal
@@ -192,25 +214,33 @@ function UpdateChecker({ children }: { children: React.ReactNode }) {
               <View style={styles.iconContainer}>
                 <Ionicons name="cloud-download" size={48} color="#4285F4" />
               </View>
-              
+
               <Text style={styles.modalTitle}>به‌روزرسانی اجباری</Text>
-              <Text style={styles.modalVersion}>نسخه {updateInfo.latestVersion}</Text>
-              
-              <Text style={styles.modalMessage}>
-                {updateInfo.message || "نسخه جدیدی از برنامه منتشر شده است. برای ادامه استفاده، لطفا برنامه را به‌روزرسانی کنید."}
+              <Text style={styles.modalVersion}>
+                نسخه {updateInfo.latestVersion}
               </Text>
-              
+
+              <Text style={styles.modalMessage}>
+                {updateInfo.message ||
+                  "نسخه جدیدی از برنامه منتشر شده است. برای ادامه استفاده، لطفا برنامه را به‌روزرسانی کنید."}
+              </Text>
+
               {updateInfo.releaseNotes && (
                 <View style={styles.releaseNotesContainer}>
                   <Text style={styles.releaseNotesTitle}>تغییرات جدید:</Text>
-                  <Text style={styles.releaseNotes}>{updateInfo.releaseNotes}</Text>
+                  <Text style={styles.releaseNotes}>
+                    {updateInfo.releaseNotes}
+                  </Text>
                 </View>
               )}
-              
-              <TouchableOpacity style={styles.updateButton} onPress={handleForceUpdate}>
+
+              <TouchableOpacity
+                style={styles.updateButton}
+                onPress={handleForceUpdate}
+              >
                 <Text style={styles.updateButtonText}>بروزرسانی</Text>
               </TouchableOpacity>
-              
+
               <Text style={styles.hintText}>
                 پس از به‌روزرسانی، برنامه به‌طور خودکار اجرا خواهد شد
               </Text>
@@ -229,21 +259,24 @@ function RootLayoutNav() {
   const { isAuthenticated, user, isInitialized } = useAuth();
   const router = useRouter();
   const segments = useSegments();
+  const hasRedirected = useRef(false);
 
   useEffect(() => {
     if (!isInitialized) return;
+    if (!segments?.length) return;
 
     const inAuthGroup = segments[0] === "(auth)";
 
-    // If not authenticated and not in auth group, redirect to login
-    if (!isAuthenticated && !inAuthGroup) {
+    if (!isAuthenticated && !inAuthGroup && !hasRedirected.current) {
+      hasRedirected.current = true;
       router.replace("/(auth)/login");
       return;
     }
 
-    // If authenticated and in auth group, redirect to appropriate dashboard
     if (isAuthenticated && inAuthGroup && user) {
-      switch (user.role) {
+      const role = user.role?.toLowerCase();
+
+      switch (role) {
         case "student":
           router.replace("/(student)/(tabs)");
           break;
@@ -256,9 +289,11 @@ function RootLayoutNav() {
         case "parent":
           router.replace("/(parent)/(tabs)");
           break;
+        default:
+          router.replace("/(auth)/login");
       }
     }
-  }, [isAuthenticated, user, isInitialized, segments]);
+  }, [isAuthenticated, user, isInitialized]);
 
   return <Slot />;
 }

@@ -1,416 +1,567 @@
-import { Header } from "@/components/Header";
-import { Colors } from "@/constants/Colors";
-import { financeApi, formatCurrency, FeeTemplate } from "@/src/config/financeApi";
+// app/(admin)/financial/fees/templates/[id].tsx
+import { EmptyState } from "@/components/finance/EmptyState";
+import { BulkStudent, FeeTemplate, financeApi } from "@/src/config/financeApi";
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import {
-  ActivityIndicator,
-  Alert,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
-  StyleSheet,
-  Switch,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Alert,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
 
-interface TemplateData {
-  id: number;
-  classId: number;
-  className: string;
-  feeCategoryId: number;
-  feeTitle: string;
-  amount: number;
-  frequency: string;
-  dueDay: number;
-  isActive: boolean;
-  assignedStudents: number;
-}
-
-const FREQUENCY_OPTIONS = [
-  { value: "MONTHLY", label: "ماهانه", icon: "repeat", color: Colors.primary },
-  { value: "YEARLY", label: "سالانه", icon: "calendar", color: Colors.warning },
-  { value: "ONE_TIME", label: "یکباره", icon: "flash", color: Colors.success },
-];
-
-export default function EditFeeTemplate() {
+export default function TemplateDetailsScreen() {
+  const { id } = useLocalSearchParams();
   const router = useRouter();
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const [template, setTemplate] = useState<FeeTemplate | null>(null);
+  const [students, setStudents] = useState<BulkStudent[]>([]);
+  const [selectedStudents, setSelectedStudents] = useState<Set<number>>(
+    new Set(),
+  );
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [template, setTemplate] = useState<TemplateData | null>(null);
-  const [formData, setFormData] = useState({
-    amount: "",
-    frequency: "MONTHLY",
-    dueDay: "10",
-    isActive: true,
-  });
-  const [errors, setErrors] = useState<Record<string, string>>({});
-
-  const loadTemplate = useCallback(async () => {
-    try {
-      const response = await financeApi.getFeeTemplateById(parseInt(id));
-      if (response.success) {
-        const data = response.data as FeeTemplate;
-        // Transform API data to match TemplateData interface with fallback for assignedStudents
-        const templateData: TemplateData = {
-          id: data.id,
-          classId: data.classId,
-          className: data.className,
-          feeCategoryId: data.feeCategoryId,
-          feeTitle: data.feeTitle,
-          amount: data.amount,
-          frequency: data.frequency,
-          dueDay: data.dueDay,
-          isActive: data.isActive,
-          assignedStudents: data.assignedStudents || 0,
-        };
-        setTemplate(templateData);
-        setFormData({
-          amount: data.amount.toString(),
-          frequency: data.frequency,
-          dueDay: data.dueDay.toString(),
-          isActive: data.isActive,
-        });
-      } else {
-        Alert.alert("خطا", "قالب مورد نظر یافت نشد");
-        router.back();
-      }
-    } catch (error) {
-      console.error("Error loading template:", error);
-      Alert.alert("خطا", "مشکلی در بارگذاری قالب پیش آمد");
-      router.back();
-    } finally {
-      setLoading(false);
-    }
-  }, [id, router]);
+  const [assigning, setAssigning] = useState(false);
 
   useEffect(() => {
     loadTemplate();
-  }, [loadTemplate]);
+    loadStudents();
+  }, [id]);
 
-  const validateForm = (): boolean => {
-    const newErrors: Record<string, string> = {};
-
-    if (!formData.amount) {
-      newErrors.amount = "مبلغ الزامی است";
-    } else {
-      const amountNum = parseFloat(formData.amount);
-      if (isNaN(amountNum) || amountNum <= 0) {
-        newErrors.amount = "مبلغ باید عددی مثبت باشد";
-      }
+  const loadTemplate = async () => {
+    try {
+      const response = await financeApi.getFeeTemplateById(Number(id));
+      if (response.success) setTemplate(response.data);
+    } catch (error) {
+      console.error("Load template error:", error);
     }
-
-    const dueDayNum = parseInt(formData.dueDay);
-    if (isNaN(dueDayNum) || dueDayNum < 1 || dueDayNum > 31) {
-      newErrors.dueDay = "روز سررسید باید بین 1 تا 31 باشد";
-    }
-
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
   };
 
-  const handleUpdate = async () => {
-    if (!validateForm()) return;
-
-    setSaving(true);
+  const loadStudents = async () => {
     try {
-      await financeApi.updateFeeTemplate(parseInt(id), {
-        amount: parseFloat(formData.amount),
-        frequency: formData.frequency,
-        dueDay: parseInt(formData.dueDay),
-        isActive: formData.isActive,
+      const response = await financeApi.getStudentsForTemplate(Number(id));
+      if (response.success) setStudents(response.data);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const toggleStudent = (studentId: number) => {
+    const newSet = new Set(selectedStudents);
+    if (newSet.has(studentId)) {
+      newSet.delete(studentId);
+    } else {
+      newSet.add(studentId);
+    }
+    setSelectedStudents(newSet);
+  };
+
+  const toggleAll = () => {
+    if (
+      selectedStudents.size === students.filter((s) => !s.existingFee).length
+    ) {
+      setSelectedStudents(new Set());
+    } else {
+      setSelectedStudents(
+        new Set(students.filter((s) => !s.existingFee).map((s) => s.id)),
+      );
+    }
+  };
+
+  const handleAssign = async () => {
+    if (selectedStudents.size === 0) {
+      Alert.alert("خطا", "حداقل یک شاگرد انتخاب کنید");
+      return;
+    }
+
+    setAssigning(true);
+    try {
+      const response = await financeApi.assignTemplateToStudents({
+        templateId: Number(id),
+        studentIds: Array.from(selectedStudents),
       });
 
-      Alert.alert(
-        "موفق",
-        `قالب "${template?.feeTitle}" برای ${template?.className} با موفقیت بروزرسانی شد`,
-        [
-          {
-            text: "بازگشت به لیست",
-            onPress: () => router.back(),
-          },
-        ]
-      );
+      if (response.success) {
+        Alert.alert("موفقیت", "قالب با موفقیت به شاگردان تخصیص داده شد", [
+          { text: "باشه", onPress: () => router.back() },
+        ]);
+      }
     } catch (error: any) {
-      Alert.alert("خطا", error?.message || "بروزرسانی قالب ناموفق بود");
+      Alert.alert("خطا", error.message || "تخصیص با مشکل مواجه شد");
     } finally {
-      setSaving(false);
+      setAssigning(false);
     }
-  };
-
-  const handleDelete = () => {
-    Alert.alert(
-      "حذف قالب",
-      `آیا از حذف قالب "${template?.feeTitle}" برای ${template?.className} مطمئن هستید؟`,
-      [
-        { text: "انصراف", style: "cancel" },
-        {
-          text: "حذف",
-          style: "destructive",
-          onPress: async () => {
-            setSaving(true);
-            try {
-              await financeApi.deleteFeeTemplate(parseInt(id));
-              Alert.alert("موفق", "قالب با موفقیت حذف شد");
-              router.back();
-            } catch (error: any) {
-              Alert.alert("خطا", error?.message || "حذف قالب ناموفق بود");
-            } finally {
-              setSaving(false);
-            }
-          },
-        },
-      ]
-    );
   };
 
   if (loading) {
     return (
-      <SafeAreaView style={styles.container} edges={["top"]}>
-        <Header title="ویرایش قالب شهریه" showBack />
-        <View style={styles.centerContainer}>
-          <ActivityIndicator size="large" color={Colors.primary} />
-          <Text style={styles.loadingText}>در حال بارگذاری...</Text>
-        </View>
-      </SafeAreaView>
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#06b6d4" />
+      </View>
     );
   }
 
   if (!template) {
     return (
-      <SafeAreaView style={styles.container} edges={["top"]}>
-        <Header title="ویرایش قالب شهریه" showBack />
-        <View style={styles.centerContainer}>
-          <Ionicons name="alert-circle" size={64} color={Colors.danger} />
-          <Text style={styles.errorText}>قالب یافت نشد</Text>
-          <TouchableOpacity style={styles.retryButton} onPress={() => router.back()}>
-            <Text style={styles.retryButtonText}>بازگشت</Text>
-          </TouchableOpacity>
-        </View>
-      </SafeAreaView>
+      <View style={styles.loadingContainer}>
+        <Ionicons name="alert-circle" size={48} color="#ef4444" />
+        <Text style={styles.errorText}>قالب پیدا نشد</Text>
+      </View>
     );
   }
 
-  return (
-    <SafeAreaView style={styles.container} edges={["top"]}>
-      <Header 
-        title="ویرایش قالب شهریه" 
-        showBack 
-        rightComponent={
-          <TouchableOpacity onPress={handleDelete} style={styles.deleteBtn}>
-            <Ionicons name="trash-outline" size={22} color={Colors.danger} />
-          </TouchableOpacity>
-        }
-      />
+  const totalAmount = template.templateItems.reduce(
+    (sum, item) => sum + Number(item.amount),
+    0,
+  );
+  const availableStudents = students.filter((s) => !s.existingFee);
 
-      <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={styles.keyboardAvoid}>
-        <ScrollView style={styles.content} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-          {/* Template Info Card */}
-          <View style={styles.infoCard}>
-            <View style={styles.infoRow}>
-              <Text style={styles.infoLabel}>صنف:</Text>
-              <Text style={styles.infoValue}>{template.className}</Text>
+  return (
+    <View style={styles.container}>
+      {/* Header */}
+      <View style={styles.header}>
+        <TouchableOpacity onPress={() => router.back()}>
+          <Ionicons name="arrow-back" size={24} color="#1e293b" />
+        </TouchableOpacity>
+        <Text style={styles.title}>جزئیات قالب</Text>
+        <TouchableOpacity
+          style={styles.editButton}
+          onPress={() =>
+            router.push(`/financial/fees/templates/create?id=${id}`)
+          }
+        >
+          <Ionicons name="create-outline" size={20} color="#3b82f6" />
+        </TouchableOpacity>
+      </View>
+
+      <ScrollView
+        style={styles.scrollView}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Template Info */}
+        <View style={styles.infoCard}>
+          <View style={styles.infoHeader}>
+            <View style={styles.iconContainer}>
+              <Ionicons name="copy" size={32} color="#06b6d4" />
             </View>
-            <View style={styles.infoRow}>
-              <Text style={styles.infoLabel}>نوع هزینه:</Text>
-              <Text style={styles.infoValue}>{template.feeTitle}</Text>
-            </View>
-            <View style={styles.infoRow}>
-              <Text style={styles.infoLabel}>تخصیص داده شده به:</Text>
-              <Text style={styles.infoValue}>{template.assignedStudents} دانش‌آموز</Text>
+            <View style={styles.infoText}>
+              <Text style={styles.templateName}>{template.name}</Text>
+              <Text style={styles.templateMeta}>
+                {template.class
+                  ? `${template.class.name} ${template.class.section || ""}`
+                  : "همه صنوف"}
+                {" • "}
+                {template.academicYear?.name}
+              </Text>
             </View>
           </View>
 
-          {/* Amount */}
-          <View style={styles.formGroup}>
-            <Text style={styles.label}>مبلغ (افغانی) <Text style={styles.required}>*</Text></Text>
-            <TextInput
-              style={[styles.amountInput, errors.amount ? styles.inputError : null]}
-              value={formData.amount}
-              onChangeText={(text) => {
-                const cleaned = text.replace(/[^0-9.]/g, '');
-                setFormData({ ...formData, amount: cleaned });
-                if (errors.amount) setErrors({ ...errors, amount: "" });
-              }}
-              keyboardType="decimal-pad"
-              placeholder="مبلغ را وارد کنید"
-              placeholderTextColor={Colors.textSecondary}
-              textAlign="center"
-            />
-            {errors.amount && <Text style={styles.errorText}>{errors.amount}</Text>}
-            {formData.amount && !errors.amount && (
-              <Text style={styles.previewText}>{formatCurrency(parseFloat(formData.amount))}</Text>
+          <View style={styles.statsGrid}>
+            <View style={styles.statCard}>
+              <Ionicons name="layers" size={20} color="#06b6d4" />
+              <Text style={styles.statValue}>
+                {template.templateItems.length}
+              </Text>
+              <Text style={styles.statLabel}>اقلام</Text>
+            </View>
+            <View style={styles.statCard}>
+              <Ionicons name="cash" size={20} color="#8b5cf6" />
+              <Text style={styles.statValue}>
+                {totalAmount.toLocaleString()}
+              </Text>
+              <Text style={styles.statLabel}>افغانی</Text>
+            </View>
+            <View style={styles.statCard}>
+              <Ionicons name="people" size={20} color="#3b82f6" />
+              <Text style={styles.statValue}>{students.length}</Text>
+              <Text style={styles.statLabel}>شاگرد</Text>
+            </View>
+            <View style={styles.statCard}>
+              <Ionicons name="checkmark-circle" size={20} color="#10b981" />
+              <Text style={styles.statValue}>
+                {students.filter((s) => s.existingFee).length}
+              </Text>
+              <Text style={styles.statLabel}>تخصیص شده</Text>
+            </View>
+          </View>
+        </View>
+
+        {/* Fee Items */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>اقلام فیس</Text>
+          {template.templateItems.map((item, index) => (
+            <View key={item.id || index} style={styles.feeItem}>
+              <View
+                style={[
+                  styles.feeItemDot,
+                  { backgroundColor: item.isRecurring ? "#f59e0b" : "#3b82f6" },
+                ]}
+              />
+              <View style={styles.feeItemInfo}>
+                <Text style={styles.feeItemName}>{item.name}</Text>
+                <Text style={styles.feeItemType}>
+                  {item.isRecurring ? "ماهانه" : "یکباره"}
+                  {item.isMandatory ? " • اجباری" : ""}
+                </Text>
+              </View>
+              <Text style={styles.feeItemAmount}>
+                {Number(item.amount).toLocaleString()} افغانی
+              </Text>
+            </View>
+          ))}
+        </View>
+
+        {/* Students Selection */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>
+              تخصیص به شاگردان ({availableStudents.length})
+            </Text>
+            {availableStudents.length > 0 && (
+              <TouchableOpacity
+                onPress={toggleAll}
+                style={styles.selectAllButton}
+              >
+                <Ionicons
+                  name={
+                    selectedStudents.size === availableStudents.length
+                      ? "checkbox"
+                      : "square-outline"
+                  }
+                  size={20}
+                  color="#3b82f6"
+                />
+                <Text style={styles.selectAllText}>
+                  {selectedStudents.size === availableStudents.length
+                    ? "حذف همه"
+                    : "انتخاب همه"}
+                </Text>
+              </TouchableOpacity>
             )}
           </View>
 
-          {/* Frequency */}
-          <View style={styles.formGroup}>
-            <Text style={styles.label}>دوره پرداخت</Text>
-            <View style={styles.frequencyGrid}>
-              {FREQUENCY_OPTIONS.map((freq) => (
-                <TouchableOpacity
-                  key={freq.value}
-                  style={[
-                    styles.frequencyCard,
-                    formData.frequency === freq.value && { borderColor: freq.color, backgroundColor: `${freq.color}10` },
-                  ]}
-                  onPress={() => setFormData({ ...formData, frequency: freq.value })}
-                  activeOpacity={0.7}
-                >
-                  <Ionicons name={freq.icon as any} size={24} color={formData.frequency === freq.value ? freq.color : Colors.textSecondary} />
-                  <Text style={[styles.frequencyLabel, formData.frequency === freq.value && { color: freq.color, fontWeight: "600" }]}>
-                    {freq.label}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </View>
-
-          {/* Due Day */}
-          <View style={styles.formGroup}>
-            <Text style={styles.label}>روز سررسید ماهانه <Text style={styles.required}>*</Text></Text>
-            <View style={styles.dueDayContainer}>
-              <TextInput
-                style={[styles.dueDayInput, errors.dueDay ? styles.inputError : null]}
-                value={formData.dueDay}
-                onChangeText={(text) => {
-                  const cleaned = text.replace(/[^0-9]/g, '');
-                  setFormData({ ...formData, dueDay: cleaned });
-                  if (errors.dueDay) setErrors({ ...errors, dueDay: "" });
-                }}
-                keyboardType="number-pad"
-                placeholder="10"
-                placeholderTextColor={Colors.textSecondary}
-                textAlign="center"
-              />
-              <Text style={styles.dueDaySuffix}>هر ماه</Text>
-            </View>
-            {errors.dueDay && <Text style={styles.errorText}>{errors.dueDay}</Text>}
-          </View>
-
-          {/* Active Status */}
-          <View style={styles.formGroup}>
-            <View style={styles.switchRow}>
-              <View style={styles.switchInfo}>
-                <View style={[styles.statusDot, { backgroundColor: formData.isActive ? Colors.success : Colors.danger }]} />
-                <View>
-                  <Text style={styles.switchLabel}>{formData.isActive ? "قالب فعال" : "قالب غیرفعال"}</Text>
-                  <Text style={styles.switchDesc}>
-                    {formData.isActive ? "قالب فعال است و می‌تواند تخصیص داده شود" : "قالب غیرفعال است و در لیست نمایش داده نمی‌شود"}
-                  </Text>
+          {availableStudents.length === 0 ? (
+            <EmptyState
+              icon="people-outline"
+              title="همه شاگردان تخصیص شده‌اند"
+              subtitle="همه شاگردان این صنف قبلاً فیس دارند"
+            />
+          ) : (
+            availableStudents.map((student) => (
+              <TouchableOpacity
+                key={student.id}
+                style={[
+                  styles.studentItem,
+                  selectedStudents.has(student.id) &&
+                    styles.studentItemSelected,
+                ]}
+                onPress={() => toggleStudent(student.id)}
+              >
+                <Ionicons
+                  name={
+                    selectedStudents.has(student.id)
+                      ? "checkbox"
+                      : "square-outline"
+                  }
+                  size={22}
+                  color={
+                    selectedStudents.has(student.id) ? "#3b82f6" : "#cbd5e1"
+                  }
+                />
+                <View style={styles.studentAvatar}>
+                  <Ionicons name="person" size={18} color="#3b82f6" />
                 </View>
-              </View>
-              <Switch
-                value={formData.isActive}
-                onValueChange={(value) => setFormData({ ...formData, isActive: value })}
-                trackColor={{ false: Colors.border, true: `${Colors.success}50` }}
-                thumbColor={formData.isActive ? Colors.success : "#f4f3f4"}
-              />
-            </View>
-          </View>
+                <View style={styles.studentInfo}>
+                  <Text style={styles.studentName}>{student.name}</Text>
+                  <Text style={styles.studentRoll}>{student.rollNumber}</Text>
+                </View>
+                {student.existingFee && (
+                  <View style={styles.existingBadge}>
+                    <Text style={styles.existingText}>فیس دارد</Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+            ))
+          )}
 
-          {/* Summary */}
-          <View style={styles.summaryCard}>
-            <Text style={styles.summaryTitle}>خلاصه قالب</Text>
-            <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>صنف:</Text>
-              <Text style={styles.summaryValue}>{template.className}</Text>
-            </View>
-            <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>نوع هزینه:</Text>
-              <Text style={styles.summaryValue}>{template.feeTitle}</Text>
-            </View>
-            <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>مبلغ:</Text>
-              <Text style={[styles.summaryValue, { color: Colors.success, fontWeight: "bold" }]}>
-                {formatCurrency(parseFloat(formData.amount) || 0)}
+          {students.filter((s) => s.existingFee).length > 0 && (
+            <View style={styles.existingNote}>
+              <Ionicons name="information-circle" size={16} color="#f59e0b" />
+              <Text style={styles.existingNoteText}>
+                {students.filter((s) => s.existingFee).length} شاگرد قبلاً فیس
+                دارند و در لیست نیستند
               </Text>
             </View>
-            <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>دوره:</Text>
-              <Text style={styles.summaryValue}>{FREQUENCY_OPTIONS.find(f => f.value === formData.frequency)?.label}</Text>
-            </View>
-            <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>روز سررسید:</Text>
-              <Text style={styles.summaryValue}>روز {formData.dueDay} هر ماه</Text>
-            </View>
-          </View>
+          )}
+        </View>
 
-          {/* Update Button */}
+        <View style={{ height: 100 }} />
+      </ScrollView>
+
+      {/* Assign Button */}
+      {selectedStudents.size > 0 && (
+        <View style={styles.footer}>
+          <View style={styles.footerInfo}>
+            <Text style={styles.footerCount}>
+              {selectedStudents.size} شاگرد انتخاب شده
+            </Text>
+            <Text style={styles.footerAmount}>
+              مجموع: {(totalAmount * selectedStudents.size).toLocaleString()}{" "}
+              افغانی
+            </Text>
+          </View>
           <TouchableOpacity
-            style={[styles.updateButton, (!formData.amount || saving) && styles.updateButtonDisabled]}
-            onPress={handleUpdate}
-            disabled={!formData.amount || saving}
-            activeOpacity={0.8}
+            style={[
+              styles.assignButton,
+              assigning && styles.assignButtonDisabled,
+            ]}
+            onPress={handleAssign}
+            disabled={assigning}
           >
-            {saving ? (
-              <ActivityIndicator size="small" color="white" />
+            {assigning ? (
+              <ActivityIndicator color="#fff" />
             ) : (
               <>
-                <Ionicons name="save-outline" size={22} color="white" />
-                <Text style={styles.updateButtonText}>ذخیره تغییرات</Text>
+                <Ionicons name="checkmark-circle" size={22} color="#fff" />
+                <Text style={styles.assignText}>تخصیص فیس</Text>
               </>
             )}
           </TouchableOpacity>
-
-          <View style={{ height: 30 }} />
-        </ScrollView>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+        </View>
+      )}
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.background },
-  centerContainer: { flex: 1, justifyContent: "center", alignItems: "center" },
-  loadingText: { marginTop: 12, fontSize: 14, color: Colors.textSecondary, fontFamily: "Vazirmatn" },
-  errorText: { fontSize: 16, color: Colors.danger, marginTop: 12, fontFamily: "Vazirmatn" },
-  retryButton: { marginTop: 16, backgroundColor: Colors.primary, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 10 },
-  retryButtonText: { color: "white", fontSize: 14, fontFamily: "Vazirmatn" },
-  keyboardAvoid: { flex: 1 },
-  content: { flex: 1, padding: 16 },
-  deleteBtn: { padding: 4 },
-  
-  infoCard: { backgroundColor: `${Colors.primary}08`, borderRadius: 12, padding: 16, marginBottom: 20 },
-  infoRow: { flexDirection: "row", justifyContent: "space-between", marginBottom: 8 },
-  infoLabel: { fontSize: 13, color: Colors.textSecondary, fontFamily: "Vazirmatn" },
-  infoValue: { fontSize: 13, fontWeight: "500", color: Colors.text, fontFamily: "Vazirmatn" },
-  
-  formGroup: { marginBottom: 20 },
-  label: { fontSize: 14, fontWeight: "500", color: Colors.text, fontFamily: "Vazirmatn", marginBottom: 8, textAlign: "right" },
-  required: { color: Colors.danger },
-  
-  amountInput: { backgroundColor: Colors.card, borderWidth: 1.5, borderColor: Colors.border, borderRadius: 12, padding: 14, fontSize: 18, fontWeight: "bold", color: Colors.text, textAlign: "center", fontFamily: "Vazirmatn" },
-  inputError: { borderColor: Colors.danger },
-  previewText: { fontSize: 13, color: Colors.primary, fontFamily: "Vazirmatn", marginTop: 6, textAlign: "center" },
-  
-  frequencyGrid: { flexDirection: "row", gap: 10 },
-  frequencyCard: { flex: 1, alignItems: "center", padding: 12, borderRadius: 12, borderWidth: 2, borderColor: Colors.border, backgroundColor: Colors.card, gap: 8 },
-  frequencyLabel: { fontSize: 12, color: Colors.textSecondary, fontFamily: "Vazirmatn" },
-  
-  dueDayContainer: { flexDirection: "row", alignItems: "center", gap: 8 },
-  dueDayInput: { flex: 1, backgroundColor: Colors.card, borderWidth: 1.5, borderColor: Colors.border, borderRadius: 12, padding: 14, fontSize: 16, textAlign: "center", fontFamily: "Vazirmatn" },
-  dueDaySuffix: { fontSize: 14, color: Colors.textSecondary, fontFamily: "Vazirmatn" },
-  
-  switchRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", backgroundColor: Colors.card, padding: 14, borderRadius: 12, borderWidth: 1, borderColor: Colors.border },
-  switchInfo: { flexDirection: "row", alignItems: "center", gap: 10, flex: 1 },
-  statusDot: { width: 10, height: 10, borderRadius: 5 },
-  switchLabel: { fontSize: 14, fontWeight: "500", color: Colors.text, fontFamily: "Vazirmatn" },
-  switchDesc: { fontSize: 11, color: Colors.textSecondary, fontFamily: "Vazirmatn", marginTop: 2 },
-  
-  summaryCard: { backgroundColor: `${Colors.primary}08`, borderRadius: 12, padding: 16, marginBottom: 20 },
-  summaryTitle: { fontSize: 15, fontWeight: "bold", color: Colors.text, fontFamily: "Vazirmatn", marginBottom: 12, textAlign: "center" },
-  summaryRow: { flexDirection: "row", justifyContent: "space-between", marginBottom: 8 },
-  summaryLabel: { fontSize: 13, color: Colors.textSecondary, fontFamily: "Vazirmatn" },
-  summaryValue: { fontSize: 13, fontWeight: "500", color: Colors.text, fontFamily: "Vazirmatn" },
-  
-  updateButton: { flexDirection: "row", alignItems: "center", justifyContent: "center", backgroundColor: Colors.primary, borderRadius: 12, paddingVertical: 16, gap: 8, marginTop: 10 },
-  updateButtonDisabled: { opacity: 0.5 },
-  updateButtonText: { color: "white", fontSize: 16, fontWeight: "bold", fontFamily: "Vazirmatn" },
+  container: { flex: 1, backgroundColor: "#f1f5f9" },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#f1f5f9",
+    gap: 12,
+  },
+  errorText: { fontSize: 16, color: "#64748b", fontFamily: "Vazir" },
+  header: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: "#fff",
+    borderBottomWidth: 1,
+    borderBottomColor: "#e2e8f0",
+  },
+  title: {
+    fontSize: 20,
+    fontWeight: "700",
+    color: "#1e293b",
+    fontFamily: "VazirBold",
+  },
+  editButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 10,
+    backgroundColor: "#eff6ff",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  scrollView: { flex: 1 },
+  infoCard: {
+    margin: 16,
+    padding: 16,
+    backgroundColor: "#fff",
+    borderRadius: 16,
+    elevation: 2,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+  },
+  infoHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 16,
+    marginBottom: 16,
+  },
+  iconContainer: {
+    width: 64,
+    height: 64,
+    borderRadius: 16,
+    backgroundColor: "#ecfeff",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  infoText: { flex: 1 },
+  templateName: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: "#1e293b",
+    fontFamily: "VazirBold",
+  },
+  templateMeta: {
+    fontSize: 13,
+    color: "#64748b",
+    marginTop: 4,
+    fontFamily: "Vazir",
+  },
+  statsGrid: { flexDirection: "row", gap: 8 },
+  statCard: {
+    flex: 1,
+    alignItems: "center",
+    padding: 12,
+    backgroundColor: "#f8fafc",
+    borderRadius: 12,
+  },
+  statValue: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#1e293b",
+    marginTop: 4,
+    fontFamily: "VazirBold",
+  },
+  statLabel: { fontSize: 11, color: "#94a3b8", fontFamily: "Vazir" },
+  section: {
+    margin: 16,
+    marginTop: 0,
+    padding: 16,
+    backgroundColor: "#fff",
+    borderRadius: 16,
+  },
+  sectionHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 12,
+  },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#334155",
+    fontFamily: "VazirBold",
+  },
+  selectAllButton: { flexDirection: "row", alignItems: "center", gap: 4 },
+  selectAllText: { fontSize: 13, color: "#3b82f6", fontFamily: "Vazir" },
+  feeItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: "#f1f5f9",
+    gap: 10,
+  },
+  feeItemDot: { width: 8, height: 8, borderRadius: 4 },
+  feeItemInfo: { flex: 1 },
+  feeItemName: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#1e293b",
+    fontFamily: "Vazir",
+  },
+  feeItemType: {
+    fontSize: 11,
+    color: "#94a3b8",
+    marginTop: 2,
+    fontFamily: "Vazir",
+  },
+  feeItemAmount: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#475569",
+    fontFamily: "Vazir",
+  },
+  studentItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 12,
+    paddingHorizontal: 8,
+    borderRadius: 10,
+    gap: 10,
+    marginBottom: 4,
+  },
+  studentItemSelected: { backgroundColor: "#eff6ff" },
+  studentAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: "#eff6ff",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  studentInfo: { flex: 1 },
+  studentName: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#1e293b",
+    fontFamily: "Vazir",
+  },
+  studentRoll: { fontSize: 12, color: "#94a3b8", fontFamily: "Vazir" },
+  existingBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    backgroundColor: "#fef3c7",
+    borderRadius: 6,
+  },
+  existingText: { fontSize: 11, color: "#d97706", fontFamily: "Vazir" },
+  existingNote: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 12,
+    padding: 10,
+    backgroundColor: "#fffbeb",
+    borderRadius: 8,
+    gap: 8,
+  },
+  existingNoteText: {
+    fontSize: 12,
+    color: "#92400e",
+    flex: 1,
+    fontFamily: "Vazir",
+  },
+  footer: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    padding: 16,
+    backgroundColor: "#fff",
+    borderTopWidth: 1,
+    borderTopColor: "#e2e8f0",
+    elevation: 8,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+  },
+  footerInfo: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: 12,
+  },
+  footerCount: { fontSize: 14, color: "#475569", fontFamily: "Vazir" },
+  footerAmount: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#1e293b",
+    fontFamily: "VazirBold",
+  },
+  assignButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#06b6d4",
+    paddingVertical: 14,
+    borderRadius: 14,
+    gap: 8,
+  },
+  assignButtonDisabled: { opacity: 0.6 },
+  assignText: {
+    color: "#fff",
+    fontSize: 17,
+    fontWeight: "700",
+    fontFamily: "VazirBold",
+  },
 });

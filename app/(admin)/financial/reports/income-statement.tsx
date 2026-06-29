@@ -1,255 +1,332 @@
-import { Header } from "@/components/Header";
-import { Colors } from "@/constants/Colors";
-import { financeApi, formatCurrency, IncomeStatement as IncomeStatementType } from "@/src/config/financeApi";
-import { Ionicons } from "@expo/vector-icons";
-import { useFocusEffect } from "expo-router";
-import { useCallback, useState } from "react";
+// app/(admin)/financial/reports/income-statement.tsx
+import React, { useEffect, useState } from "react";
 import {
-  ActivityIndicator,
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
   View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  ActivityIndicator,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { useRouter } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
+import { financeApi, formatCurrency } from "@/src/config/financeApi";
+import { FinanceCard } from "@/components/finance/FinanceCard";
+import { MonthPicker } from "@/components/finance/MonthPicker";
+import { EmptyState } from "@/components/finance/EmptyState";
+import { ExportButton } from "@/components/finance/ExportButton";
 
-interface MonthlyData {
-  month: number;
-  monthName: string;
-  income: number;
-  expenses: number;
-  profit: number;
-}
-
-interface IncomeStatementData {
-  year: number;
-  monthlyData: MonthlyData[];
-  summary: {
-    totalIncome: number;
-    totalExpenses: number;
-    netProfit: number;
-  };
-}
-
-export default function IncomeStatementReport() {
+export default function IncomeStatementScreen() {
+  const router = useRouter();
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [data, setData] = useState<IncomeStatementData | null>(null);
-  const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
-  const [showYearPicker, setShowYearPicker] = useState(false);
+  const [selectedYear, setSelectedYear] = useState(1403);
+  const [selectedMonth, setSelectedMonth] = useState<string | undefined>();
+  const [statementData, setStatementData] = useState<any>(null);
 
-  const loadData = useCallback(async () => {
+  useEffect(() => {
+    fetchIncomeStatement();
+  }, [selectedYear, selectedMonth]);
+
+  const fetchIncomeStatement = async () => {
+    setLoading(true);
     try {
-      // getIncomeStatement returns IncomeStatement directly, not wrapped in { success, data }
-      const response: IncomeStatementType = await financeApi.getIncomeStatement({ year: selectedYear });
-      // Transform API response to match local interface
-      const transformedData: IncomeStatementData = {
-        year: response.year || selectedYear,
-        monthlyData: response.monthlyData || [],
-        summary: response.summary || {
-          totalIncome: 0,
-          totalExpenses: 0,
-          netProfit: 0,
-        },
-      };
-      setData(transformedData);
+      const monthIndex = selectedMonth
+        ? ["HAMAL", "SAWR", "JAWZA", "SARATAN", "ASAD", "SUNBULA", "MIZAN", "AQRAB", "QAWS", "JADI", "DALWA", "HOOT"].indexOf(selectedMonth) + 1
+        : undefined;
+
+      const response = await financeApi.getIncomeStatement({
+        year: selectedYear,
+        month: monthIndex,
+      });
+
+      if (response.success) {
+        setStatementData(response.data);
+      }
     } catch (error) {
-      console.error("Error loading income statement:", error);
+      console.error("Fetch income statement error:", error);
     } finally {
       setLoading(false);
-      setRefreshing(false);
     }
-  }, [selectedYear]);
-
-  useFocusEffect(
-    useCallback(() => {
-      loadData();
-    }, [loadData])
-  );
-
-  const handleRefresh = () => {
-    setRefreshing(true);
-    loadData();
   };
 
-  const years = [1402, 1403, 1404, 1405, 1406];
+  const income = statementData?.income || { total: 0, breakdown: [] };
+  const expenses = statementData?.expenses || { total: 0, breakdown: [] };
+  const netIncome = income.total - expenses.total;
 
   if (loading) {
     return (
-      <SafeAreaView style={styles.container} edges={["top"]}>
-        <Header title="صورت سود و زیان" showBack />
-        <View style={styles.centerContainer}>
-          <ActivityIndicator size="large" color={Colors.primary} />
-          <Text style={styles.loadingText}>در حال بارگذاری...</Text>
-        </View>
-      </SafeAreaView>
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#f59e0b" />
+      </View>
     );
   }
-
-  if (!data) {
-    return (
-      <SafeAreaView style={styles.container} edges={["top"]}>
-        <Header title="صورت سود و زیان" showBack />
-        <View style={styles.centerContainer}>
-          <Ionicons name="alert-circle" size={64} color={Colors.danger} />
-          <Text style={styles.errorText}>خطا در بارگذاری اطلاعات</Text>
-          <TouchableOpacity style={styles.retryButton} onPress={loadData}>
-            <Text style={styles.retryButtonText}>تلاش مجدد</Text>
-          </TouchableOpacity>
-        </View>
-      </SafeAreaView>
-    );
-  }
-
-  const { summary, monthlyData } = data;
-  const isProfitable = summary.netProfit >= 0;
 
   return (
-    <SafeAreaView style={styles.container} edges={["top"]}>
-      <Header title="صورت سود و زیان" showBack />
+    <View style={styles.container}>
+      {/* Header */}
+      <View style={styles.header}>
+        <TouchableOpacity onPress={() => router.back()}>
+          <Ionicons name="arrow-back" size={24} color="#1e293b" />
+        </TouchableOpacity>
+        <Text style={styles.title}>صورت عایدات</Text>
+        <ExportButton reportType="income-statement" variant="icon" />
+      </View>
 
-      <ScrollView
-        style={styles.content}
-        showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} colors={[Colors.primary]} />
-        }
-      >
-        {/* Year Selector */}
-        <View style={styles.yearSelector}>
-          <Text style={styles.yearLabel}>سال مالی:</Text>
-          <TouchableOpacity
-            style={styles.yearPicker}
-            onPress={() => setShowYearPicker(!showYearPicker)}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.yearValue}>{selectedYear}</Text>
-            <Ionicons name="chevron-down" size={16} color={Colors.textSecondary} />
-          </TouchableOpacity>
-        </View>
-
-        {showYearPicker && (
-          <View style={styles.yearOptions}>
-            {years.map((year) => (
-              <TouchableOpacity
-                key={year}
-                style={[styles.yearOption, selectedYear === year && styles.yearOptionActive]}
-                onPress={() => {
-                  setSelectedYear(year);
-                  setShowYearPicker(false);
-                }}
-              >
-                <Text style={[styles.yearOptionText, selectedYear === year && styles.yearOptionTextActive]}>
-                  {year}
-                </Text>
-              </TouchableOpacity>
-            ))}
+      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+        {/* Year/Month Filter */}
+        <View style={styles.filterRow}>
+          <View style={styles.yearPicker}>
+            <TouchableOpacity onPress={() => setSelectedYear(prev => prev - 1)}>
+              <Ionicons name="chevron-back" size={20} color="#3b82f6" />
+            </TouchableOpacity>
+            <Text style={styles.yearText}>{selectedYear}</Text>
+            <TouchableOpacity onPress={() => setSelectedYear(prev => prev + 1)}>
+              <Ionicons name="chevron-forward" size={20} color="#3b82f6" />
+            </TouchableOpacity>
           </View>
-        )}
-
-        {/* Summary Cards */}
-        <View style={styles.summaryRow}>
-          <View style={[styles.summaryCard, { borderTopColor: Colors.success }]}>
-            <Text style={styles.summaryLabel}>کل درآمد</Text>
-            <Text style={[styles.summaryValue, { color: Colors.success }]}>
-              {formatCurrency(summary.totalIncome)}
-            </Text>
-          </View>
-          <View style={[styles.summaryCard, { borderTopColor: Colors.danger }]}>
-            <Text style={styles.summaryLabel}>کل هزینه</Text>
-            <Text style={[styles.summaryValue, { color: Colors.danger }]}>
-              {formatCurrency(summary.totalExpenses)}
-            </Text>
-          </View>
-          <View style={[styles.summaryCard, { borderTopColor: isProfitable ? Colors.success : Colors.danger }]}>
-            <Text style={styles.summaryLabel}>سود خالص</Text>
-            <Text style={[styles.summaryValue, { color: isProfitable ? Colors.success : Colors.danger }]}>
-              {formatCurrency(summary.netProfit)}
-            </Text>
+          <View style={styles.monthPicker}>
+            <MonthPicker
+              value={selectedMonth}
+              onSelect={(month) => setSelectedMonth(month || undefined)}
+              label="ماه (اختیاری)"
+            />
           </View>
         </View>
 
-        {/* Monthly Table */}
-        <View style={styles.table}>
-          <View style={styles.tableHeader}>
-            <Text style={[styles.tableHeaderCell, styles.monthCol]}>ماه</Text>
-            <Text style={[styles.tableHeaderCell, styles.numberCol]}>درآمد</Text>
-            <Text style={[styles.tableHeaderCell, styles.numberCol]}>هزینه</Text>
-            <Text style={[styles.tableHeaderCell, styles.numberCol]}>سود</Text>
+        {/* Net Income */}
+        <View style={styles.netIncomeCard}>
+          <Text style={styles.netIncomeLabel}>عاید خالص</Text>
+          <Text style={[
+            styles.netIncomeAmount,
+            { color: netIncome >= 0 ? "#10b981" : "#ef4444" }
+          ]}>
+            {netIncome >= 0 ? "+" : "-"} {formatCurrency(Math.abs(netIncome))}
+          </Text>
+          <View style={styles.netIncomeBar}>
+            <View style={[styles.incomeBar, { flex: income.total }]} />
+            <View style={[styles.expenseBar, { flex: expenses.total }]} />
           </View>
+        </View>
 
-          {monthlyData.map((item) => {
-            const isPositive = item.profit >= 0;
-            return (
-              <View key={item.month} style={styles.tableRow}>
-                <Text style={[styles.tableCell, styles.monthCol]}>{item.monthName}</Text>
-                <Text style={[styles.tableCell, styles.numberCol, { color: Colors.success }]}>
-                  {formatCurrency(item.income)}
-                </Text>
-                <Text style={[styles.tableCell, styles.numberCol, { color: Colors.danger }]}>
-                  {formatCurrency(item.expenses)}
-                </Text>
-                <Text style={[styles.tableCell, styles.numberCol, { color: isPositive ? Colors.success : Colors.danger }]}>
-                  {formatCurrency(item.profit)}
+        {/* Income & Expense Cards */}
+        <View style={styles.cardsRow}>
+          <FinanceCard
+            title="مجموع عایدات"
+            value={formatCurrency(income.total)}
+            gradientColors={["#10b981", "#059669"]}
+            icon="trending-up-outline"
+            variant="default"
+          />
+          <FinanceCard
+            title="مجموع مصارف"
+            value={formatCurrency(expenses.total)}
+            gradientColors={["#ef4444", "#dc2626"]}
+            icon="trending-down-outline"
+            variant="default"
+          />
+        </View>
+
+        {/* Income Breakdown */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>عایدات</Text>
+          {income.breakdown?.length > 0 ? (
+            income.breakdown.map((item: any, index: number) => (
+              <View key={index} style={styles.breakdownItem}>
+                <View style={styles.breakdownLeft}>
+                  <View style={[styles.breakdownDot, { backgroundColor: "#10b981" }]} />
+                  <Text style={styles.breakdownName}>{item.name || item.category}</Text>
+                </View>
+                <Text style={[styles.breakdownAmount, { color: "#10b981" }]}>
+                  + {formatCurrency(item.amount)}
                 </Text>
               </View>
-            );
-          })}
+            ))
+          ) : (
+            <EmptyState
+              icon="trending-up-outline"
+              title="عایداتی ثبت نشده"
+              subtitle="در این دوره عایداتی وجود ندارد"
+            />
+          )}
         </View>
 
-        {/* Chart Placeholder - Can integrate with a chart library */}
-        <View style={styles.chartContainer}>
-          <Text style={styles.chartTitle}>نمودار سود و زیان ماهانه</Text>
-          <View style={styles.chartPlaceholder}>
-            <Ionicons name="bar-chart" size={48} color={Colors.textSecondary} />
-            <Text style={styles.chartPlaceholderText}>
-              نمودار تعاملی - برای مشاهده دقیق تر، از خروجی Excel استفاده کنید
-            </Text>
-          </View>
+        {/* Expense Breakdown */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>مصارف</Text>
+          {expenses.breakdown?.length > 0 ? (
+            expenses.breakdown.map((item: any, index: number) => (
+              <View key={index} style={styles.breakdownItem}>
+                <View style={styles.breakdownLeft}>
+                  <View style={[styles.breakdownDot, { backgroundColor: "#ef4444" }]} />
+                  <Text style={styles.breakdownName}>{item.name || item.category}</Text>
+                </View>
+                <Text style={[styles.breakdownAmount, { color: "#ef4444" }]}>
+                  - {formatCurrency(item.amount)}
+                </Text>
+              </View>
+            ))
+          ) : (
+            <EmptyState
+              icon="trending-down-outline"
+              title="مصرفی ثبت نشده"
+              subtitle="در این دوره مصرفی وجود ندارد"
+            />
+          )}
         </View>
 
-        <View style={{ height: 20 }} />
+        <View style={{ height: 40 }} />
       </ScrollView>
-    </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.background },
-  centerContainer: { flex: 1, justifyContent: "center", alignItems: "center" },
-  loadingText: { marginTop: 12, fontSize: 14, color: Colors.textSecondary, fontFamily: "Vazirmatn" },
-  errorText: { fontSize: 16, color: Colors.danger, marginTop: 12, marginBottom: 16, fontFamily: "Vazirmatn" },
-  retryButton: { backgroundColor: Colors.primary, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 10 },
-  retryButtonText: { color: "white", fontSize: 14, fontFamily: "Vazirmatn" },
-  content: { flex: 1, padding: 16 },
-  
-  yearSelector: { flexDirection: "row", justifyContent: "flex-end", alignItems: "center", marginBottom: 16, gap: 8 },
-  yearLabel: { fontSize: 14, color: Colors.textSecondary, fontFamily: "Vazirmatn" },
-  yearPicker: { flexDirection: "row", alignItems: "center", backgroundColor: Colors.card, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, gap: 4, borderWidth: 1, borderColor: Colors.border },
-  yearValue: { fontSize: 14, fontWeight: "500", color: Colors.text, fontFamily: "Vazirmatn" },
-  yearOptions: { flexDirection: "row", flexWrap: "wrap", justifyContent: "center", gap: 8, marginBottom: 16 },
-  yearOption: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, backgroundColor: Colors.card, borderWidth: 1, borderColor: Colors.border },
-  yearOptionActive: { backgroundColor: Colors.primary, borderColor: Colors.primary },
-  yearOptionText: { fontSize: 13, color: Colors.textSecondary, fontFamily: "Vazirmatn" },
-  yearOptionTextActive: { color: "white" },
-  
-  summaryRow: { flexDirection: "row", gap: 10, marginBottom: 20 },
-  summaryCard: { flex: 1, backgroundColor: Colors.card, borderRadius: 14, padding: 14, alignItems: "center", borderTopWidth: 3 },
-  summaryLabel: { fontSize: 11, color: Colors.textSecondary, fontFamily: "Vazirmatn", marginBottom: 6 },
-  summaryValue: { fontSize: 14, fontWeight: "bold", fontFamily: "Vazirmatn" },
-  
-  table: { backgroundColor: Colors.card, borderRadius: 14, overflow: "hidden", marginBottom: 20 },
-  tableHeader: { flexDirection: "row", backgroundColor: `${Colors.primary}10`, paddingVertical: 12, paddingHorizontal: 12 },
-  tableHeaderCell: { fontSize: 12, fontWeight: "600", color: Colors.text, fontFamily: "Vazirmatn" },
-  tableRow: { flexDirection: "row", paddingVertical: 10, paddingHorizontal: 12, borderBottomWidth: 1, borderBottomColor: Colors.border },
-  tableCell: { fontSize: 12, color: Colors.text, fontFamily: "Vazirmatn" },
-  monthCol: { flex: 2, textAlign: "right" },
-  numberCol: { flex: 3, textAlign: "center" },
-  
-  chartContainer: { backgroundColor: Colors.card, borderRadius: 14, padding: 16, marginBottom: 20 },
-  chartTitle: { fontSize: 15, fontWeight: "600", color: Colors.text, fontFamily: "Vazirmatn", marginBottom: 12, textAlign: "center" },
-  chartPlaceholder: { alignItems: "center", paddingVertical: 30, backgroundColor: Colors.background, borderRadius: 10 },
-  chartPlaceholderText: { fontSize: 11, color: Colors.textSecondary, fontFamily: "Vazirmatn", textAlign: "center", marginTop: 10 },
+  container: {
+    flex: 1,
+    backgroundColor: "#f1f5f9",
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#f1f5f9",
+  },
+  header: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: "#fff",
+    borderBottomWidth: 1,
+    borderBottomColor: "#e2e8f0",
+  },
+  title: {
+    fontSize: 20,
+    fontWeight: "700",
+    color: "#1e293b",
+    fontFamily: "VazirBold",
+  },
+  scrollView: {
+    flex: 1,
+  },
+  filterRow: {
+    flexDirection: "row",
+    padding: 16,
+    gap: 12,
+    alignItems: "center",
+  },
+  yearPicker: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 14,
+    gap: 12,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+  },
+  yearText: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#1e293b",
+    fontFamily: "VazirBold",
+  },
+  monthPicker: {
+    flex: 1,
+  },
+
+  // Net Income
+  netIncomeCard: {
+    marginHorizontal: 16,
+    marginBottom: 16,
+    padding: 20,
+    backgroundColor: "#fff",
+    borderRadius: 16,
+    alignItems: "center",
+    elevation: 2,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+  },
+  netIncomeLabel: {
+    fontSize: 14,
+    color: "#64748b",
+    fontFamily: "Vazir",
+  },
+  netIncomeAmount: {
+    fontSize: 36,
+    fontWeight: "800",
+    marginTop: 8,
+    fontFamily: "VazirBold",
+  },
+  netIncomeBar: {
+    flexDirection: "row",
+    width: "100%",
+    height: 8,
+    borderRadius: 4,
+    overflow: "hidden",
+    marginTop: 16,
+  },
+  incomeBar: {
+    backgroundColor: "#10b981",
+  },
+  expenseBar: {
+    backgroundColor: "#ef4444",
+  },
+
+  // Cards
+  cardsRow: {
+    flexDirection: "row",
+    paddingHorizontal: 12,
+    marginBottom: 8,
+  },
+
+  // Section
+  section: {
+    margin: 16,
+    marginTop: 8,
+    padding: 16,
+    backgroundColor: "#fff",
+    borderRadius: 16,
+  },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#334155",
+    marginBottom: 12,
+    fontFamily: "VazirBold",
+  },
+
+  // Breakdown
+  breakdownItem: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: "#f1f5f9",
+  },
+  breakdownLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  breakdownDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  breakdownName: {
+    fontSize: 14,
+    color: "#475569",
+    fontFamily: "Vazir",
+  },
+  breakdownAmount: {
+    fontSize: 15,
+    fontWeight: "700",
+    fontFamily: "VazirBold",
+  },
 });

@@ -1,13 +1,16 @@
-import { DashboardSkeleton } from "@/components/LoadingSkeleton";
-import { StatCard } from "@/components/StatCard";
-import { TransactionItem } from "@/components/TransactionItem";
-import { Colors } from "@/constants/Colors";
-import { financeApi, formatCurrency } from "@/src/config/financeApi";
-import { Ionicons } from "@expo/vector-icons";
-import { useFocusEffect, useRouter } from "expo-router";
-import { useCallback, useState } from "react";
+// app/(admin)/financial/index.tsx
 import {
-  Alert,
+  DashboardSummary,
+  financeApi,
+  formatCurrency,
+} from "@/src/config/financeApi";
+import { FontAwesome5, Ionicons, MaterialIcons } from "@expo/vector-icons";
+import { LinearGradient } from "expo-linear-gradient";
+import { useRouter } from "expo-router";
+import { useEffect, useState } from "react";
+import {
+  ActivityIndicator,
+  Dimensions,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -15,765 +18,619 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
 
-// Navigation Menu Item Type
-interface QuickAction {
-  title: string;
-  icon: keyof typeof Ionicons.glyphMap;
-  route: string;
-  color: string;
-  description?: string;
-}
+const { width } = Dimensions.get("window");
+const CARD_GAP = 12;
+const CARD_WIDTH = (width - 48 - CARD_GAP) / 2; // 2 columns with padding
 
-export default function FinancialDashboard() {
+// Navigation items configuration
+const FINANCE_SECTIONS = [
+  {
+    id: "fees",
+    title: "فیس شاگردان",
+    subtitle: "تعرفه و تخصیص فیس",
+    icon: "school-outline",
+    iconPack: "Ionicons",
+    route: "/financial/fees",
+    color: "#3b82f6",
+    gradient: ["#3b82f6", "#2563eb"],
+  },
+  {
+    id: "fees",
+    title: "تعیین فیس شاگردان ",
+    subtitle: "تعرفه و تخصیص فیس",
+    icon: "school-outline",
+    iconPack: "Ionicons",
+    route: "/financial/fees/assign",
+    color: "#3b82f6",
+    gradient: ["#3b82f6", "#2563eb"],
+  },
+  {
+    id: "payments",
+    title: "پرداخت‌ها",
+    subtitle: "ثبت و تاریخچه پرداخت",
+    icon: "wallet-outline",
+    iconPack: "Ionicons",
+    route: "/financial/payments",
+    color: "#10b981",
+    gradient: ["#10b981", "#059669"],
+  },
+  {
+    id: "students",
+    title: "شاگردان بدهکار",
+    subtitle: "لیست بدهی شاگردان",
+    icon: "people-outline",
+    iconPack: "Ionicons",
+    route: "/financial/students",
+    color: "#f59e0b",
+    gradient: ["#f59e0b", "#d97706"],
+  },
+  {
+    id: "bulk",
+    title: "پرداخت جمعی",
+    subtitle: "وصول فیس صنف",
+    icon: "people-circle-outline",
+    iconPack: "Ionicons",
+    route: "/financial/payments/bulk",
+    color: "#8b5cf6",
+    gradient: ["#8b5cf6", "#7c3aed"],
+  },
+  {
+    id: "templates",
+    title: "قالب‌های فیس",
+    subtitle: "مدیریت قالب‌ها",
+    icon: "copy-outline",
+    iconPack: "Ionicons",
+    route: "/financial/fees/templates",
+    color: "#06b6d4",
+    gradient: ["#06b6d4", "#0891b2"],
+  },
+  {
+    id: "reports",
+    title: "راپورها",
+    subtitle: "گزارشات مالی",
+    icon: "bar-chart-outline",
+    iconPack: "Ionicons",
+    route: "/financial/reports",
+    color: "#ec4899",
+    gradient: ["#ec4899", "#db2777"],
+  },
+  {
+    id: "expenses",
+    title: "مصارف",
+    subtitle: "مدیریت هزینه‌ها",
+    icon: "trending-down-outline",
+    iconPack: "Ionicons",
+    route: "/financial/expenses",
+    color: "#ef4444",
+    gradient: ["#ef4444", "#dc2626"],
+  },
+  {
+    id: "salaries",
+    title: "معاشات",
+    subtitle: "پرداخت معاش اساتید",
+    icon: "cash-outline",
+    iconPack: "Ionicons",
+    route: "/financial/salaries",
+    color: "#f97316",
+    gradient: ["#f97316", "#ea580c"],
+  },
+  {
+    id: "academic-years",
+    title: "سال تعلیمی",
+    subtitle: "تنظیم سال تحصیلی",
+    icon: "calendar-outline",
+    iconPack: "Ionicons",
+    route: "/financial/settings/academic-years",
+    color: "#14b8a6",
+    gradient: ["#14b8a6", "#0d9488"],
+  },
+  {
+    id: "settings",
+    title: "تنظیمات",
+    subtitle: "تنظیمات مالی",
+    icon: "settings-outline",
+    iconPack: "Ionicons",
+    route: "/financial/settings",
+    color: "#64748b",
+    gradient: ["#64748b", "#475569"],
+  },
+];
+
+// Quick action buttons
+const QUICK_ACTIONS = [
+  {
+    id: "record-payment",
+    title: "ثبت پرداخت",
+    icon: "add-circle",
+    iconPack: "Ionicons",
+    route: "/financial/payments/record",
+    color: "#10b981",
+  },
+  {
+    id: "new-fee",
+    title: "فیس جدید",
+    icon: "create",
+    iconPack: "Ionicons",
+    route: "/financial/fees/create",
+    color: "#3b82f6",
+  },
+  {
+    id: "search-student",
+    title: "جستجوی شاگرد",
+    icon: "search",
+    iconPack: "Ionicons",
+    route: "/financial/students/search",
+    color: "#f59e0b",
+  },
+  {
+    id: "daily-report",
+    title: "راپور روزانه",
+    icon: "today",
+    iconPack: "Ionicons",
+    route: "/financial/reports/daily",
+    color: "#8b5cf6",
+  },
+];
+
+export default function FinanceIndexScreen() {
   const router = useRouter();
+  const [dashboard, setDashboard] = useState<DashboardSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [dashboard, setDashboard] = useState<any>(null);
+  const [error, setError] = useState<string | null>(null);
 
-  const loadDashboard = useCallback(async () => {
+  useEffect(() => {
+    fetchDashboard();
+  }, []);
+
+  const fetchDashboard = async () => {
     try {
-      const data = await financeApi.getDashboard();
-      setDashboard(data);
-    } catch (error) {
-      console.error("Error loading dashboard:", error);
-      Alert.alert("خطا", "مشکلی در بارگذاری داشبورد پیش آمد");
+      setError(null);
+      const response = await financeApi.getDashboard();
+      if (response.success) {
+        setDashboard(response.data);
+      }
+    } catch (err: any) {
+      setError(err.message || "Failed to load dashboard");
+      console.error("Dashboard error:", err);
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  };
 
-  useFocusEffect(
-    useCallback(() => {
-      loadDashboard();
-    }, [loadDashboard]),
-  );
-
-  const handleRefresh = () => {
+  const onRefresh = () => {
     setRefreshing(true);
-    loadDashboard();
+    fetchDashboard();
   };
 
-  const navigateTo = (route: string) => {
-    router.push(route as any);
+  const renderIcon = (item: any, size: number = 28) => {
+    const iconProps = {
+      name: item.icon,
+      size: size,
+      color: "#fff",
+    };
+
+    switch (item.iconPack) {
+      case "Ionicons":
+        return <Ionicons {...iconProps} />;
+      case "MaterialIcons":
+        return <MaterialIcons {...iconProps} />;
+      case "FontAwesome5":
+        return <FontAwesome5 {...iconProps} />;
+      default:
+        return <Ionicons {...iconProps} />;
+    }
   };
-
-  // =============================
-  // QUICK ACTIONS - COMPLETE NAVIGATION
-  // =============================
-
-  const paymentActions: QuickAction[] = [
-    {
-      title: "ثبت پرداخت",
-      icon: "cash",
-      route: "/(admin)/financial/fees/collections/single",
-      color: Colors.success,
-      description: "ثبت پرداخت شهریه دانش‌آموز",
-    },
-    {
-      title: "پرداخت گروهی",
-      icon: "people",
-      route: "/(admin)/financial/fees/collections/bulk",
-      color: Colors.success,
-      description: "ثبت پرداخت برای یک صنف کامل",
-    },
-    {
-      title: "پرداخت سریع",
-      icon: "flash",
-      route: "/(admin)/financial/fees/collections/quick",
-      color: Colors.info,
-      description: "پرداخت سریع با حداقل اطلاعات",
-    },
-  ];
-
-  const feeManagementActions: QuickAction[] = [
-    {
-      title: "همه شهریه‌ها",
-      icon: "list",
-      route: "/(admin)/financial/fees",
-      color: Colors.primary,
-      description: "مشاهده تمام شهریه‌های ثبت شده",
-    },
-    {
-      title: "فیس‌های معوقه",
-      icon: "alert-circle",
-      route: "/(admin)/financial/outstanding",
-      color: Colors.danger,
-      description: "شهریه‌های پرداخت نشده",
-    },
-    {
-      title: "تاریخچه پرداخت",
-      icon: "time",
-      route: "/(admin)/financial/fees/history",
-      color: Colors.primary,
-      description: "مشاهده تاریخچه تمام پرداخت‌ها",
-    },
-    {
-      title: "قالب‌های شهریه",
-      icon: "grid",
-      route: "/(admin)/financial/fees/templates",
-      color: Colors.info,
-      description: "مدیریت قالب‌های شهریه",
-    },
-    {
-      title: "ایجاد قالب جدید",
-      icon: "add-circle",
-      route: "/(admin)/financial/fees/templates/create",
-      color: Colors.primary,
-      description: "تعریف قالب شهریه جدید",
-    },
-    {
-      title: "تخصیص قالب",
-      icon: "people",
-      route: "/(admin)/financial/fees/templates/assign",
-      color: Colors.warning,
-      description: "تخصیص قالب به دانش‌آموزان",
-    },
-  ];
-
-  const studentActions: QuickAction[] = [
-    {
-      title: "لیست دانش‌آموزان",
-      icon: "school",
-      route: "/(admin)/financial/users/students",
-      color: Colors.primary,
-      description: "مشاهده تمام دانش‌آموزان",
-    },
-    {
-      title: "افزودن دانش‌آموز",
-      icon: "person-add",
-      route: "/(admin)/financial/users/students/create",
-      color: Colors.success,
-      description: "ثبت دانش‌آموز جدید",
-    },
-    {
-      title: "شهریه دانش‌آموزان",
-      icon: "document-text",
-      route: "/(admin)/financial/fees/students",
-      color: Colors.info,
-      description: "مشاهده شهریه هر دانش‌آموز",
-    },
-  ];
-
-  const expenseActions: QuickAction[] = [
-    {
-      title: "همه هزینه‌ها",
-      icon: "receipt",
-      route: "/(admin)/financial/expenses",
-      color: Colors.danger,
-      description: "مشاهده تمام هزینه‌ها",
-    },
-    {
-      title: "ثبت هزینه جدید",
-      icon: "add-circle",
-      route: "/(admin)/financial/expenses/create",
-      color: Colors.danger,
-      description: "ثبت هزینه جدید",
-    },
-    {
-      title: "دسته‌بندی هزینه‌ها",
-      icon: "pricetags",
-      route: "/(admin)/financial/expenses/categories",
-      color: Colors.warning,
-      description: "مدیریت دسته‌بندی هزینه‌ها",
-    },
-  ];
-
-  const salaryActions: QuickAction[] = [
-    {
-      title: "همه معاشات",
-      icon: "wallet",
-      route: "/(admin)/financial/salaries",
-      color: Colors.warning,
-      description: "مشاهده تمام معاشات",
-    },
-    {
-      title: "پرداخت معاش",
-      icon: "card",
-      route: "/(admin)/financial/salaries/payments/record",
-      color: Colors.success,
-      description: "ثبت پرداخت معاش معلم",
-    },
-    {
-      title: "تولید معاش ماهانه",
-      icon: "calendar",
-      route: "/(admin)/financial/salaries/generate",
-      color: Colors.primary,
-      description: "تولید معاش برای ماه جاری",
-    },
-    {
-      title: "معاش معلمان",
-      icon: "people",
-      route: "/(admin)/financial/salaries/teachers",
-      color: Colors.info,
-      description: "مشاهده معاش هر معلم",
-    },
-  ];
-
-  const reportActions: QuickAction[] = [
-    {
-      title: "گزارشات مالی",
-      icon: "stats-chart",
-      route: "/(admin)/financial/reports",
-      color: Colors.primary,
-      description: "مشاهده تمام گزارشات",
-    },
-    {
-      title: "صورت درآمد",
-      icon: "trending-up",
-      route: "/(admin)/financial/reports/income-statement",
-      color: Colors.success,
-      description: "گزارش درآمد و هزینه",
-    },
-    {
-      title: "جریان نقدی",
-      icon: "swap-horizontal",
-      route: "/(admin)/financial/reports/cash-flow",
-      color: Colors.info,
-      description: "گزارش جریان نقدینگی",
-    },
-    {
-      title: "وصول روزانه",
-      icon: "today",
-      route: "/(admin)/financial/reports/collections/daily",
-      color: Colors.success,
-      description: "گزارش وصولی‌های امروز",
-    },
-    {
-      title: "وصول ماهانه",
-      icon: "calendar",
-      route: "/(admin)/financial/reports/collections/monthly",
-      color: Colors.primary,
-      description: "گزارش وصولی‌های ماهانه",
-    },
-    {
-      title: "وصول به تفکیک صنف",
-      icon: "school",
-      route: "/(admin)/financial/reports/collections/by-class",
-      color: Colors.warning,
-      description: "گزارش وصولی هر صنف",
-    },
-    {
-      title: "گزارش معوقات",
-      icon: "alert-circle",
-      route: "/(admin)/financial/reports/outstanding",
-      color: Colors.danger,
-      description: "گزارش شهریه‌های معوقه",
-    },
-    {
-      title: "گزارش قدمت معوقات",
-      icon: "time",
-      route: "/(admin)/financial/reports/outstanding/aging",
-      color: Colors.warning,
-      description: "قدمت شهریه‌های معوقه",
-    },
-    {
-      title: "خروجی گزارش",
-      icon: "download",
-      route: "/(admin)/financial/reports/exports",
-      color: Colors.info,
-      description: "دانلود گزارشات",
-    },
-  ];
-
-  const userActions: QuickAction[] = [
-    {
-      title: "همه کاربران",
-      icon: "people",
-      route: "/(admin)/financial/users",
-      color: Colors.primary,
-      description: "مشاهده تمام کاربران",
-    },
-    {
-      title: "والدین",
-      icon: "home",
-      route: "/(admin)/financial/users/parents",
-      color: Colors.info,
-      description: "مدیریت والدین",
-    },
-    {
-      title: "معلمان",
-      icon: "briefcase",
-      route: "/(admin)/financial/users/teachers",
-      color: Colors.warning,
-      description: "مدیریت معلمان",
-    },
-  ];
-
-  // =============================
-  // DATA PROCESSING
-  // =============================
 
   if (loading) {
     return (
-      <SafeAreaView style={styles.container} edges={["top"]}>
-        <DashboardSkeleton />
-      </SafeAreaView>
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#3b82f6" />
+        <Text style={styles.loadingText}>در حال بارگذاری...</Text>
+      </View>
     );
   }
 
-  const summary = dashboard?.summary || {
-    totalIncome: 0,
-    monthlyIncome: 0,
-    yearlyIncome: 0,
-    pendingFees: 0,
-    pendingFeesCount: 0,
-    totalExpenses: 0,
-    monthlyExpenses: 0,
-    yearlyExpenses: 0,
-    pendingSalaries: 0,
-    totalStudents: 0,
-    netProfit: 0,
-    monthlyProfit: 0,
-  };
-
-  const recentPayments = dashboard?.recentPayments || [];
-  const recentExpenses = dashboard?.recentExpenses || [];
-
-  const totalIncome = summary.totalIncome || 0;
-  const monthlyIncome = summary.monthlyIncome || 0;
-  const monthlyExpenses = summary.monthlyExpenses || 0;
-  const pendingFees = summary.pendingFees || 0;
-  const pendingSalaries = summary.pendingSalaries || 0;
-  const netProfit = summary.netProfit || totalIncome - (summary.totalExpenses || 0);
-  const monthlyProfit = summary.monthlyProfit || monthlyIncome - monthlyExpenses;
-  const pendingFeesCount = summary.pendingFeesCount || 0;
-  const totalStudents = summary.totalStudents || 0;
-  const collectionRate = totalStudents > 0
-    ? Math.round(((totalStudents - pendingFeesCount) / totalStudents) * 100)
-    : 0;
-
-  const recentTransactions = [
-    ...recentPayments.map((p: any) => ({
-      id: `p-${p.id}`,
-      description: p.feeTitle || p.studentName || "پرداخت",
-      amount: p.amount,
-      date: p.date,
-      type: "INCOME" as const,
-      category: "فیس",
-    })),
-    ...recentExpenses.map((e: any) => ({
-      id: `e-${e.id}`,
-      description: e.description || "هزینه",
-      amount: e.amount,
-      date: e.date,
-      type: "EXPENSE" as const,
-      category: e.category || "سایر",
-    })),
-  ]
-    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-    .slice(0, 10);
-
-  const overdueFees = recentPayments.filter((p: any) => p.status === "OVERDUE").length;
-  const unpaidSalaries = pendingSalaries > 0 ? 1 : 0;
-
-  // Render a single action button
-  const renderActionButton = (action: QuickAction, index: number) => (
-    <TouchableOpacity
-      key={`${action.route}-${index}`}
-      style={styles.actionCard}
-      onPress={() => navigateTo(action.route)}
-      activeOpacity={0.7}
-    >
-      <View style={[styles.actionIcon, { backgroundColor: `${action.color}20` }]}>
-        <Ionicons name={action.icon} size={22} color={action.color} />
-      </View>
-      <View style={styles.actionInfo}>
-        <Text style={styles.actionTitle} numberOfLines={1}>
-          {action.title}
-        </Text>
-        {action.description && (
-          <Text style={styles.actionDescription} numberOfLines={2}>
-            {action.description}
-          </Text>
-        )}
-      </View>
-      <Ionicons name="chevron-forward" size={16} color={Colors.textSecondary} />
-    </TouchableOpacity>
-  );
-
-  // Render a section with title and action buttons
-  const renderSection = (title: string, icon: keyof typeof Ionicons.glyphMap, actions: QuickAction[]) => (
-    <View style={styles.menuSection}>
-      <View style={styles.menuSectionHeader}>
-        <Ionicons name={icon} size={18} color={Colors.primary} />
-        <Text style={styles.menuSectionTitle}>{title}</Text>
-      </View>
-      <View style={styles.menuItems}>
-        {actions.map((action, index) => renderActionButton(action, index))}
-      </View>
-    </View>
-  );
-
   return (
-    <SafeAreaView style={styles.container} edges={["top"]}>
+    <View style={styles.container}>
+      {/* Header */}
+      <View style={styles.header}>
+        <View>
+          <Text style={styles.headerTitle}>مدیریت مالی</Text>
+          <Text style={styles.headerSubtitle}>سیستم مدیریت فیس و پرداخت</Text>
+        </View>
+        <TouchableOpacity
+          style={styles.notificationButton}
+          onPress={() => router.push("/financial/notifications")}
+        >
+          <Ionicons name="notifications-outline" size={24} color="#1e293b" />
+          <View style={styles.notificationBadge}>
+            <Text style={styles.notificationBadgeText}>3</Text>
+          </View>
+        </TouchableOpacity>
+      </View>
+
       <ScrollView
-        style={styles.content}
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
         refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={handleRefresh}
-            colors={[Colors.primary]}
-          />
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
       >
-        {/* ============================= */}
-        {/* STATS SECTION */}
-        {/* ============================= */}
-        <Text style={styles.sectionTitle}>خلاصه مالی</Text>
-        <View style={styles.statsGrid}>
-          <StatCard
-            title="درآمد ماه جاری"
-            value={formatCurrency(monthlyIncome)}
-            icon="calendar"
-            color={Colors.success}
-            onPress={() => navigateTo("/(admin)/financial/reports/income-statement")}
-          />
-          <StatCard
-            title="هزینه ماه جاری"
-            value={formatCurrency(monthlyExpenses)}
-            icon="receipt"
-            color={Colors.danger}
-            onPress={() => navigateTo("/(admin)/financial/expenses")}
-          />
-          <StatCard
-            title="سود خالص ماه"
-            value={formatCurrency(monthlyProfit)}
-            icon="stats-chart"
-            color={monthlyProfit >= 0 ? Colors.success : Colors.danger}
-          />
-        </View>
-
-        <View style={styles.statsGrid}>
-          <StatCard
-            title="کل درآمد"
-            value={formatCurrency(totalIncome)}
-            icon="trending-up"
-            color={Colors.primary}
-          />
-          <StatCard
-            title="کل هزینه‌ها"
-            value={formatCurrency(summary.totalExpenses || 0)}
-            icon="trending-down"
-            color={Colors.warning}
-          />
-          <StatCard
-            title="نرخ وصول"
-            value={`${collectionRate}%`}
-            icon="checkmark-circle"
-            color={collectionRate >= 70 ? Colors.success : Colors.warning}
-          />
-        </View>
-
-        {/* Pending Summary */}
-        <View style={styles.pendingContainer}>
-          <TouchableOpacity
-            style={styles.pendingCard}
-            onPress={() => navigateTo("/(admin)/financial/outstanding")}
-          >
-            <Text style={styles.pendingLabel}>فیس‌های معوقه</Text>
-            <Text style={[styles.pendingValue, { color: Colors.danger }]}>
-              {formatCurrency(pendingFees)}
-            </Text>
-            {pendingFeesCount > 0 && (
-              <Text style={styles.pendingSubtext}>{pendingFeesCount} فقره در انتظار پرداخت</Text>
-            )}
-          </TouchableOpacity>
-          <View style={styles.pendingDivider} />
-          <TouchableOpacity
-            style={styles.pendingCard}
-            onPress={() => navigateTo("/(admin)/financial/salaries")}
-          >
-            <Text style={styles.pendingLabel}>معاشات پرداخت نشده</Text>
-            <Text style={[styles.pendingValue, { color: Colors.warning }]}>
-              {formatCurrency(pendingSalaries)}
-            </Text>
-            {unpaidSalaries > 0 && (
-              <Text style={styles.pendingSubtext}>معاشات در انتظار پرداخت</Text>
-            )}
-          </TouchableOpacity>
-        </View>
-
-        {/* ============================= */}
-        {/* QUICK ACTIONS - PAYMENTS */}
-        {/* ============================= */}
-        {renderSection("پرداخت‌ها", "cash", paymentActions)}
-
-        {/* ============================= */}
-        {/* FEE MANAGEMENT */}
-        {/* ============================= */}
-        {renderSection("مدیریت شهریه", "document-text", feeManagementActions)}
-
-        {/* ============================= */}
-        {/* STUDENTS */}
-        {/* ============================= */}
-        {renderSection("دانش‌آموزان", "school", studentActions)}
-
-        {/* ============================= */}
-        {/* EXPENSES */}
-        {/* ============================= */}
-        {renderSection("هزینه‌ها", "receipt", expenseActions)}
-
-        {/* ============================= */}
-        {/* SALARIES */}
-        {/* ============================= */}
-        {renderSection("معاشات", "wallet", salaryActions)}
-
-        {/* ============================= */}
-        {/* REPORTS */}
-        {/* ============================= */}
-        {renderSection("گزارشات", "stats-chart", reportActions)}
-
-        {/* ============================= */}
-        {/* USER MANAGEMENT */}
-        {/* ============================= */}
-        {renderSection("مدیریت کاربران", "people", userActions)}
-
-        {/* ============================= */}
-        {/* RECENT TRANSACTIONS */}
-        {/* ============================= */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>تراکنش‌های اخیر</Text>
-            <TouchableOpacity onPress={() => navigateTo("/(admin)/financial/fees/history")}>
-              <Text style={styles.seeAllText}>مشاهده همه</Text>
+        {/* Error Message */}
+        {error && (
+          <View style={styles.errorBanner}>
+            <Ionicons name="alert-circle" size={20} color="#ef4444" />
+            <Text style={styles.errorText}>{error}</Text>
+            <TouchableOpacity onPress={fetchDashboard}>
+              <Text style={styles.retryText}>تلاش مجدد</Text>
             </TouchableOpacity>
-          </View>
-
-          {recentTransactions.length === 0 ? (
-            <View style={styles.emptyState}>
-              <Ionicons name="cash-outline" size={48} color={Colors.textSecondary} />
-              <Text style={styles.emptyText}>تراکنشی ثبت نشده است</Text>
-            </View>
-          ) : (
-            recentTransactions.map((transaction) => (
-              <TransactionItem
-                key={transaction.id}
-                id={typeof transaction.id === "string" ? parseInt(transaction.id.replace(/[^0-9]/g, "")) || 0 : transaction.id}
-                title={transaction.description}
-                amount={transaction.amount}
-                date={transaction.date}
-                type={transaction.type}
-                category={transaction.category}
-              />
-            ))
-          )}
-        </View>
-
-        {/* Alerts Section */}
-        {(overdueFees > 0 || unpaidSalaries > 0) && (
-          <View style={styles.alertsContainer}>
-            <Text style={styles.alertsTitle}>هشدارها</Text>
-            {overdueFees > 0 && (
-              <TouchableOpacity
-                style={styles.alertItem}
-                onPress={() => navigateTo("/(admin)/financial/outstanding")}
-              >
-                <Ionicons name="alert-circle" size={20} color={Colors.danger} />
-                <Text style={styles.alertText}>{overdueFees} دانش‌آموز شهریه معوقه دارند</Text>
-                <Ionicons name="chevron-forward" size={16} color={Colors.textSecondary} />
-              </TouchableOpacity>
-            )}
-            {unpaidSalaries > 0 && (
-              <TouchableOpacity
-                style={styles.alertItem}
-                onPress={() => navigateTo("/(admin)/financial/salaries")}
-              >
-                <Ionicons name="warning" size={20} color={Colors.warning} />
-                <Text style={styles.alertText}>معاشات پرداخت نشده وجود دارد</Text>
-                <Ionicons name="chevron-forward" size={16} color={Colors.textSecondary} />
-              </TouchableOpacity>
-            )}
           </View>
         )}
 
-        <View style={{ height: 20 }} />
+        {/* Summary Cards */}
+        {dashboard && (
+          <View style={styles.summaryContainer}>
+            <Text style={styles.sectionTitle}>خلاصه مالی</Text>
+            <View style={styles.summaryGrid}>
+              {/* Monthly Collection */}
+              <View style={styles.summaryCard}>
+                <LinearGradient
+                  colors={["#3b82f6", "#2563eb"]}
+                  style={styles.summaryGradient}
+                >
+                  <Ionicons name="calendar" size={20} color="#fff" />
+                  <Text style={styles.summaryLabel}>وصولی این ماه</Text>
+                  <Text style={styles.summaryAmount}>
+                    {formatCurrency(dashboard.monthlyCollection)}
+                  </Text>
+                </LinearGradient>
+              </View>
+
+              {/* Outstanding */}
+              <View style={styles.summaryCard}>
+                <LinearGradient
+                  colors={["#ef4444", "#dc2626"]}
+                  style={styles.summaryGradient}
+                >
+                  <Ionicons name="alert-circle" size={20} color="#fff" />
+                  <Text style={styles.summaryLabel}>باقیمانده</Text>
+                  <Text style={styles.summaryAmount}>
+                    {formatCurrency(dashboard.totalOutstanding)}
+                  </Text>
+                </LinearGradient>
+              </View>
+
+              {/* Active Assignments */}
+              <View style={styles.summaryCard}>
+                <LinearGradient
+                  colors={["#10b981", "#059669"]}
+                  style={styles.summaryGradient}
+                >
+                  <Ionicons name="document-text" size={20} color="#fff" />
+                  <Text style={styles.summaryLabel}>فیس‌های فعال</Text>
+                  <Text style={styles.summaryAmount}>
+                    {dashboard.activeAssignments}
+                  </Text>
+                </LinearGradient>
+              </View>
+
+              {/* Total Assignments */}
+              <View style={styles.summaryCard}>
+                <LinearGradient
+                  colors={["#8b5cf6", "#7c3aed"]}
+                  style={styles.summaryGradient}
+                >
+                  <Ionicons name="layers" size={20} color="#fff" />
+                  <Text style={styles.summaryLabel}>مجموع فیس‌ها</Text>
+                  <Text style={styles.summaryAmount}>
+                    {dashboard.totalAssignments}
+                  </Text>
+                </LinearGradient>
+              </View>
+            </View>
+          </View>
+        )}
+
+        {/* Quick Actions */}
+        <View style={styles.quickActionsContainer}>
+          <Text style={styles.sectionTitle}>دسترسی سریع</Text>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.quickActionsScroll}
+          >
+            {QUICK_ACTIONS.map((action) => (
+              <TouchableOpacity
+                key={action.id}
+                style={styles.quickActionButton}
+                onPress={() => router.push(action.route as any)}
+              >
+                <View
+                  style={[
+                    styles.quickActionIcon,
+                    { backgroundColor: action.color + "15" },
+                  ]}
+                >
+                  {renderIcon(action, 24)}
+                </View>
+                <Text style={styles.quickActionText}>{action.title}</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
+
+        {/* Main Navigation Grid */}
+        <View style={styles.navigationContainer}>
+          <Text style={styles.sectionTitle}>بخش‌های مالی</Text>
+          <View style={styles.navigationGrid}>
+            {FINANCE_SECTIONS.map((section) => (
+              <TouchableOpacity
+                key={section.id}
+                style={styles.navCard}
+                onPress={() => router.push(section.route as any)}
+                activeOpacity={0.7}
+              >
+                <LinearGradient
+                  colors={section.gradient as [string, string]}
+                  style={styles.navCardGradient}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                >
+                  <View style={styles.navIconContainer}>
+                    {renderIcon(section)}
+                  </View>
+                  <View style={styles.navTextContainer}>
+                    <Text style={styles.navTitle}>{section.title}</Text>
+                    <Text style={styles.navSubtitle}>{section.subtitle}</Text>
+                  </View>
+                  <Ionicons
+                    name="chevron-forward"
+                    size={20}
+                    color="rgba(255,255,255,0.7)"
+                    style={styles.navArrow}
+                  />
+                </LinearGradient>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+
+        {/* Bottom Padding */}
+        <View style={{ height: 40 }} />
       </ScrollView>
-    </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.background,
+    backgroundColor: "#f1f5f9",
   },
-  content: {
+  loadingContainer: {
     flex: 1,
-    padding: 16,
-  },
-  statsGrid: {
-    flexDirection: "row",
-    gap: 8,
-    marginBottom: 12,
-  },
-  pendingContainer: {
-    flexDirection: "row",
-    backgroundColor: Colors.card,
-    borderRadius: 14,
-    padding: 16,
-    marginBottom: 20,
-    alignItems: "center",
-  },
-  pendingCard: {
-    flex: 1,
-    alignItems: "center",
-  },
-  pendingDivider: {
-    width: 1,
-    height: 40,
-    backgroundColor: Colors.border,
-    marginHorizontal: 12,
-  },
-  pendingLabel: {
-    fontSize: 11,
-    color: Colors.textSecondary,
-    fontFamily: "Vazirmatn",
-    marginBottom: 4,
-  },
-  pendingValue: {
-    fontSize: 18,
-    fontWeight: "bold",
-    fontFamily: "Vazirmatn",
-    marginBottom: 2,
-  },
-  pendingSubtext: {
-    fontSize: 9,
-    color: Colors.textSecondary,
-    fontFamily: "Vazirmatn",
-  },
-
-  // Menu Sections
-  menuSection: {
-    marginBottom: 20,
-    backgroundColor: Colors.card,
-    borderRadius: 14,
-    padding: 14,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 3,
-    elevation: 2,
-  },
-  menuSectionHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    marginBottom: 12,
-    paddingBottom: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
-  },
-  menuSectionTitle: {
-    fontSize: 15,
-    fontWeight: "bold",
-    color: Colors.text,
-    fontFamily: "Vazirmatn",
-  },
-  menuItems: {
-    gap: 6,
-  },
-
-  // Action Button
-  actionCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: Colors.background,
-    borderRadius: 10,
-    padding: 12,
-    gap: 10,
-  },
-  actionIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
     justifyContent: "center",
     alignItems: "center",
+    backgroundColor: "#f1f5f9",
   },
-  actionInfo: {
-    flex: 1,
-  },
-  actionTitle: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: Colors.text,
-    fontFamily: "Vazirmatn",
-    marginBottom: 2,
-  },
-  actionDescription: {
-    fontSize: 10,
-    color: Colors.textSecondary,
-    fontFamily: "Vazirmatn",
+  loadingText: {
+    marginTop: 12,
+    fontSize: 16,
+    color: "#64748b",
+    fontFamily: "Vazir",
   },
 
-  // Section
-  section: {
-    marginBottom: 24,
-  },
-  sectionHeader: {
+  // Header
+  header: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 14,
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    paddingBottom: 12,
+    backgroundColor: "#fff",
+    borderBottomWidth: 1,
+    borderBottomColor: "#e2e8f0",
   },
-  sectionTitle: {
-    fontSize: 17,
-    fontWeight: "bold",
-    color: Colors.text,
-    fontFamily: "Vazirmatn",
-    marginBottom: 12,
+  headerTitle: {
+    fontSize: 24,
+    fontWeight: "700",
+    color: "#1e293b",
+    fontFamily: "VazirBold",
   },
-  seeAllText: {
-    fontSize: 13,
-    color: Colors.primary,
-    fontFamily: "Vazirmatn",
+  headerSubtitle: {
+    fontSize: 14,
+    color: "#64748b",
+    marginTop: 2,
+    fontFamily: "Vazir",
   },
-
-  // Empty State
-  emptyState: {
+  notificationButton: {
+    position: "relative",
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: "#f1f5f9",
+    justifyContent: "center",
     alignItems: "center",
-    paddingVertical: 40,
-    backgroundColor: Colors.card,
-    borderRadius: 14,
   },
-  emptyText: {
-    fontSize: 14,
-    color: Colors.textSecondary,
-    fontFamily: "Vazirmatn",
-    marginTop: 10,
+  notificationBadge: {
+    position: "absolute",
+    top: 8,
+    right: 8,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: "#ef4444",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  notificationBadgeText: {
+    color: "#fff",
+    fontSize: 11,
+    fontWeight: "700",
+    fontFamily: "Vazir",
   },
 
-  // Alerts
-  alertsContainer: {
-    backgroundColor: `${Colors.warning}10`,
-    borderRadius: 14,
-    padding: 14,
-    marginBottom: 20,
+  // ScrollView
+  scrollView: {
+    flex: 1,
   },
-  alertsTitle: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: Colors.text,
-    fontFamily: "Vazirmatn",
-    marginBottom: 10,
-    textAlign: "right",
+  scrollContent: {
+    padding: 16,
   },
-  alertItem: {
+
+  // Error Banner
+  errorBanner: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
-    paddingVertical: 10,
-    borderTopWidth: 1,
-    borderTopColor: `${Colors.border}50`,
+    backgroundColor: "#fef2f2",
+    borderWidth: 1,
+    borderColor: "#fecaca",
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 16,
   },
-  alertText: {
+  errorText: {
     flex: 1,
+    marginLeft: 8,
+    color: "#dc2626",
+    fontSize: 14,
+    fontFamily: "Vazir",
+  },
+  retryText: {
+    color: "#3b82f6",
+    fontWeight: "600",
+    fontSize: 14,
+    fontFamily: "Vazir",
+  },
+
+  // Section Title
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: "#1e293b",
+    marginBottom: 12,
+    fontFamily: "VazirBold",
+  },
+
+  // Summary Cards
+  summaryContainer: {
+    marginBottom: 20,
+  },
+  summaryGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: CARD_GAP,
+  },
+  summaryCard: {
+    width: CARD_WIDTH,
+    borderRadius: 16,
+    overflow: "hidden",
+    elevation: 3,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+  },
+  summaryGradient: {
+    padding: 16,
+    minHeight: 100,
+    justifyContent: "space-between",
+  },
+  summaryLabel: {
     fontSize: 13,
-    color: Colors.text,
-    fontFamily: "Vazirmatn",
-    textAlign: "right",
+    color: "rgba(255,255,255,0.8)",
+    marginTop: 8,
+    fontFamily: "Vazir",
+  },
+  summaryAmount: {
+    fontSize: 22,
+    fontWeight: "700",
+    color: "#fff",
+    marginTop: 4,
+    fontFamily: "VazirBold",
+  },
+
+  // Quick Actions
+  quickActionsContainer: {
+    marginBottom: 20,
+  },
+  quickActionsScroll: {
+    gap: 12,
+    paddingRight: 8,
+  },
+  quickActionButton: {
+    alignItems: "center",
+    width: 80,
+  },
+  quickActionIcon: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 8,
+    borderWidth: 2,
+    borderColor: "rgba(0,0,0,0.05)",
+  },
+  quickActionText: {
+    fontSize: 12,
+    color: "#475569",
+    textAlign: "center",
+    fontFamily: "Vazir",
+  },
+
+  // Navigation Grid
+  navigationContainer: {
+    marginBottom: 16,
+  },
+  navigationGrid: {
+    gap: CARD_GAP,
+  },
+  navCard: {
+    borderRadius: 16,
+    overflow: "hidden",
+    elevation: 4,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+  },
+  navCardGradient: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 20,
+    minHeight: 80,
+  },
+  navIconContainer: {
+    width: 52,
+    height: 52,
+    borderRadius: 16,
+    backgroundColor: "rgba(255,255,255,0.2)",
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 16,
+  },
+  navTextContainer: {
+    flex: 1,
+  },
+  navTitle: {
+    fontSize: 17,
+    fontWeight: "700",
+    color: "#fff",
+    fontFamily: "VazirBold",
+  },
+  navSubtitle: {
+    fontSize: 13,
+    color: "rgba(255,255,255,0.75)",
+    marginTop: 4,
+    fontFamily: "Vazir",
+  },
+  navArrow: {
+    marginLeft: 8,
   },
 });

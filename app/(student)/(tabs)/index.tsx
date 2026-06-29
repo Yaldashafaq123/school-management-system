@@ -576,7 +576,7 @@ export default function StudentDashboard() {
                   <TouchableOpacity
                     style={styles.continueButton}
                     onPress={() =>
-                      router.push(`/(student)/course/${course.id}/lesson`)
+                      router.push(`/(student)/course/${course.id}`)
                     }
                   >
                     <Ionicons name="play-circle" size={20} color="#fff" />

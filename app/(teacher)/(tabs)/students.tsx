@@ -23,7 +23,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 
 interface Student {
   id: number;
-  name: string;
+  fullName: string;
   email: string;
   profile_image: string;
   courses: string[];
@@ -125,7 +125,7 @@ export default function StudentsManagement() {
     if (searchQuery) {
       filtered = filtered.filter(
         (student) =>
-          student.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          student.fullName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
           student.email?.toLowerCase().includes(searchQuery.toLowerCase()),
       );
     }
@@ -141,7 +141,7 @@ export default function StudentsManagement() {
     filtered.sort((a, b) => {
       switch (sortBy) {
         case "name":
-          return (a.name || "").localeCompare(b.name || "");
+          return (a.fullName || "").localeCompare(b.fullName || "");
         case "progress":
           return (b.progress || 0) - (a.progress || 0);
         case "recent":
@@ -342,7 +342,7 @@ export default function StudentsManagement() {
       />
 
       <View style={styles.studentInfo}>
-        <Text style={styles.studentName}>{student.name || "نامشخص"}</Text>
+        <Text style={styles.studentName}>{student.fullName || "نامشخص"}</Text>
         <Text style={styles.studentEmail}>{student.email || ""}</Text>
         <View style={styles.studentMeta}>
           <View style={styles.metaItem}>

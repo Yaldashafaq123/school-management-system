@@ -1,37 +1,26 @@
-import { Stack } from "expo-router";
+// app/(parent)/_layout.tsx
+import { Redirect, Stack } from "expo-router";
+import { useAuth } from "../../contexts/AuthContext";
 
 export default function ParentLayout() {
-  return (
-    <Stack>
-      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-      <Stack.Screen
-        name="child-switch"
-        options={{
-          title: "انتخاب فرزند",
-          presentation: "modal",
-        }}
-      />
+  const { user, loading, isInitialized } = useAuth();
 
-      <Stack.Screen
-        name="events"
-        options={{
-          title: "رویدادها",
-        }}
-      />
-      <Stack.Screen
-        name="fees/invoice/[id]"
-        options={{
-          title: "جزییات پرداخت",
-          presentation: "modal",
-        }}
-      />
-      <Stack.Screen
-        name="fees/history"
-        options={{
-          title: "تاریخچه پرداخت",
-          presentation: "modal",
-        }}
-      />
+  if (loading || !isInitialized) return null;
+
+  if (!user) return <Redirect href="/(auth)/login" />;
+
+  const userRole = user.role?.toUpperCase();
+
+  if (userRole !== "PARENT") {
+    if (userRole === "ADMIN") return <Redirect href="/(admin)/(tabs)" />;
+    if (userRole === "TEACHER") return <Redirect href="/(teacher)/(tabs)" />;
+    if (userRole === "STUDENT") return <Redirect href="/(student)/(tabs)" />;
+    return <Redirect href="/(auth)/login" />;
+  }
+
+  return (
+    <Stack screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="(tabs)" />
     </Stack>
   );
 }

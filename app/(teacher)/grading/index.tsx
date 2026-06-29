@@ -1,4 +1,3 @@
-// app/(teacher)/grading/index.tsx - FULLY FIXED VERSION
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
@@ -61,21 +60,48 @@ export default function GradingScreen() {
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [selectedSubject, setSelectedSubject] = useState<Subject | null>(null);
   const [examType, setExamType] = useState<string>("MONTHLY");
-  const [selectedMonth, setSelectedMonth] = useState<number>(new Date().getMonth() + 1);
+  const [selectedMonth, setSelectedMonth] = useState<number>(
+    new Date().getMonth() + 1,
+  );
   const [students, setStudents] = useState<StudentGrade[]>([]);
   const [examData, setExamData] = useState<ExamData | null>(null);
   const [saving, setSaving] = useState(false);
   const [step, setStep] = useState<"class" | "subject" | "grading">("class");
 
   const persianMonths = [
-    "فروردین", "اردیبهشت", "خرداد", "تیر", "مرداد", "شهریور",
-    "مهر", "آبان", "آذر", "دی", "بهمن", "اسفند"
+    "حمل",
+    "ثور",
+    "جوزا",
+    "سرطان",
+    "اسد",
+    "سنبله",
+    "میزاد",
+    "عقرب",
+    "قوس",
+    "جدی",
+    "دلو",
+    "حوت",
   ];
 
   const examTypes = [
-    { id: "MONTHLY", label: "امتحان ماهانه", icon: "calendar", color: Colors.primary },
-    { id: "HALF_YEARLY", label: "امتحان چهارنیماه (۴۰٪)", icon: "trending-up", color: Colors.warning },
-    { id: "FINAL", label: "امتحان نهایی (۶۰٪)", icon: "school", color: Colors.danger }
+    {
+      id: "MONTHLY",
+      label: "امتحان ماهانه",
+      icon: "calendar",
+      color: Colors.primary,
+    },
+    {
+      id: "HALF_YEARLY",
+      label: "امتحان چهارنیماه (۴۰٪)",
+      icon: "trending-up",
+      color: Colors.warning,
+    },
+    {
+      id: "FINAL",
+      label: "امتحان نهایی (۶۰٪)",
+      icon: "school",
+      color: Colors.danger,
+    },
   ];
 
   const fetchClasses = async () => {
@@ -83,7 +109,7 @@ export default function GradingScreen() {
       console.log("Fetching classes for teacher...");
       const response = await apiRequest("/teacher/classes");
       console.log("Classes response:", response);
-      
+
       if (response.success && response.data && response.data.length > 0) {
         const mappedClasses = response.data.map((cls: any) => ({
           id: cls.id,
@@ -92,7 +118,7 @@ export default function GradingScreen() {
           studentCount: cls.students || 0,
           grade: cls.grade,
           role: cls.role,
-          isActive: cls.isActive
+          isActive: cls.isActive,
         }));
         setClasses(mappedClasses);
         console.log("Classes set:", mappedClasses.length);
@@ -112,7 +138,7 @@ export default function GradingScreen() {
       console.log(`Fetching subjects for class ID: ${classId}`);
       const response = await apiRequest(`/teacher/classes/${classId}/subjects`);
       console.log("Subjects response:", response);
-      
+
       if (response.success && response.data && response.data.length > 0) {
         setSubjects(response.data);
         console.log("Subjects set:", response.data.length);
@@ -130,7 +156,7 @@ export default function GradingScreen() {
 
   const fetchOrCreateExam = async () => {
     if (!selectedClass || !selectedSubject) return;
-    
+
     try {
       setLoading(true);
       const response = await apiRequest("/teacher/exams/get-or-create", {
@@ -140,13 +166,23 @@ export default function GradingScreen() {
           subjectId: selectedSubject.id,
           examType: examType,
           month: examType === "MONTHLY" ? selectedMonth : null,
-          year: new Date().getFullYear()
-        })
+          year: new Date().getFullYear(),
+        }),
       });
-      
+
+      console.log("Exam response:", response);
+
       if (response.success && response.data) {
         setExamData(response.data.exam);
-        setStudents(response.data.students);
+
+        if (response.data.students && Array.isArray(response.data.students)) {
+          setStudents(response.data.students);
+          console.log(`✅ Set ${response.data.students.length} students`);
+        } else {
+          console.warn("⚠️ No students found in response");
+          setStudents([]);
+        }
+
         setStep("grading");
       } else {
         Alert.alert("خطا", response.message || "مشکلی در بارگذاری پیش آمد");
@@ -160,28 +196,45 @@ export default function GradingScreen() {
   };
 
   const handleSaveGrades = async (publish: boolean = false) => {
-    if (!examData) return;
-    
+    if (!examData || !selectedClass || !selectedSubject) {
+      Alert.alert("خطا", "اطلاعات امتحان کامل نیست");
+      return;
+    }
+
     setSaving(true);
     try {
-      const gradesToSave = students.map(student => ({
+      const gradesToSave = students.map((student) => ({
         studentId: student.id,
-        score: student.score,
-        feedback: student.feedback
+        marks: parseFloat(student.score) || 0,
+        feedback: student.feedback || "",
       }));
-      
+
+      const payload = {
+        examId: examData.id,
+        classId: selectedClass.id,
+        subjectId: selectedSubject.id,
+        examType: examData.type,
+        month: examData.month || null,
+        year: examData.year || new Date().getFullYear(),
+        grades: gradesToSave,
+        publishResults: publish,
+      };
+
+      console.log("📤 Saving grades with payload:", payload);
+
       const response = await apiRequest("/teacher/exams/save-grades", {
         method: "POST",
-        body: JSON.stringify({
-          examId: examData.id,
-          grades: gradesToSave,
-          publishResults: publish
-        })
+        body: JSON.stringify(payload),
       });
-      
+
       if (response.success) {
-        Alert.alert("موفقیت", publish ? "نمرات با موفقیت ثبت و اعلام شد" : "نمرات با موفقیت ذخیره شد");
-        setStudents(prev => prev.map(s => ({ ...s, isSaved: true })));
+        Alert.alert(
+          "موفقیت",
+          publish
+            ? "نمرات با موفقیت ثبت و اعلام شد"
+            : "نمرات با موفقیت ذخیره شد",
+        );
+        setStudents((prev) => prev.map((s) => ({ ...s, isSaved: true })));
         if (publish) {
           router.back();
         }
@@ -198,29 +251,31 @@ export default function GradingScreen() {
 
   const handleGradeChange = (studentId: number, value: string) => {
     const numValue = parseFloat(value);
-    const isValid = isNaN(numValue) || (numValue >= 0 && numValue <= (examData?.maxScore || 100));
-    
+    const isValid =
+      isNaN(numValue) ||
+      (numValue >= 0 && numValue <= (examData?.maxScore || 100));
+
     if (!isValid && value !== "") {
       Alert.alert("خطا", `نمره باید بین 0 تا ${examData?.maxScore} باشد`);
       return;
     }
-    
-    setStudents(prev =>
-      prev.map(student =>
+
+    setStudents((prev) =>
+      prev.map((student) =>
         student.id === studentId
           ? { ...student, score: value, isSaved: false }
-          : student
-      )
+          : student,
+      ),
     );
   };
 
   const handleFeedbackChange = (studentId: number, value: string) => {
-    setStudents(prev =>
-      prev.map(student =>
+    setStudents((prev) =>
+      prev.map((student) =>
         student.id === studentId
           ? { ...student, feedback: value, isSaved: false }
-          : student
-      )
+          : student,
+      ),
     );
   };
 
@@ -241,11 +296,17 @@ export default function GradingScreen() {
   const renderClassSelection = () => (
     <View style={styles.container}>
       <Text style={styles.title}>انتخاب صنف</Text>
-      <Text style={styles.subtitle}>صنفی را که می‌خواهید نمرات را برای آن وارد کنید انتخاب نمایید</Text>
+      <Text style={styles.subtitle}>
+        صنفی را که می‌خواهید نمرات را برای آن وارد کنید انتخاب نمایید
+      </Text>
 
       {classes.length === 0 ? (
         <View style={styles.emptyState}>
-          <Ionicons name="school-outline" size={60} color={Colors.textSecondary} />
+          <Ionicons
+            name="school-outline"
+            size={60}
+            color={Colors.textSecondary}
+          />
           <Text style={styles.emptyStateTitle}>هیچ صنفی یافت نشد</Text>
           <Text style={styles.emptyStateSubtitle}>
             شما به هیچ صنفی اختصاص داده نشده‌اید.
@@ -256,6 +317,9 @@ export default function GradingScreen() {
         <FlatList
           data={classes}
           keyExtractor={(item) => item.id.toString()}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
+          }
           renderItem={({ item }) => (
             <TouchableOpacity
               style={styles.classCard}
@@ -279,7 +343,11 @@ export default function GradingScreen() {
                   {item.role === "teacher" && " • مدرس مضمون"}
                 </Text>
               </View>
-              <Ionicons name="chevron-forward" size={20} color={Colors.textSecondary} />
+              <Ionicons
+                name="chevron-forward"
+                size={20}
+                color={Colors.textSecondary}
+              />
             </TouchableOpacity>
           )}
           contentContainerStyle={styles.listContent}
@@ -290,17 +358,26 @@ export default function GradingScreen() {
 
   const renderSubjectSelection = () => (
     <View style={styles.container}>
-      <TouchableOpacity onPress={() => setStep("class")} style={styles.backButton}>
+      <TouchableOpacity
+        onPress={() => setStep("class")}
+        style={styles.backButton}
+      >
         <Ionicons name="arrow-forward" size={20} color={Colors.primary} />
         <Text style={styles.backButtonText}>بازگشت به انتخاب صنف</Text>
       </TouchableOpacity>
 
       <Text style={styles.title}>انتخاب مضمون</Text>
-      <Text style={styles.subtitle}>صنف {selectedClass?.name} - مضمون مورد نظر را انتخاب کنید</Text>
+      <Text style={styles.subtitle}>
+        صنف {selectedClass?.name} - مضمون مورد نظر را انتخاب کنید
+      </Text>
 
       {subjects.length === 0 ? (
         <View style={styles.emptyState}>
-          <Ionicons name="book-outline" size={60} color={Colors.textSecondary} />
+          <Ionicons
+            name="book-outline"
+            size={60}
+            color={Colors.textSecondary}
+          />
           <Text style={styles.emptyStateTitle}>هیچ مضمونی یافت نشد</Text>
           <Text style={styles.emptyStateSubtitle}>
             برای این صنف هیچ مضمونی ثبت نشده است.
@@ -311,6 +388,12 @@ export default function GradingScreen() {
           <FlatList
             data={subjects}
             keyExtractor={(item) => item.id.toString()}
+            refreshControl={
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={handleRefresh}
+              />
+            }
             renderItem={({ item }) => (
               <TouchableOpacity
                 style={styles.subjectCard}
@@ -325,13 +408,16 @@ export default function GradingScreen() {
                 <View style={styles.subjectInfo}>
                   <Text style={styles.subjectName}>{item.name}</Text>
                 </View>
-                <Ionicons name="chevron-forward" size={20} color={Colors.textSecondary} />
+                <Ionicons
+                  name="chevron-forward"
+                  size={20}
+                  color={Colors.textSecondary}
+                />
               </TouchableOpacity>
             )}
             contentContainerStyle={styles.listContent}
           />
 
-          {/* Exam Type Selection */}
           <Text style={styles.sectionTitle}>نوع امتحان</Text>
           <View style={styles.examTypesRow}>
             {examTypes.map((type) => (
@@ -339,34 +425,47 @@ export default function GradingScreen() {
                 key={type.id}
                 style={[
                   styles.examTypeCard,
-                  examType === type.id && { borderColor: type.color, backgroundColor: `${type.color}10` }
+                  examType === type.id && {
+                    borderColor: type.color,
+                    backgroundColor: `${type.color}10`,
+                  },
                 ]}
                 onPress={() => setExamType(type.id)}
               >
-                <Ionicons name={type.icon as any} size={24} color={type.color} />
+                <Ionicons
+                  name={type.icon as any}
+                  size={24}
+                  color={type.color}
+                />
                 <Text style={styles.examTypeLabel}>{type.label}</Text>
               </TouchableOpacity>
             ))}
           </View>
 
-          {/* Month Selection for Monthly Exams */}
           {examType === "MONTHLY" && (
             <View style={styles.monthSection}>
               <Text style={styles.label}>ماه امتحان</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.monthsScroll}>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                style={styles.monthsScroll}
+              >
                 {persianMonths.map((month, index) => (
                   <TouchableOpacity
                     key={index}
                     style={[
                       styles.monthChip,
-                      selectedMonth === index + 1 && styles.monthChipActive
+                      selectedMonth === index + 1 && styles.monthChipActive,
                     ]}
                     onPress={() => setSelectedMonth(index + 1)}
                   >
-                    <Text style={[
-                      styles.monthChipText,
-                      selectedMonth === index + 1 && styles.monthChipTextActive
-                    ]}>
+                    <Text
+                      style={[
+                        styles.monthChipText,
+                        selectedMonth === index + 1 &&
+                          styles.monthChipTextActive,
+                      ]}
+                    >
                       {month}
                     </Text>
                   </TouchableOpacity>
@@ -387,130 +486,214 @@ export default function GradingScreen() {
     </View>
   );
 
-  const renderGrading = () => (
-    <View style={styles.container}>
-      <TouchableOpacity onPress={() => setStep("subject")} style={styles.backButton}>
-        <Ionicons name="arrow-forward" size={20} color={Colors.primary} />
-        <Text style={styles.backButtonText}>بازگشت به انتخاب مضمون</Text>
-      </TouchableOpacity>
-
-      <View style={styles.gradingHeader}>
-        <View>
-          <Text style={styles.title}>{examData?.name}</Text>
-          <Text style={styles.subtitle}>
-            {selectedClass?.name} - {selectedSubject?.name}
-          </Text>
-          <Text style={styles.maxScoreHint}>نمرات باید بین 0 تا {examData?.maxScore} باشند</Text>
-        </View>
-        <View style={styles.headerButtons}>
+  const renderGrading = () => {
+    if (!students || students.length === 0) {
+      return (
+        <View style={styles.container}>
           <TouchableOpacity
-            style={[styles.saveButton, saving && styles.saveButtonDisabled]}
-            onPress={() => handleSaveGrades(false)}
-            disabled={saving}
+            onPress={() => setStep("subject")}
+            style={styles.backButton}
           >
-            <Ionicons name="save" size={18} color="#fff" />
-            <Text style={styles.saveButtonText}>ذخیره</Text>
+            <Ionicons name="arrow-forward" size={20} color={Colors.primary} />
+            <Text style={styles.backButtonText}>بازگشت به انتخاب مضمون</Text>
           </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.publishButton, saving && styles.saveButtonDisabled]}
-            onPress={() => {
-              Alert.alert(
-                "اعلام نتایج",
-                "آیا از اعلام نتایج این امتحان اطمینان دارید؟",
-                [
-                  { text: "لغو", style: "cancel" },
-                  { text: "اعلام", onPress: () => handleSaveGrades(true) }
-                ]
-              );
-            }}
-            disabled={saving}
-          >
-            <Ionicons name="megaphone" size={18} color="#fff" />
-            <Text style={styles.saveButtonText}>اعلام نتایج</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-        <View>
-          {/* Table Header */}
-          <View style={styles.tableHeader}>
-            <Text style={[styles.tableCellText, styles.numberColumn]}>#</Text>
-            <Text style={[styles.tableCellText, styles.nameColumn]}>نام دانش‌آموز</Text>
-            <Text style={[styles.tableCellText, styles.scoreColumn]}>نمره</Text>
-            <Text style={[styles.tableCellText, styles.feedbackColumn]}>نظر استاد</Text>
-            <Text style={[styles.tableCellText, styles.statusColumn]}>وضعیت</Text>
+          <View style={styles.emptyState}>
+            <Ionicons
+              name="people-outline"
+              size={60}
+              color={Colors.textSecondary}
+            />
+            <Text style={styles.emptyStateTitle}>هیچ دانش‌آموزی یافت نشد</Text>
+            <Text style={styles.emptyStateSubtitle}>
+              برای این امتحان هیچ دانش‌آموزی ثبت نشده است.
+            </Text>
           </View>
+        </View>
+      );
+    }
 
-          {/* Table Rows */}
-          {students.map((student, index) => (
-            <View key={student.id} style={styles.tableRow}>
-              <Text style={[styles.tableCellText, styles.numberColumn]}>{index + 1}</Text>
-              <Text style={[styles.tableCellText, styles.nameColumn]}>{student.name}</Text>
-              <View style={[styles.tableCellView, styles.scoreColumn]}>
-                <TextInput
-                  style={[
-                    styles.scoreInput,
-                    student.isSaved && styles.scoreInputSaved
-                  ]}
-                  value={student.score?.toString() || ""}
-                  onChangeText={(value) => handleGradeChange(student.id, value)}
-                  keyboardType="numeric"
-                  placeholder="-"
-                  placeholderTextColor={Colors.textSecondary}
-                  textAlign="center"
-                />
+    return (
+      <View style={styles.container}>
+        <TouchableOpacity
+          onPress={() => setStep("subject")}
+          style={styles.backButton}
+        >
+          <Ionicons name="arrow-forward" size={20} color={Colors.primary} />
+          <Text style={styles.backButtonText}>بازگشت به انتخاب مضمون</Text>
+        </TouchableOpacity>
+
+        <View style={styles.gradingHeader}>
+          <View>
+            <Text style={styles.title}>{examData?.name || "امتحان"}</Text>
+            <Text style={styles.subtitle}>
+              {selectedClass?.name} - {selectedSubject?.name}
+            </Text>
+            <Text style={styles.maxScoreHint}>
+              نمرات باید بین 0 تا {examData?.maxScore || 100} باشند
+            </Text>
+          </View>
+          <View style={styles.headerButtons}>
+            <TouchableOpacity
+              style={[styles.saveButton, saving && styles.saveButtonDisabled]}
+              onPress={() => handleSaveGrades(false)}
+              disabled={saving}
+            >
+              <Ionicons name="save" size={18} color="#fff" />
+              <Text style={styles.saveButtonText}>ذخیره</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.publishButton,
+                saving && styles.saveButtonDisabled,
+              ]}
+              onPress={() => {
+                Alert.alert(
+                  "اعلام نتایج",
+                  "آیا از اعلام نتایج این امتحان اطمینان دارید؟",
+                  [
+                    { text: "لغو", style: "cancel" },
+                    { text: "اعلام", onPress: () => handleSaveGrades(true) },
+                  ],
+                );
+              }}
+              disabled={saving}
+            >
+              <Ionicons name="megaphone" size={18} color="#fff" />
+              <Text style={styles.saveButtonText}>اعلام نتایج</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        <View style={styles.tableContainer}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={true}>
+            <View>
+              <View style={styles.tableHeader}>
+                <Text style={[styles.tableCellText, styles.numberColumn]}>
+                  #
+                </Text>
+                <Text style={[styles.tableCellText, styles.nameColumn]}>
+                  نام دانش‌آموز
+                </Text>
+                <Text style={[styles.tableCellText, styles.scoreColumn]}>
+                  نمره
+                </Text>
+                <Text style={[styles.tableCellText, styles.feedbackColumn]}>
+                  نظر استاد
+                </Text>
+                <Text style={[styles.tableCellText, styles.statusColumn]}>
+                  وضعیت
+                </Text>
               </View>
-              <View style={[styles.tableCellView, styles.feedbackColumn]}>
-                <TextInput
-                  style={styles.feedbackInput}
-                  value={student.feedback}
-                  onChangeText={(value) => handleFeedbackChange(student.id, value)}
-                  placeholder="نظر..."
-                  placeholderTextColor={Colors.textSecondary}
-                  textAlign="right"
-                />
-              </View>
-              <View style={[styles.tableCellView, styles.statusColumn]}>
-                {student.isSaved ? (
-                  <Ionicons name="checkmark-circle" size={20} color={Colors.success} />
-                ) : student.score ? (
-                  <Ionicons name="time-outline" size={20} color={Colors.warning} />
-                ) : (
-                  <Ionicons name="ellipse-outline" size={20} color={Colors.textSecondary} />
+
+              <FlatList
+                data={students}
+                keyExtractor={(item) => item.id.toString()}
+                renderItem={({ item, index }) => (
+                  <View style={styles.tableRow}>
+                    <Text style={[styles.tableCellText, styles.numberColumn]}>
+                      {index + 1}
+                    </Text>
+                    <Text style={[styles.tableCellText, styles.nameColumn]}>
+                      {item.name}
+                    </Text>
+                    <View style={[styles.tableCellView, styles.scoreColumn]}>
+                      <TextInput
+                        style={[
+                          styles.scoreInput,
+                          item.isSaved && styles.scoreInputSaved,
+                        ]}
+                        value={item.score?.toString() || ""}
+                        onChangeText={(value) =>
+                          handleGradeChange(item.id, value)
+                        }
+                        keyboardType="numeric"
+                        placeholder="-"
+                        placeholderTextColor={Colors.textSecondary}
+                        textAlign="center"
+                      />
+                    </View>
+                    <View style={[styles.tableCellView, styles.feedbackColumn]}>
+                      <TextInput
+                        style={styles.feedbackInput}
+                        value={item.feedback || ""}
+                        onChangeText={(value) =>
+                          handleFeedbackChange(item.id, value)
+                        }
+                        placeholder="نظر..."
+                        placeholderTextColor={Colors.textSecondary}
+                        textAlign="right"
+                      />
+                    </View>
+                    <View style={[styles.tableCellView, styles.statusColumn]}>
+                      {item.isSaved ? (
+                        <Ionicons
+                          name="checkmark-circle"
+                          size={20}
+                          color={Colors.success}
+                        />
+                      ) : item.score ? (
+                        <Ionicons
+                          name="time-outline"
+                          size={20}
+                          color={Colors.warning}
+                        />
+                      ) : (
+                        <Ionicons
+                          name="ellipse-outline"
+                          size={20}
+                          color={Colors.textSecondary}
+                        />
+                      )}
+                    </View>
+                  </View>
                 )}
-              </View>
+                showsVerticalScrollIndicator={true}
+                style={styles.tableBodyFlatList}
+                contentContainerStyle={styles.tableBodyContent}
+                nestedScrollEnabled={true}
+              />
             </View>
-          ))}
+          </ScrollView>
         </View>
-      </ScrollView>
 
-      <View style={styles.legendContainer}>
-        <View style={styles.legendItem}>
-          <Ionicons name="checkmark-circle" size={16} color={Colors.success} />
-          <Text style={styles.legendText}>ذخیره شده</Text>
+        <View style={styles.legendContainer}>
+          <View style={styles.legendItem}>
+            <Ionicons
+              name="checkmark-circle"
+              size={16}
+              color={Colors.success}
+            />
+            <Text style={styles.legendText}>ذخیره شده</Text>
+          </View>
+          <View style={styles.legendItem}>
+            <Ionicons name="time-outline" size={16} color={Colors.warning} />
+            <Text style={styles.legendText}>در انتظار ذخیره</Text>
+          </View>
+          <View style={styles.legendItem}>
+            <Ionicons
+              name="ellipse-outline"
+              size={16}
+              color={Colors.textSecondary}
+            />
+            <Text style={styles.legendText}>بدون نمره</Text>
+          </View>
         </View>
-        <View style={styles.legendItem}>
-          <Ionicons name="time-outline" size={16} color={Colors.warning} />
-          <Text style={styles.legendText}>در انتظار ذخیره</Text>
-        </View>
-        <View style={styles.legendItem}>
-          <Ionicons name="ellipse-outline" size={16} color={Colors.textSecondary} />
-          <Text style={styles.legendText}>بدون نمره</Text>
+
+        <View style={styles.statsContainer}>
+          <Text style={styles.statsText}>
+            کل دانش‌آموزان: {students.length} | نمره‌دهی شده:{" "}
+            {students.filter((s) => s.score).length} | ذخیره شده:{" "}
+            {students.filter((s) => s.isSaved).length}
+          </Text>
         </View>
       </View>
+    );
+  };
 
-      <View style={styles.statsContainer}>
-        <Text style={styles.statsText}>
-          کل دانش‌آموزان: {students.length} | 
-          نمره‌دهی شده: {students.filter(s => s.score).length} | 
-          ذخیره شده: {students.filter(s => s.isSaved).length}
-        </Text>
-      </View>
-    </View>
-  );
-
-  if (loading && (step === "grading" || (step === "subject" && !subjects.length))) {
+  if (
+    loading &&
+    (step === "grading" || (step === "subject" && !subjects.length))
+  ) {
     return (
       <SafeAreaView style={[styles.container, styles.centerContent]}>
         <ActivityIndicator size="large" color={Colors.primary} />
@@ -530,16 +713,11 @@ export default function GradingScreen() {
         }
       />
 
-      <ScrollView
-        style={styles.content}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
-        }
-      >
+      <View style={styles.content}>
         {step === "class" && renderClassSelection()}
         {step === "subject" && renderSubjectSelection()}
         {step === "grading" && renderGrading()}
-      </ScrollView>
+      </View>
     </SafeAreaView>
   );
 }
@@ -777,6 +955,17 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontSize: 14,
     fontWeight: "bold",
+  },
+  tableContainer: {
+    flex: 1,
+    marginBottom: 8,
+  },
+  tableBodyFlatList: {
+    flex: 1,
+    maxHeight: 400,
+  },
+  tableBodyContent: {
+    paddingBottom: 8,
   },
   tableHeader: {
     flexDirection: "row",

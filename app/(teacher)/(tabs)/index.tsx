@@ -77,7 +77,14 @@ const defaultDashboard = {
       title: "ورود نمرات",
       icon: "stats-chart",
       color: Colors.info,
-      route: "/(teacher)/grades",
+      route: "/(teacher)/grading",
+    },
+    {
+      id: 8, // Add this new button
+      title: " ارزیابی هفتگی",
+      icon: "library",
+      color: Colors.primary,
+      route: "/(teacher)/WeeklyAssessment/WeeklyAssessmentListScreen",
     },
   ],
 };

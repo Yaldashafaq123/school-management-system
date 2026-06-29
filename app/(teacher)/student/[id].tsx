@@ -2,9 +2,9 @@ import { Header } from "@/components/Header";
 import { Colors } from "@/constants/Colors";
 import { useAuth } from "@/contexts/AuthContext";
 import {
-  studentApi,
   StudentDetail as StudentDetailType,
-} from "@/src/config/studentApi";
+  teacherStudentApi,
+} from "@/src/config/teacherStdApi";
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
@@ -48,18 +48,26 @@ export default function StudentDetail() {
     try {
       setLoading(true);
       setError(null);
-      const response = await studentApi.getStudentById(Number(id));
+
+      // Validate id exists
+      if (!id) {
+        setError("شناسه دانش‌آموز یافت نشد");
+        setStudent(null);
+        return;
+      }
+
+      // ✅ FIXED: Use teacherStudentApi instead of studentApi
+      const response = await teacherStudentApi.getStudentById(Number(id));
+
       if (response.success && response.data) {
         setStudent(response.data);
         setEditData(response.data);
       } else {
-        // Don't show error alert, just set empty state
         setStudent(null);
         setError("دانش‌آموزی با این شناسه یافت نشد");
       }
     } catch (error) {
       console.error("Error fetching student details:", error);
-      // Don't show alert, just show empty state
       setStudent(null);
       setError("خطا در دریافت اطلاعات. لطفاً دوباره تلاش کنید.");
     } finally {
@@ -70,6 +78,9 @@ export default function StudentDetail() {
   useEffect(() => {
     if (id) {
       fetchStudentDetails();
+    } else {
+      setLoading(false);
+      setError("شناسه دانش‌آموز معتبر نیست");
     }
   }, [id, fetchStudentDetails]);
 
@@ -81,9 +92,13 @@ export default function StudentDetail() {
 
   const handleSaveChanges = async () => {
     if (!student) return;
-    
+
     try {
-      const response = await studentApi.updateStudent(Number(id), editData);
+      // ✅ FIXED: Use teacherStudentApi instead of studentApi
+      const response = await teacherStudentApi.updateStudent(
+        Number(id),
+        editData,
+      );
       if (response.success) {
         setStudent({ ...student, ...editData });
         setIsEditing(false);
@@ -125,7 +140,8 @@ export default function StudentDetail() {
     }
 
     try {
-      const response = await studentApi.markAttendance(Number(id), {
+      // ✅ FIXED: Use teacherStudentApi instead of studentApi
+      const response = await teacherStudentApi.markAttendance(Number(id), {
         date: selectedAttendanceDate,
         status: selectedAttendanceStatus,
       });
@@ -190,18 +206,25 @@ export default function StudentDetail() {
     );
   }
 
-  // Show error/empty state with retry button
+  // Show error/empty state with retry button - This handles all error cases
   if (!student || error) {
     return (
       <SafeAreaView style={styles.container}>
         <Header title="پروفایل دانش‌آموز" showBack />
         <View style={styles.errorContainer}>
-          <Ionicons name="person-outline" size={60} color={Colors.textSecondary} />
+          <Ionicons
+            name="person-outline"
+            size={60}
+            color={Colors.textSecondary}
+          />
           <Text style={styles.errorTitle}>دانش‌آموز یافت نشد</Text>
           <Text style={styles.errorText}>
             {error || "اطلاعاتی برای این دانش‌آموز وجود ندارد"}
           </Text>
-          <TouchableOpacity style={styles.retryButton} onPress={fetchStudentDetails}>
+          <TouchableOpacity
+            style={styles.retryButton}
+            onPress={fetchStudentDetails}
+          >
             <Ionicons name="refresh" size={20} color={Colors.primary} />
             <Text style={styles.retryButtonText}>تلاش مجدد</Text>
           </TouchableOpacity>
@@ -210,7 +233,7 @@ export default function StudentDetail() {
     );
   }
 
-  // Show student data
+  // Safely render student data - all data access is now safe because student is guaranteed to exist
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
       <Header
@@ -259,7 +282,7 @@ export default function StudentDetail() {
         <View style={styles.profileHeader}>
           <Image
             source={{
-              uri: student.profile_image || `https://i.pravatar.cc/300?img=${student.id}`,
+              uri: student.profile_image || "https://via.placeholder.com/80",
             }}
             style={styles.profileImage}
           />
@@ -267,15 +290,19 @@ export default function StudentDetail() {
             {isEditing ? (
               <TextInput
                 style={[styles.profileName, styles.editInput]}
-                value={editData.fullName}
+                value={editData.fullName || ""}
                 onChangeText={(text) =>
                   setEditData({ ...editData, fullName: text })
                 }
               />
             ) : (
-              <Text style={styles.profileName}>{student.fullName || "نامشخص"}</Text>
+              <Text style={styles.profileName}>
+                {student.fullName || "نامشخص"}
+              </Text>
             )}
-            <Text style={styles.profileEmail}>{student.email || "ایمیل نامشخص"}</Text>
+            <Text style={styles.profileEmail}>
+              {student.email || "ایمیل نامشخص"}
+            </Text>
             {student.class && (
               <View style={styles.gradeBadge}>
                 <Ionicons name="school" size={16} color={Colors.primary} />
@@ -327,11 +354,12 @@ export default function StudentDetail() {
           </TouchableOpacity>
         </View>
 
-        {/* Personal Information */}
+        {/* Personal Information - Check for existence of any data before rendering section */}
         {(student.birth_date ||
           student.address ||
           student.parent ||
-          student.phone) && (
+          student.phone ||
+          student.enrollment_date) && (
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionTitle}>اطلاعات شخصی</Text>
@@ -358,13 +386,15 @@ export default function StudentDetail() {
                   <View style={styles.infoItem}>
                     <Text style={styles.infoLabel}>نام پدر/مادر:</Text>
                     <Text style={styles.infoValue}>
-                      {student.parent.fullName}
+                      {student.parent.fullName || "نامشخص"}
                     </Text>
                   </View>
 
                   <View style={styles.infoItem}>
                     <Text style={styles.infoLabel}>تلفن والدین:</Text>
-                    <Text style={styles.infoValue}>{student.parent.phone}</Text>
+                    <Text style={styles.infoValue}>
+                      {student.parent.phone || "نامشخص"}
+                    </Text>
                   </View>
                 </>
               )}
@@ -388,68 +418,79 @@ export default function StudentDetail() {
           </View>
         )}
 
-        {/* Courses */}
-        {student.courses && student.courses.length > 0 && (
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>دوره‌ها</Text>
-              <Ionicons name="book" size={20} color={Colors.primary} />
-            </View>
+        {/* Courses - Safely check if courses exist and have length */}
+        {student.courses &&
+          Array.isArray(student.courses) &&
+          student.courses.length > 0 && (
+            <View style={styles.section}>
+              <View style={styles.sectionHeader}>
+                <Text style={styles.sectionTitle}>دوره‌ها</Text>
+                <Ionicons name="book" size={20} color={Colors.primary} />
+              </View>
 
-            {student.courses.map((course) => (
-              <View key={course.id} style={styles.courseCard}>
-                <View style={styles.courseHeader}>
-                  <Text style={styles.courseName}>{course.name}</Text>
-                  <Text style={styles.courseTeacher}>{course.teacher}</Text>
-                </View>
-
-                {course.progress > 0 && (
-                  <View style={styles.courseStat}>
-                    <Text style={styles.courseStatLabel}>پیشرفت:</Text>
-                    <View style={styles.progressBar}>
-                      <View
-                        style={[
-                          styles.progressFill,
-                          { width: `${Math.min(course.progress, 100)}%` },
-                        ]}
-                      />
-                    </View>
-                    <Text style={styles.progressText}>
-                      {Math.min(course.progress, 100)}%
+              {student.courses.map((course) => (
+                <View key={course.id} style={styles.courseCard}>
+                  <View style={styles.courseHeader}>
+                    <Text style={styles.courseName}>
+                      {course.name || "بدون نام"}
+                    </Text>
+                    <Text style={styles.courseTeacher}>
+                      {course.teacher || "نامشخص"}
                     </Text>
                   </View>
-                )}
-              </View>
-            ))}
-          </View>
-        )}
 
-        {/* Attendance */}
-        {student.attendance && student.attendance.length > 0 && (
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>حضور و غیاب</Text>
-              {student.performance?.attendance_rate > 0 && (
-                <Text style={styles.attendanceRate}>
-                  میزان حضور: {student.performance.attendance_rate}%
-                </Text>
-              )}
+                  {course.progress > 0 && (
+                    <View style={styles.courseStat}>
+                      <Text style={styles.courseStatLabel}>پیشرفت:</Text>
+                      <View style={styles.progressBar}>
+                        <View
+                          style={[
+                            styles.progressFill,
+                            { width: `${Math.min(course.progress, 100)}%` },
+                          ]}
+                        />
+                      </View>
+                      <Text style={styles.progressText}>
+                        {Math.min(course.progress, 100)}%
+                      </Text>
+                    </View>
+                  )}
+                </View>
+              ))}
             </View>
+          )}
 
-            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-              <View style={styles.attendanceList}>
-                {student.attendance.map((item) => (
-                  <View key={item.id} style={styles.attendanceItem}>
-                    <Text style={styles.attendanceDate}>{item.date}</Text>
-                    {renderAttendanceStatus(item.status)}
-                  </View>
-                ))}
+        {/* Attendance - Safely check if attendance exists and has length */}
+        {student.attendance &&
+          Array.isArray(student.attendance) &&
+          student.attendance.length > 0 && (
+            <View style={styles.section}>
+              <View style={styles.sectionHeader}>
+                <Text style={styles.sectionTitle}>حضور و غیاب</Text>
+                {student.performance?.attendance_rate &&
+                  student.performance.attendance_rate > 0 && (
+                    <Text style={styles.attendanceRate}>
+                      میزان حضور: {student.performance.attendance_rate}%
+                    </Text>
+                  )}
               </View>
-            </ScrollView>
-          </View>
-        )}
 
-        {/* Performance */}
+              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                <View style={styles.attendanceList}>
+                  {student.attendance.map((item) => (
+                    <View key={item.id} style={styles.attendanceItem}>
+                      <Text style={styles.attendanceDate}>
+                        {item.date || "نامشخص"}
+                      </Text>
+                      {renderAttendanceStatus(item.status)}
+                    </View>
+                  ))}
+                </View>
+              </ScrollView>
+            </View>
+          )}
+
+        {/* Performance - Safely check if performance exists */}
         {student.performance && (
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
@@ -458,20 +499,21 @@ export default function StudentDetail() {
             </View>
 
             <View style={styles.analyticsGrid}>
-              {student.performance.assignments_total > 0 && (
-                <View style={styles.analyticCard}>
-                  <Ionicons
-                    name="checkmark-done-circle"
-                    size={30}
-                    color={Colors.success}
-                  />
-                  <Text style={styles.analyticValue}>
-                    {student.performance.assignments_completed}/
-                    {student.performance.assignments_total}
-                  </Text>
-                  <Text style={styles.analyticLabel}>کارخانگی</Text>
-                </View>
-              )}
+              {student.performance.assignments_total !== undefined &&
+                student.performance.assignments_total > 0 && (
+                  <View style={styles.analyticCard}>
+                    <Ionicons
+                      name="checkmark-done-circle"
+                      size={30}
+                      color={Colors.success}
+                    />
+                    <Text style={styles.analyticValue}>
+                      {student.performance.assignments_completed || 0}/
+                      {student.performance.assignments_total}
+                    </Text>
+                    <Text style={styles.analyticLabel}>کارخانگی</Text>
+                  </View>
+                )}
 
               {student.performance.average_grade && (
                 <View style={styles.analyticCard}>
@@ -483,15 +525,20 @@ export default function StudentDetail() {
                 </View>
               )}
 
-              {student.performance.attendance_rate > 0 && (
-                <View style={styles.analyticCard}>
-                  <Ionicons name="calendar" size={30} color={Colors.primary} />
-                  <Text style={styles.analyticValue}>
-                    {student.performance.attendance_rate}%
-                  </Text>
-                  <Text style={styles.analyticLabel}>حضور</Text>
-                </View>
-              )}
+              {student.performance.attendance_rate &&
+                student.performance.attendance_rate > 0 && (
+                  <View style={styles.analyticCard}>
+                    <Ionicons
+                      name="calendar"
+                      size={30}
+                      color={Colors.primary}
+                    />
+                    <Text style={styles.analyticValue}>
+                      {student.performance.attendance_rate}%
+                    </Text>
+                    <Text style={styles.analyticLabel}>حضور</Text>
+                  </View>
+                )}
 
               {student.performance.last_active && (
                 <View style={styles.analyticCard}>
@@ -506,7 +553,7 @@ export default function StudentDetail() {
           </View>
         )}
 
-        {/* Notes */}
+        {/* Notes - Safely check if notes exist */}
         {student.notes && (
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
@@ -517,7 +564,7 @@ export default function StudentDetail() {
             {isEditing ? (
               <TextInput
                 style={[styles.notesInput, styles.editInput]}
-                value={editData.notes}
+                value={editData.notes || ""}
                 onChangeText={(text) =>
                   setEditData({ ...editData, notes: text })
                 }

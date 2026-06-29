@@ -1,422 +1,469 @@
-import { Header } from "@/components/Header";
-import { Colors } from "@/constants/Colors";
+// app/(admin)/financial/expenses/create.tsx
+import { AmountInput } from "@/components/finance/AmountInput";
 import { financeApi, formatCurrency } from "@/src/config/financeApi";
 import { Ionicons } from "@expo/vector-icons";
+import * as ImagePicker from "expo-image-picker";
 import { useRouter } from "expo-router";
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import {
-  ActivityIndicator,
-  Alert,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Alert,
+    Image,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
 
-interface ExpenseCategory {
-  id: number;
-  name: string;
-  description: string | null;
-}
-
-export default function CreateExpense() {
+export default function CreateExpenseScreen() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
+  const [categories, setCategories] = useState<any[]>([]);
   const [loadingCategories, setLoadingCategories] = useState(true);
-  const [categories, setCategories] = useState<ExpenseCategory[]>([]);
-  const [formData, setFormData] = useState({
-    categoryId: null as number | null,
-    amount: "",
-    description: "",
-    date: new Date().toISOString().split("T")[0],
-    receiptUrl: "",
-  });
-  const [errors, setErrors] = useState<Record<string, string>>({});
 
-  const loadCategories = useCallback(async () => {
-    try {
-      setLoadingCategories(true);
-      const response = await financeApi.getExpenseCategories();
-      if (response.success) {
-        setCategories(response.data || []);
-        if (response.data.length === 0) {
-          Alert.alert("اطلاع", "لطفاً ابتدا یک دسته‌بندی هزینه ایجاد کنید", [
-            { text: "ایجاد دسته‌بندی", onPress: () => router.push("/(admin)/financial/expenses/categories") },
-            { text: "بازگشت", onPress: () => router.back() },
-          ]);
-        }
-      }
-    } catch (error) {
-      console.error("Error loading categories:", error);
-      Alert.alert("خطا", "مشکلی در بارگذاری دسته‌بندی‌ها پیش آمد");
-    } finally {
-      setLoadingCategories(false);
-    }
-  }, []);
+  // Form state
+  const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(
+    null,
+  );
+  const [amount, setAmount] = useState("");
+  const [description, setDescription] = useState("");
+  const [date, setDate] = useState(new Date());
+  const [receiptImage, setReceiptImage] = useState<string | null>(null);
+  const [showDatePicker, setShowDatePicker] = useState(false);
 
   useEffect(() => {
     loadCategories();
-  }, [loadCategories]);
+  }, []);
 
-  const validateForm = (): boolean => {
-    const newErrors: Record<string, string> = {};
-
-    if (!formData.categoryId) {
-      newErrors.categoryId = "انتخاب دسته‌بندی الزامی است";
-    }
-
-    if (!formData.amount) {
-      newErrors.amount = "مبلغ الزامی است";
-    } else {
-      const amountNum = parseFloat(formData.amount);
-      if (isNaN(amountNum) || amountNum <= 0) {
-        newErrors.amount = "مبلغ باید عددی مثبت باشد";
+  const loadCategories = async () => {
+    try {
+      const response = await financeApi.getExpenseCategories();
+      if (response.success) {
+        setCategories(response.data || []);
+        if (response.data?.length > 0) {
+          setSelectedCategoryId(response.data[0].id);
+        }
       }
+    } catch (error) {
+      console.error("Load categories error:", error);
+    } finally {
+      setLoadingCategories(false);
     }
-
-    if (!formData.description.trim()) {
-      newErrors.description = "توضیحات الزامی است";
-    } else if (formData.description.trim().length < 3) {
-      newErrors.description = "توضیحات باید حداقل ۳ کاراکتر باشد";
-    }
-
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
   };
 
-  const handleCreate = async () => {
-    if (!validateForm()) return;
+  const handlePickImage = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== "granted") {
+      Alert.alert("خطا", "دسترسی به گالری لازم است");
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [4, 3],
+      quality: 0.8,
+    });
+
+    if (!result.canceled) {
+      setReceiptImage(result.assets[0].uri);
+    }
+  };
+
+  const handleTakePhoto = async () => {
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== "granted") {
+      Alert.alert("خطا", "دسترسی به دوربین لازم است");
+      return;
+    }
+
+    const result = await ImagePicker.launchCameraAsync({
+      allowsEditing: true,
+      aspect: [4, 3],
+      quality: 0.8,
+    });
+
+    if (!result.canceled) {
+      setReceiptImage(result.assets[0].uri);
+    }
+  };
+
+  const handleSubmit = async () => {
+    if (!selectedCategoryId) {
+      Alert.alert("خطا", "دسته‌بندی را انتخاب کنید");
+      return;
+    }
+    if (!amount || Number(amount) <= 0) {
+      Alert.alert("خطا", "مبلغ را وارد کنید");
+      return;
+    }
 
     setLoading(true);
     try {
       const response = await financeApi.createExpense({
-        categoryId: formData.categoryId!,
-        amount: parseFloat(formData.amount),
-        description: formData.description.trim(),
-        date: formData.date,
-        receiptUrl: formData.receiptUrl.trim() || undefined,
+        categoryId: selectedCategoryId,
+        amount: Number(amount),
+        description: description || undefined,
+        date: date.toISOString(),
+        receiptUrl: receiptImage || undefined,
       });
 
       if (response.success) {
-        Alert.alert(
-          "موفق",
-          "هزینه با موفقیت ثبت شد",
-          [
-            {
-              text: "بازگشت به لیست",
-              onPress: () => router.back(),
-            },
-            {
-              text: "ثبت دوباره",
-              onPress: () => {
-                setFormData({
-                  categoryId: null,
-                  amount: "",
-                  description: "",
-                  date: new Date().toISOString().split("T")[0],
-                  receiptUrl: "",
-                });
-                setErrors({});
-              },
-            },
-          ]
-        );
-      } else {
-        Alert.alert("خطا", (response as any).message || "ثبت هزینه ناموفق بود");
+        Alert.alert("موفقیت", "مصرف با موفقیت ثبت شد", [
+          { text: "باشه", onPress: () => router.back() },
+        ]);
       }
     } catch (error: any) {
-      Alert.alert("خطا", error?.message || "ثبت هزینه ناموفق بود");
+      Alert.alert("خطا", error.message || "ثبت مصرف با مشکل مواجه شد");
     } finally {
       setLoading(false);
     }
   };
 
-  const selectedCategory = categories.find((c) => c.id === formData.categoryId);
-  const previewAmount = formData.amount && !isNaN(parseFloat(formData.amount))
-    ? formatCurrency(parseFloat(formData.amount))
-    : "";
-  const isFormValid = formData.categoryId && formData.amount && formData.description.trim().length >= 3;
-
-  if (loadingCategories) {
-    return (
-      <SafeAreaView style={styles.container} edges={["top"]}>
-        <Header title="ثبت هزینه جدید" showBack />
-        <View style={styles.centerContainer}>
-          <ActivityIndicator size="large" color={Colors.primary} />
-          <Text style={styles.loadingText}>در حال بارگذاری...</Text>
-        </View>
-      </SafeAreaView>
-    );
-  }
-
   return (
-    <SafeAreaView style={styles.container} edges={["top"]}>
-      <Header title="ثبت هزینه جدید" showBack />
+    <View style={styles.container}>
+      {/* Header */}
+      <View style={styles.header}>
+        <TouchableOpacity onPress={() => router.back()}>
+          <Ionicons name="arrow-back" size={24} color="#1e293b" />
+        </TouchableOpacity>
+        <Text style={styles.title}>ثبت مصرف جدید</Text>
+        <View style={{ width: 40 }} />
+      </View>
 
-      <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={styles.keyboardAvoid}>
-        <ScrollView style={styles.content} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-          {/* Info Banner */}
-          <View style={styles.infoBanner}>
-            <Ionicons name="information-circle" size={20} color={Colors.primary} />
-            <Text style={styles.infoText}>
-              هزینه‌های جاری مدرسه مانند خرید لوازم، تعمیرات، قبوض و سایر مخارج را ثبت کنید
-            </Text>
+      <ScrollView
+        style={styles.scrollView}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Category Selection */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>دسته‌بندی</Text>
+            <TouchableOpacity
+              onPress={() => router.push("/financial/expenses/categories")}
+            >
+              <Text style={styles.manageText}>مدیریت</Text>
+            </TouchableOpacity>
           </View>
 
-          {/* Category Selection */}
-          <View style={styles.formGroup}>
-            <Text style={styles.formLabel}>
-              دسته‌بندی <Text style={styles.required}>*</Text>
-            </Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-              <View style={styles.categoryContainer}>
-                {categories.map((cat) => (
-                  <TouchableOpacity
-                    key={cat.id}
+          {loadingCategories ? (
+            <ActivityIndicator style={{ padding: 20 }} />
+          ) : (
+            <View style={styles.categoriesGrid}>
+              {categories.map((cat) => (
+                <TouchableOpacity
+                  key={cat.id}
+                  style={[
+                    styles.categoryCard,
+                    selectedCategoryId === cat.id && styles.categoryCardActive,
+                  ]}
+                  onPress={() => setSelectedCategoryId(cat.id)}
+                >
+                  <Ionicons
+                    name={getCategoryIcon(cat.name)}
+                    size={24}
+                    color={selectedCategoryId === cat.id ? "#fff" : "#64748b"}
+                  />
+                  <Text
                     style={[
-                      styles.categoryChip,
-                      formData.categoryId === cat.id && styles.categoryChipActive,
+                      styles.categoryName,
+                      selectedCategoryId === cat.id &&
+                        styles.categoryNameActive,
                     ]}
-                    onPress={() => {
-                      setFormData({ ...formData, categoryId: cat.id });
-                      if (errors.categoryId) setErrors({ ...errors, categoryId: "" });
-                    }}
-                    activeOpacity={0.7}
                   >
-                    <Ionicons
-                      name="pricetag"
-                      size={14}
-                      color={formData.categoryId === cat.id ? "white" : Colors.textSecondary}
-                    />
-                    <Text
-                      style={[
-                        styles.categoryChipText,
-                        formData.categoryId === cat.id && styles.categoryChipTextActive,
-                      ]}
-                    >
-                      {cat.name}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-                <TouchableOpacity
-                  style={styles.manageCategoryBtn}
-                  onPress={() => router.push("/(admin)/financial/expenses/categories")}
-                  activeOpacity={0.7}
-                >
-                  <Ionicons name="settings-outline" size={14} color={Colors.primary} />
-                  <Text style={styles.manageCategoryText}>مدیریت</Text>
-                </TouchableOpacity>
-              </View>
-            </ScrollView>
-            {errors.categoryId && <Text style={styles.errorText}>{errors.categoryId}</Text>}
-          </View>
-
-          {/* Selected Category Info */}
-          {selectedCategory && selectedCategory.description && (
-            <View style={styles.categoryInfo}>
-              <Ionicons name="information-circle" size={14} color={Colors.info} />
-              <Text style={styles.categoryInfoText}>{selectedCategory.description}</Text>
-            </View>
-          )}
-
-          {/* Amount */}
-          <View style={styles.formGroup}>
-            <Text style={styles.formLabel}>
-              مبلغ (افغانی) <Text style={styles.required}>*</Text>
-            </Text>
-            <View style={styles.amountContainer}>
-              <TextInput
-                style={[styles.amountInput, errors.amount ? styles.inputError : null]}
-                value={formData.amount}
-                onChangeText={(text) => {
-                  const cleaned = text.replace(/[^0-9.]/g, '');
-                  const parts = cleaned.split('.');
-                  const sanitized = parts[0] + (parts.length > 1 ? '.' + parts.slice(1).join('') : '');
-                  setFormData({ ...formData, amount: sanitized });
-                  if (errors.amount) setErrors({ ...errors, amount: "" });
-                }}
-                keyboardType="decimal-pad"
-                placeholder="۰"
-                placeholderTextColor={Colors.textSecondary}
-                textAlign="center"
-              />
-              <Text style={styles.currencyUnit}>AFN</Text>
-            </View>
-            {errors.amount ? (
-              <Text style={styles.errorText}>{errors.amount}</Text>
-            ) : previewAmount ? (
-              <View style={styles.previewContainer}>
-                <Ionicons name="eye-outline" size={14} color={Colors.danger} />
-                <Text style={styles.previewText}>{previewAmount}</Text>
-              </View>
-            ) : null}
-          </View>
-
-          {/* Quick Amounts */}
-          <View style={styles.formGroup}>
-            <Text style={styles.formLabel}>مبالغ پیشنهادی</Text>
-            <View style={styles.quickAmounts}>
-              {[100, 500, 1000, 2000, 5000, 10000].map((amount) => (
-                <TouchableOpacity
-                  key={amount}
-                  style={[styles.quickAmountBtn, formData.amount === amount.toString() && styles.quickAmountBtnActive]}
-                  onPress={() => {
-                    setFormData({ ...formData, amount: amount.toString() });
-                    if (errors.amount) setErrors({ ...errors, amount: "" });
-                  }}
-                  activeOpacity={0.7}
-                >
-                  <Text style={[styles.quickAmountText, formData.amount === amount.toString() && styles.quickAmountTextActive]}>
-                    {formatCurrency(amount)}
+                    {cat.name}
                   </Text>
                 </TouchableOpacity>
               ))}
             </View>
-          </View>
+          )}
+        </View>
 
-          {/* Description */}
-          <View style={styles.formGroup}>
-            <Text style={styles.formLabel}>
-              توضیحات <Text style={styles.required}>*</Text>
-            </Text>
-            <TextInput
-              style={[styles.textArea, errors.description ? styles.inputError : null]}
-              value={formData.description}
-              onChangeText={(text) => {
-                setFormData({ ...formData, description: text });
-                if (errors.description) setErrors({ ...errors, description: "" });
-              }}
-              placeholder="شرح کامل هزینه را وارد کنید..."
-              placeholderTextColor={Colors.textSecondary}
-              multiline
-              numberOfLines={4}
-              textAlignVertical="top"
-              textAlign="right"
-              maxLength={500}
-            />
-            {errors.description ? (
-              <Text style={styles.errorText}>{errors.description}</Text>
-            ) : (
-              <Text style={styles.charCount}>{formData.description.length}/۵۰۰</Text>
-            )}
-          </View>
+        {/* Amount */}
+        <View style={styles.section}>
+          <AmountInput
+            value={amount}
+            onChangeText={setAmount}
+            label="مبلغ مصرف"
+            placeholder="مبلغ را وارد کنید"
+          />
+        </View>
 
-          {/* Date */}
-          <View style={styles.formGroup}>
-            <Text style={styles.formLabel}>تاریخ</Text>
-            <View style={styles.dateContainer}>
-              <Ionicons name="calendar" size={18} color={Colors.textSecondary} />
-              <TextInput
-                style={styles.dateInput}
-                value={formData.date}
-                onChangeText={(text) => setFormData({ ...formData, date: text })}
-                placeholder="YYYY-MM-DD"
-                placeholderTextColor={Colors.textSecondary}
-                textAlign="right"
-              />
-            </View>
-            <Text style={styles.dateHint}>تاریخ امروز به صورت پیش‌فرض ثبت می‌شود</Text>
-          </View>
+        {/* Description */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>توضیحات</Text>
+          <TextInput
+            style={styles.textArea}
+            placeholder="توضیحات مصرف را وارد کنید..."
+            placeholderTextColor="#94a3b8"
+            value={description}
+            onChangeText={setDescription}
+            multiline
+            numberOfLines={4}
+            textAlign="right"
+          />
+        </View>
 
-          {/* Receipt URL */}
-          <View style={styles.formGroup}>
-            <Text style={styles.formLabel}>لینک رسید (اختیاری)</Text>
-            <View style={styles.receiptContainer}>
-              <Ionicons name="link" size={18} color={Colors.textSecondary} />
-              <TextInput
-                style={styles.receiptInput}
-                value={formData.receiptUrl}
-                onChangeText={(text) => setFormData({ ...formData, receiptUrl: text })}
-                placeholder="آدرس فایل یا عکس رسید"
-                placeholderTextColor={Colors.textSecondary}
-                textAlign="right"
-                keyboardType="url"
-                autoCapitalize="none"
-              />
-            </View>
-          </View>
-
-          {/* Submit Button */}
+        {/* Date */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>تاریخ</Text>
           <TouchableOpacity
-            style={[styles.submitButton, (!isFormValid || loading) && styles.submitButtonDisabled]}
-            onPress={handleCreate}
-            disabled={!isFormValid || loading}
-            activeOpacity={0.8}
+            style={styles.dateButton}
+            onPress={() => setShowDatePicker(!showDatePicker)}
           >
-            {loading ? (
-              <ActivityIndicator size="small" color="white" />
-            ) : (
-              <>
-                <Ionicons name="checkmark-circle" size={22} color="white" />
-                <Text style={styles.submitButtonText}>ثبت هزینه</Text>
-              </>
-            )}
+            <Ionicons name="calendar-outline" size={20} color="#3b82f6" />
+            <Text style={styles.dateText}>
+              {date.toLocaleDateString("fa-AF", {
+                year: "numeric",
+                month: "long",
+                day: "numeric",
+              })}
+            </Text>
           </TouchableOpacity>
+        </View>
 
-          <View style={styles.footer} />
-        </ScrollView>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+        {/* Receipt Image */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>رسید (اختیاری)</Text>
+
+          {receiptImage ? (
+            <View style={styles.receiptPreview}>
+              <Image
+                source={{ uri: receiptImage }}
+                style={styles.receiptImage}
+              />
+              <TouchableOpacity
+                style={styles.removeReceipt}
+                onPress={() => setReceiptImage(null)}
+              >
+                <Ionicons name="close-circle" size={24} color="#ef4444" />
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <View style={styles.receiptButtons}>
+              <TouchableOpacity
+                style={styles.receiptButton}
+                onPress={handleTakePhoto}
+              >
+                <Ionicons name="camera-outline" size={28} color="#3b82f6" />
+                <Text style={styles.receiptButtonText}>دوربین</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.receiptButton}
+                onPress={handlePickImage}
+              >
+                <Ionicons name="images-outline" size={28} color="#8b5cf6" />
+                <Text style={styles.receiptButtonText}>گالری</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+        </View>
+
+        <View style={{ height: 100 }} />
+      </ScrollView>
+
+      {/* Submit Button */}
+      <View style={styles.footer}>
+        <TouchableOpacity
+          style={[styles.submitButton, loading && styles.submitDisabled]}
+          onPress={handleSubmit}
+          disabled={loading}
+        >
+          {loading ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <>
+              <Ionicons name="save-outline" size={22} color="#fff" />
+              <Text style={styles.submitText}>
+                ثبت مصرف {amount ? formatCurrency(Number(amount)) : ""}
+              </Text>
+            </>
+          )}
+        </TouchableOpacity>
+      </View>
+    </View>
   );
 }
 
+function getCategoryIcon(categoryName: string): string {
+  const icons: Record<string, string> = {
+    اجاره: "home-outline",
+    معاش: "cash-outline",
+    برق: "flash-outline",
+    آب: "water-outline",
+    انترنت: "wifi-outline",
+    تعمیرات: "build-outline",
+    لوازم: "cart-outline",
+    "حمل و نقل": "car-outline",
+    غذا: "restaurant-outline",
+  };
+  return icons[categoryName] || "receipt-outline";
+}
+
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.background },
-  centerContainer: { flex: 1, justifyContent: "center", alignItems: "center" },
-  loadingText: { marginTop: 12, fontSize: 14, color: Colors.textSecondary, fontFamily: "Vazirmatn" },
-  keyboardAvoid: { flex: 1 },
-  content: { flex: 1, padding: 16 },
-  footer: { height: 30 },
-  
-  infoBanner: { flexDirection: "row", backgroundColor: `${Colors.primary}10`, borderRadius: 12, padding: 12, marginBottom: 20, gap: 10, alignItems: "flex-start" },
-  infoText: { flex: 1, fontSize: 12, color: Colors.textSecondary, fontFamily: "Vazirmatn", lineHeight: 20, textAlign: "right" },
-  
-  formGroup: { marginBottom: 20 },
-  formLabel: { fontSize: 14, fontWeight: "500", color: Colors.text, fontFamily: "Vazirmatn", marginBottom: 8, textAlign: "right" },
-  required: { color: Colors.danger },
-  
-  categoryContainer: { flexDirection: "row", gap: 8, alignItems: "center" },
-  categoryChip: { flexDirection: "row", alignItems: "center", paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, backgroundColor: Colors.card, borderWidth: 1, borderColor: Colors.border, gap: 6 },
-  categoryChipActive: { backgroundColor: Colors.primary, borderColor: Colors.primary },
-  categoryChipText: { fontSize: 13, color: Colors.textSecondary, fontFamily: "Vazirmatn" },
-  categoryChipTextActive: { color: "white" },
-  manageCategoryBtn: { flexDirection: "row", alignItems: "center", paddingHorizontal: 10, paddingVertical: 8, borderRadius: 20, backgroundColor: `${Colors.primary}15`, gap: 4 },
-  manageCategoryText: { fontSize: 12, color: Colors.primary, fontFamily: "Vazirmatn" },
-  
-  categoryInfo: { flexDirection: "row", alignItems: "center", backgroundColor: `${Colors.info}10`, borderRadius: 8, padding: 10, marginBottom: 16, gap: 8 },
-  categoryInfoText: { flex: 1, fontSize: 12, color: Colors.info, fontFamily: "Vazirmatn", textAlign: "right" },
-  
-  amountContainer: { flexDirection: "row", alignItems: "center", backgroundColor: Colors.card, borderWidth: 1.5, borderColor: Colors.border, borderRadius: 12, overflow: "hidden" },
-  amountInput: { flex: 1, padding: 14, fontSize: 18, fontWeight: "bold", color: Colors.text, textAlign: "center", fontFamily: "Vazirmatn" },
-  currencyUnit: { paddingHorizontal: 12, fontSize: 14, color: Colors.textSecondary, backgroundColor: Colors.background, textAlignVertical: "center", paddingVertical: 14 },
-  inputError: { borderColor: Colors.danger },
-  errorText: { fontSize: 12, color: Colors.danger, fontFamily: "Vazirmatn", marginTop: 6, textAlign: "right" },
-  
-  previewContainer: { flexDirection: "row", justifyContent: "flex-end", alignItems: "center", gap: 6, marginTop: 6 },
-  previewText: { fontSize: 13, fontWeight: "500", color: Colors.danger, fontFamily: "Vazirmatn" },
-  
-  quickAmounts: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  quickAmountBtn: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, backgroundColor: Colors.card, borderWidth: 1, borderColor: Colors.border },
-  quickAmountBtnActive: { backgroundColor: Colors.primary, borderColor: Colors.primary },
-  quickAmountText: { fontSize: 13, color: Colors.textSecondary, fontFamily: "Vazirmatn" },
-  quickAmountTextActive: { color: "white" },
-  
-  textArea: { backgroundColor: Colors.card, borderWidth: 1.5, borderColor: Colors.border, borderRadius: 12, padding: 14, fontSize: 14, color: Colors.text, textAlignVertical: "top", textAlign: "right", fontFamily: "Vazirmatn", minHeight: 100 },
-  charCount: { fontSize: 11, color: Colors.textSecondary, fontFamily: "Vazirmatn", textAlign: "right", marginTop: 6 },
-  
-  dateContainer: { flexDirection: "row", alignItems: "center", backgroundColor: Colors.card, borderWidth: 1.5, borderColor: Colors.border, borderRadius: 12, paddingHorizontal: 12, gap: 8 },
-  dateInput: { flex: 1, paddingVertical: 14, fontSize: 14, color: Colors.text, fontFamily: "Vazirmatn", textAlign: "right" },
-  dateHint: { fontSize: 11, color: Colors.textSecondary, fontFamily: "Vazirmatn", marginTop: 6, textAlign: "right" },
-  
-  receiptContainer: { flexDirection: "row", alignItems: "center", backgroundColor: Colors.card, borderWidth: 1.5, borderColor: Colors.border, borderRadius: 12, paddingHorizontal: 12, gap: 8 },
-  receiptInput: { flex: 1, paddingVertical: 14, fontSize: 14, color: Colors.text, fontFamily: "Vazirmatn", textAlign: "right" },
-  
-  submitButton: { flexDirection: "row", alignItems: "center", justifyContent: "center", backgroundColor: Colors.primary, borderRadius: 12, paddingVertical: 16, gap: 8, marginTop: 10 },
-  submitButtonDisabled: { opacity: 0.5 },
-  submitButtonText: { color: "white", fontSize: 16, fontWeight: "bold", fontFamily: "Vazirmatn" },
+  container: {
+    flex: 1,
+    backgroundColor: "#f1f5f9",
+  },
+  header: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: "#fff",
+    borderBottomWidth: 1,
+    borderBottomColor: "#e2e8f0",
+  },
+  title: {
+    fontSize: 20,
+    fontWeight: "700",
+    color: "#1e293b",
+    fontFamily: "VazirBold",
+  },
+  scrollView: {
+    flex: 1,
+  },
+  section: {
+    margin: 16,
+    marginBottom: 0,
+    padding: 16,
+    backgroundColor: "#fff",
+    borderRadius: 16,
+  },
+  sectionHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 12,
+  },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#334155",
+    fontFamily: "VazirBold",
+  },
+  manageText: {
+    fontSize: 13,
+    color: "#3b82f6",
+    fontFamily: "Vazir",
+  },
+  categoriesGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  categoryCard: {
+    width: "30%",
+    alignItems: "center",
+    padding: 14,
+    borderRadius: 12,
+    backgroundColor: "#f8fafc",
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    gap: 8,
+  },
+  categoryCardActive: {
+    backgroundColor: "#ef4444",
+    borderColor: "#ef4444",
+  },
+  categoryName: {
+    fontSize: 12,
+    color: "#64748b",
+    fontFamily: "Vazir",
+    textAlign: "center",
+  },
+  categoryNameActive: {
+    color: "#fff",
+    fontWeight: "600",
+  },
+  textArea: {
+    backgroundColor: "#f8fafc",
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    borderRadius: 10,
+    padding: 12,
+    fontSize: 14,
+    color: "#1e293b",
+    fontFamily: "Vazir",
+    minHeight: 100,
+    textAlignVertical: "top",
+  },
+  dateButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#f8fafc",
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    borderRadius: 10,
+    padding: 12,
+    gap: 8,
+  },
+  dateText: {
+    fontSize: 15,
+    color: "#1e293b",
+    fontFamily: "Vazir",
+  },
+  receiptButtons: {
+    flexDirection: "row",
+    gap: 12,
+  },
+  receiptButton: {
+    flex: 1,
+    alignItems: "center",
+    padding: 20,
+    borderRadius: 14,
+    backgroundColor: "#f8fafc",
+    borderWidth: 2,
+    borderColor: "#e2e8f0",
+    borderStyle: "dashed",
+    gap: 8,
+  },
+  receiptButtonText: {
+    fontSize: 14,
+    color: "#64748b",
+    fontFamily: "Vazir",
+  },
+  receiptPreview: {
+    position: "relative",
+  },
+  receiptImage: {
+    width: "100%",
+    height: 200,
+    borderRadius: 12,
+    backgroundColor: "#f1f5f9",
+  },
+  removeReceipt: {
+    position: "absolute",
+    top: -8,
+    right: -8,
+    backgroundColor: "#fff",
+    borderRadius: 12,
+  },
+  footer: {
+    padding: 16,
+    backgroundColor: "#fff",
+    borderTopWidth: 1,
+    borderTopColor: "#e2e8f0",
+  },
+  submitButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#ef4444",
+    paddingVertical: 16,
+    borderRadius: 14,
+    gap: 8,
+  },
+  submitDisabled: {
+    opacity: 0.6,
+  },
+  submitText: {
+    color: "#fff",
+    fontSize: 17,
+    fontWeight: "700",
+    fontFamily: "VazirBold",
+  },
 });

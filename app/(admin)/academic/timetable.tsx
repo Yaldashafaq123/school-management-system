@@ -57,6 +57,7 @@ export default function TimetableGenerator() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingPeriod, setEditingPeriod] = useState<Period | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const [newPeriod, setNewPeriod] = useState({
     period: 0,
@@ -79,6 +80,7 @@ export default function TimetableGenerator() {
   const loadData = async () => {
     try {
       setLoading(true);
+      setError(null);
       const [classesRes, subjectsRes] = await Promise.all([
         adminTimetableApi.getClasses(),
         adminTimetableApi.getSubjects(),
@@ -86,15 +88,21 @@ export default function TimetableGenerator() {
 
       if (classesRes.success && classesRes.data) {
         setClasses(classesRes.data);
-        if (classesRes.data.length > 0) {
+        if (classesRes.data.length > 0 && !selectedClassId) {
           setSelectedClassId(classesRes.data[0].id);
         }
+      } else {
+        setError("خطا در بارگذاری صنف‌ها");
       }
+
       if (subjectsRes.success && subjectsRes.data) {
         setSubjects(subjectsRes.data);
+      } else {
+        setError("خطا در بارگذاری مضامین");
       }
     } catch (err) {
       console.error("Error loading data:", err);
+      setError("خطا در ارتباط با سرور");
     } finally {
       setLoading(false);
     }
@@ -109,10 +117,15 @@ export default function TimetableGenerator() {
         selectedDay,
       );
       if (response.success && response.data) {
-        setSchedule(response.data);
+        // ✅ Ensure we're setting the periods array correctly
+        const periods = response.data.periods || response.data || [];
+        setSchedule(periods);
+      } else {
+        setSchedule([]);
       }
     } catch (err) {
       console.error("Error loading timetable:", err);
+      setSchedule([]);
     }
   };
 
@@ -124,16 +137,23 @@ export default function TimetableGenerator() {
   };
 
   const handleAddPeriod = async () => {
-    if (!selectedClassId) return;
+    if (!selectedClassId) {
+      Alert.alert("خطا", "لطفاً ابتدا یک صنف را انتخاب کنید");
+      return;
+    }
 
     if (newPeriod.isBreak) {
-      if (newPeriod.period === undefined) {
+      if (newPeriod.period === undefined || newPeriod.period === null) {
         Alert.alert("خطا", "لطفاً زنگ را انتخاب کنید");
         return;
       }
     } else {
-      if (newPeriod.period === undefined || !newPeriod.subjectId) {
-        Alert.alert("خطا", "لطفاً زنگ و مضمون را انتخاب کنید");
+      if (newPeriod.period === undefined || newPeriod.period === null) {
+        Alert.alert("خطا", "لطفاً زنگ را انتخاب کنید");
+        return;
+      }
+      if (!newPeriod.subjectId || newPeriod.subjectId === 0) {
+        Alert.alert("خطا", "لطفاً مضمون را انتخاب کنید");
         return;
       }
     }
@@ -153,12 +173,12 @@ export default function TimetableGenerator() {
         period: newPeriod.period,
         subjectId: subjectId,
         teacherId: newPeriod.teacherId,
-        room: newPeriod.room,
+        room: newPeriod.room || "",
         isBreak: newPeriod.isBreak,
       });
 
       if (response.success) {
-        Alert.alert("موفقیت", response.message);
+        Alert.alert("موفقیت", response.message || "برنامه با موفقیت ذخیره شد");
         setShowAddModal(false);
         setEditingPeriod(null);
         setNewPeriod({
@@ -168,11 +188,12 @@ export default function TimetableGenerator() {
           room: "",
           isBreak: false,
         });
-        loadTimetable();
+        await loadTimetable();
       } else {
-        Alert.alert("خطا", response.message);
+        Alert.alert("خطا", response.message || "خطا در ذخیره برنامه");
       }
     } catch (err) {
+      console.error("Error saving period:", err);
       Alert.alert("خطا", "خطا در ذخیره برنامه");
     } finally {
       setSubmitting(false);
@@ -183,16 +204,21 @@ export default function TimetableGenerator() {
     const subject = subjects.find((s) => s.name === period.subject);
     setEditingPeriod(period);
     setNewPeriod({
-      period: period.period,
+      period: period.period || 0,
       subjectId: subject?.id || 0,
       teacherId: undefined,
-      room: period.room,
-      isBreak: period.isBreak,
+      room: period.room || "",
+      isBreak: period.isBreak || false,
     });
     setShowAddModal(true);
   };
 
   const handleDeletePeriod = async (periodId: number) => {
+    if (!periodId) {
+      Alert.alert("خطا", "شناسه برنامه نامعتبر است");
+      return;
+    }
+
     Alert.alert("حذف برنامه", "آیا از حذف این زنگ مطمئن هستید؟", [
       { text: "لغو", style: "cancel" },
       {
@@ -202,12 +228,16 @@ export default function TimetableGenerator() {
           try {
             const response = await adminTimetableApi.deletePeriod(periodId);
             if (response.success) {
-              Alert.alert("موفقیت", response.message);
-              loadTimetable();
+              Alert.alert(
+                "موفقیت",
+                response.message || "برنامه با موفقیت حذف شد",
+              );
+              await loadTimetable();
             } else {
-              Alert.alert("خطا", response.message);
+              Alert.alert("خطا", response.message || "خطا در حذف برنامه");
             }
           } catch (err) {
+            console.error("Error deleting period:", err);
             Alert.alert("خطا", "خطا در حذف برنامه");
           }
         },
@@ -216,6 +246,7 @@ export default function TimetableGenerator() {
   };
 
   const getSubjectColor = (subject: string) => {
+    if (!subject) return "#8E8E93";
     const colors: Record<string, string> = {
       ریاضی: "#007AFF",
       علوم: "#34C759",
@@ -249,7 +280,21 @@ export default function TimetableGenerator() {
     );
   }
 
-  const currentSchedule = schedule;
+  if (error) {
+    return (
+      <SafeAreaView style={styles.container} edges={["top"]}>
+        <Header title="برنامه هفتگی" showBack />
+        <View style={styles.errorContainer}>
+          <Text style={styles.errorText}>{error}</Text>
+          <TouchableOpacity style={styles.retryButton} onPress={loadData}>
+            <Text style={styles.retryButtonText}>تلاش مجدد</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  const currentSchedule = schedule || [];
 
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
@@ -306,7 +351,7 @@ export default function TimetableGenerator() {
                         styles.selectorButtonTextActive,
                     ]}
                   >
-                    {cls.displayName}
+                    {cls.displayName || cls.name || `صنف ${cls.id}`}
                   </Text>
                 </TouchableOpacity>
               ))}
@@ -346,8 +391,9 @@ export default function TimetableGenerator() {
         <View style={styles.timetableContainer}>
           <View style={styles.timetableHeader}>
             <Text style={styles.timetableTitle}>
-              {classes.find((c) => c.id === selectedClassId)?.displayName} -{" "}
-              {PERSIAN_DAYS[selectedDay]}
+              {classes.find((c) => c.id === selectedClassId)?.displayName ||
+                "صنف"}{" "}
+              - {PERSIAN_DAYS[selectedDay]}
             </Text>
           </View>
 
@@ -357,8 +403,9 @@ export default function TimetableGenerator() {
               <Text style={styles.emptyTitle}>برنامه‌ای ثبت نشده</Text>
               <Text style={styles.emptyText}>
                 برای{" "}
-                {classes.find((c) => c.id === selectedClassId)?.displayName} در
-                روز {PERSIAN_DAYS[selectedDay]} برنامه‌ای ثبت نشده است
+                {classes.find((c) => c.id === selectedClassId)?.displayName ||
+                  "این صنف"}{" "}
+                در روز {PERSIAN_DAYS[selectedDay]} برنامه‌ای ثبت نشده است
               </Text>
               <TouchableOpacity
                 style={styles.emptyButton}
@@ -371,16 +418,18 @@ export default function TimetableGenerator() {
             <View style={styles.timetableGrid}>
               {currentSchedule.map((period) => (
                 <TouchableOpacity
-                  key={period.id}
+                  key={period.id || Math.random()}
                   style={[
                     styles.periodCard,
                     period.isBreak && styles.breakCard,
-                    { borderLeftColor: getSubjectColor(period.subject) },
+                    { borderLeftColor: getSubjectColor(period.subject || "") },
                   ]}
                   onPress={() => handleEditPeriod(period)}
                 >
                   <View style={styles.periodHeader}>
-                    <Text style={styles.periodTime}>{period.time}</Text>
+                    <Text style={styles.periodTime}>
+                      {period.time || period.startTime || ""}
+                    </Text>
                     <View style={styles.periodActions}>
                       <TouchableOpacity
                         style={styles.periodActionButton}
@@ -400,12 +449,16 @@ export default function TimetableGenerator() {
                     <Text style={styles.breakText}>زنگ تفریح</Text>
                   ) : (
                     <>
-                      <Text style={styles.periodSubject}>{period.subject}</Text>
+                      <Text style={styles.periodSubject}>
+                        {period.subject || "بدون مضمون"}
+                      </Text>
                       <View style={styles.periodDetails}>
                         <Text style={styles.periodTeacher}>
-                          {period.teacher}
+                          {period.teacher || ""}
                         </Text>
-                        <Text style={styles.periodRoom}>{period.room}</Text>
+                        <Text style={styles.periodRoom}>
+                          {period.room || ""}
+                        </Text>
                       </View>
                     </>
                   )}
@@ -590,6 +643,29 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: Colors.textSecondary,
   },
+  errorContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 20,
+  },
+  errorText: {
+    fontSize: 16,
+    color: Colors.danger,
+    textAlign: "center",
+    marginBottom: 20,
+  },
+  retryButton: {
+    backgroundColor: Colors.primary,
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 8,
+  },
+  retryButtonText: {
+    color: "white",
+    fontSize: 16,
+    fontWeight: "600",
+  },
   selectorContainer: {
     backgroundColor: Colors.card,
     padding: 20,
@@ -605,6 +681,7 @@ const styles = StyleSheet.create({
   selectorButtons: {
     flexDirection: "row",
     gap: 12,
+    paddingBottom: 4,
   },
   selectorButton: {
     paddingHorizontal: 20,
@@ -683,7 +760,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   periodCard: {
-    backgroundColor: Colors.card,
+    backgroundColor: Colors.background,
     borderRadius: 12,
     padding: 16,
     borderLeftWidth: 4,
@@ -694,7 +771,7 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   breakCard: {
-    backgroundColor: Colors.background,
+    backgroundColor: "#F2F2F7",
   },
   periodHeader: {
     flexDirection: "row",
@@ -715,7 +792,7 @@ const styles = StyleSheet.create({
     width: 28,
     height: 28,
     borderRadius: 8,
-    backgroundColor: Colors.background,
+    backgroundColor: Colors.card,
     justifyContent: "center",
     alignItems: "center",
   },
@@ -796,6 +873,8 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.background,
     borderWidth: 1,
     borderColor: Colors.border,
+    minWidth: 60,
+    alignItems: "center",
   },
   optionButtonActive: {
     backgroundColor: Colors.primary,

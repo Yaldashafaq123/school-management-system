@@ -11,7 +11,7 @@ export default function TeacherTabLayout() {
   return (
     <Tabs
       screenOptions={{
-        headerShown: false,
+        headerShown: false, // This hides headers for ALL tab screens
         tabBarStyle: {
           backgroundColor: Platform.OS === "ios" ? "transparent" : Colors.card,
           borderTopColor: Colors.border,
@@ -70,6 +70,7 @@ export default function TeacherTabLayout() {
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="book" size={size} color={color} />
           ),
+          // No need to add anything here since headerShown: false is inherited
         }}
       />
 

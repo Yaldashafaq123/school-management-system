@@ -1,4 +1,5 @@
-// app/(auth)/login.tsx - COMPLETELY FIXED
+// app/(auth)/login.tsx - FULLY FIXED VERSION
+
 import { Colors } from "@/constants/Colors";
 import { useAuth } from "@/contexts/AuthContext";
 import { Ionicons } from "@expo/vector-icons";
@@ -58,6 +59,9 @@ export default function LoginScreen() {
     try {
       await login({ email, password, rememberMe });
 
+      // Wait a moment for storage to update
+      await new Promise((resolve) => setTimeout(resolve, 500));
+
       const userDataStr = await AsyncStorage.getItem("user_data");
 
       if (!userDataStr) {
@@ -66,29 +70,39 @@ export default function LoginScreen() {
       }
 
       const userData = JSON.parse(userDataStr);
-      console.log("User role after login:", userData.role);
+      console.log("✅ User role after login:", userData.role);
 
-      // Convert to uppercase for case-insensitive comparison
-      const role = userData.role?.toUpperCase();
+      // ✅ FIX: Keep role as is (already uppercase from backend)
+      const role = userData.role;
 
+      // Navigation based on role
       switch (role) {
         case "ADMIN":
+          console.log("✅ Navigating to Admin Dashboard");
           router.replace("/(admin)/(tabs)");
           break;
         case "TEACHER":
+          console.log("✅ Navigating to Teacher Dashboard");
           router.replace("/(teacher)/(tabs)");
           break;
         case "STUDENT":
+          console.log("✅ Navigating to Student Dashboard");
           router.replace("/(student)/(tabs)");
           break;
         case "PARENT":
+          console.log("✅ Navigating to Parent Dashboard");
           router.replace("/(parent)/(tabs)");
           break;
         default:
+          console.log("⚠️ Unknown role, navigating to home:", role);
           router.replace("/");
       }
-    } catch (error) {
-      Alert.alert("خطا در ورود", "ایمیل یا رمز عبور اشتباه است");
+    } catch (error: any) {
+      console.error("Login error:", error);
+      Alert.alert(
+        "خطا در ورود",
+        error.message || "ایمیل یا رمز عبور اشتباه است",
+      );
     }
   };
 
@@ -293,7 +307,7 @@ export default function LoginScreen() {
                   <Text style={styles.registerText}>حساب کاربری ندارید؟</Text>
                 </View>
 
-                {/* Footer - FIXED */}
+                {/* Footer */}
                 <View style={styles.footerContainer}>
                   <Text style={styles.footerText}>
                     © {new Date().getFullYear()} Web Studio. All rights

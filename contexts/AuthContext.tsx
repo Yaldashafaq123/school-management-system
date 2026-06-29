@@ -1,4 +1,4 @@
-// contexts/AuthContext.tsx - CONNECTED TO REAL BACKEND
+// contexts/AuthContext.tsx - FULLY FIXED WITH CORRECT TYPE MATCHING
 
 import { BASE_URL } from "@/src/config/api";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -20,6 +20,7 @@ import {
   RegisterData,
   User,
   UserProfile,
+  UserRole,
 } from "../types";
 
 type AuthAction =
@@ -34,23 +35,19 @@ type AuthAction =
 
 interface AuthContextType extends AuthState {
   login: (credentials: LoginCredentials) => Promise<void>;
-  register: (data: RegisterData) => Promise<void>;
+  register: (data: RegisterData & { childEmail?: string }) => Promise<void>;
   logout: () => Promise<void>;
   updateProfile: (profile: Partial<UserProfile>) => Promise<void>;
-
   getUserStats: () => DashboardStats;
   getEnrolledCourses: () => Course[];
   getCourseProgress: (courseId: number) => number;
-
   getChildren: () => ParentChild[];
   getActiveChild: () => ParentChild | null;
   setActiveChild: (childId: number) => void;
   addChild: (childData: Omit<ParentChild, "id">) => Promise<void>;
   removeChild: (childId: number) => Promise<void>;
-
   refreshUserData: () => Promise<void>;
   setLoading: (loading: boolean) => void;
-
   isInitialized: boolean;
 }
 
@@ -118,6 +115,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   const [isInitialized, setIsInitialized] = useState(false);
 
   // ========================
+  // HELPER: Normalize role to lowercase (matching UserRole type)
+  // ========================
+  const normalizeRole = (role: string | undefined): UserRole | null => {
+    if (!role) return null;
+    const lowerRole = role.toLowerCase();
+    // Check if it's a valid UserRole (all lowercase)
+    const validRoles: UserRole[] = ["admin", "teacher", "student", "parent"];
+    if (validRoles.includes(lowerRole as UserRole)) {
+      return lowerRole as UserRole;
+    }
+    return null;
+  };
+
+  // ========================
   // CHECK SAVED LOGIN
   // ========================
   const checkAuthStatus = async () => {
@@ -126,9 +137,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       const userDataStr = await AsyncStorage.getItem("user_data");
 
       if (token && userDataStr) {
+        const userData = JSON.parse(userDataStr);
         dispatch({
           type: "LOGIN_SUCCESS",
-          payload: { user: JSON.parse(userDataStr), token },
+          payload: { user: userData, token },
         });
       } else {
         dispatch({ type: "LOGIN_FAILURE", payload: "No credentials" });
@@ -160,14 +172,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       if (!userDataStr) return;
 
       const currentUser = JSON.parse(userDataStr);
-      const userRole = currentUser.role?.toUpperCase();
+      const userRole = normalizeRole(currentUser.role);
+
+      // Skip profile fetch for admin users
+      if (userRole === "admin") {
+        return;
+      }
 
       let endpoint = "";
-      if (userRole === "TEACHER") {
+      if (userRole === "teacher") {
         endpoint = "/teacher/profile";
-      } else if (userRole === "STUDENT") {
+      } else if (userRole === "student") {
         endpoint = "/student/profile";
-      } else if (userRole === "PARENT") {
+      } else if (userRole === "parent") {
         endpoint = "/parent/profile";
       } else {
         return;
@@ -198,7 +215,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   };
 
   // ========================
-  // REAL LOGIN
+  // FIXED LOGIN FUNCTION
   // ========================
   const login = async (credentials: LoginCredentials) => {
     try {
@@ -215,6 +232,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         }),
       });
 
+      // Check if response is JSON
+      const contentType = response.headers.get("content-type");
+      if (!contentType || !contentType.includes("application/json")) {
+        const text = await response.text();
+        console.error("Non-JSON response:", text.substring(0, 200));
+        throw new Error(
+          "Server returned non-JSON response. Please check if the API endpoint is correct.",
+        );
+      }
+
       const data = await response.json();
 
       if (!response.ok) {
@@ -223,32 +250,38 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
 
       const token = data.token;
 
-      // Create user object from login response
+      // ✅ FIX: Use data.User (capital U) from backend
+      const userData = data.User || data.user || data;
+
+      // Debug log
+      console.log("Login response data:", JSON.stringify(data, null, 2));
+      console.log("User data extracted:", JSON.stringify(userData, null, 2));
+
+      // Normalize role to lowercase (matching UserRole type)
+      const normalizedRole = normalizeRole(userData.role) || "student";
+
       const user: User = {
-        id: data.user?.id || data.id || 0,
-        fullName:
-          data.user?.fullName ||
-          data.fullName ||
-          credentials.email.split("@")[0],
-        email: data.user?.email || data.email || credentials.email,
-        phone: data.user?.phone || data.phone || "",
-        role: (data.user?.role || data.role || "STUDENT").toLowerCase(),
-        verified: data.user?.verified || data.verified || true,
-        createdAt:
-          data.user?.createdAt || data.createdAt || new Date().toISOString(),
-        profile_image: data.user?.profileImage || data.user?.profile_image,
-        teacherId:
-          data.user?.teacher?.id || data.teacher?.id || data.teacherId || null,
-        studentId:
-          data.user?.student?.id || data.student?.id || data.studentId || null,
-        parentId:
-          data.user?.parent?.id || data.parent?.id || data.parentId || null,
+        id: userData.id || 0,
+        fullName: userData.fullName || credentials.email.split("@")[0],
+        email: userData.email || credentials.email,
+        phone: userData.phone || "",
+        role: normalizedRole,
+        verified: userData.verified || true,
+        createdAt: userData.createdAt || new Date().toISOString(),
+        profile_image: userData.profileImage || userData.profile_image,
+        teacherId: userData.Teacher?.id || userData.teacher?.id || null,
+        studentId: userData.Student?.id || userData.student?.id || null,
+        parentId: userData.Parent?.id || userData.parent?.id || null,
         stats: {},
         enrolledCourses: [],
         courseProgress: {},
         children: [],
         active_child_id: undefined,
       };
+
+      // Debug log role
+      console.log("✅ User role extracted:", user.role);
+      console.log("✅ Full user object:", user);
 
       await AsyncStorage.setItem("auth_token", token);
       await AsyncStorage.setItem("user_data", JSON.stringify(user));
@@ -258,7 +291,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         payload: { user, token },
       });
 
-      // Fetch full profile after login
+      // Fetch additional profile data
       setTimeout(() => {
         fetchUserProfile();
       }, 100);
@@ -273,34 +306,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   };
 
   // ========================
-  // FIXED REGISTER FUNCTION (WITH CHILD EMAIL SUPPORT)
+  // FIXED REGISTER FUNCTION
   // ========================
-  const register = async (data: RegisterData) => {
+  const register = async (data: RegisterData & { childEmail?: string }) => {
     try {
       dispatch({ type: "SET_LOADING", payload: true });
 
-      // Map frontend field names to backend expected names
       const backendData: any = {
         name: data.name,
         email: data.email,
         password: data.password,
-        role: data.role.toUpperCase(),
+        role: data.role.toLowerCase(), // Send lowercase to backend
         phone: data.phone || "",
       };
 
-      // Include class_id if role is student
-      if (data.role === "student" && data.class_id) {
-        backendData.class_id = data.class_id;
+      // Add child email if parent registration
+      if (data.role === "parent" && data.childEmail) {
+        backendData.childEmail = data.childEmail;
       }
 
-      // Include child_email if role is parent
-      if (data.role === "parent" && (data as any).child_email) {
-        backendData.child_email = (data as any).child_email;
-      }
-
-      console.log("Register data:", backendData);
-
-      const response = await fetch(`${BASE_URL}/public/register`, {
+      const response = await fetch(`${BASE_URL}/auth/register`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -309,22 +334,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       });
 
       const result = await response.json();
-      console.log("Register response:", result);
 
       if (!response.ok) {
-        throw new Error(result.message || "ثبت‌نام ناموفق بود");
+        throw new Error(result.message || "ثبت‌نام با خطا مواجه شد");
       }
 
-      Alert.alert("ثبت‌نام موفق", "حساب شما با موفقیت ایجاد شد.");
-
-      // After registration, redirect to login (they need to login with their new account)
-      // The navigation will be handled in the screen component
+      Alert.alert(
+        "ثبت‌نام موفق",
+        "حساب کاربری شما با موفقیت ایجاد شد. لطفاً وارد شوید.",
+        [{ text: "ورود", onPress: () => {} }],
+      );
     } catch (error: any) {
       console.error("Register error:", error);
-      dispatch({
-        type: "LOGIN_FAILURE",
-        payload: error.message,
-      });
+      Alert.alert("خطا", error.message || "ثبت‌نام با خطا مواجه شد");
       throw error;
     } finally {
       dispatch({ type: "SET_LOADING", payload: false });
@@ -332,21 +354,31 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   };
 
   // ========================
-  // FIXED LOGOUT - Clear ALL storage
+  // LOGOUT - Clear ALL storage
   // ========================
   const logout = async () => {
     try {
       // Clear all auth-related items
       await AsyncStorage.removeItem("auth_token");
       await AsyncStorage.removeItem("user_data");
-      await AsyncStorage.removeItem("userToken"); // Clear any old token formats
+      await AsyncStorage.removeItem("userToken");
+      await AsyncStorage.removeItem("user_role");
 
       // Clear any other app data if needed
-      // await AsyncStorage.clear(); // Use with caution - clears EVERYTHING
+      const keys = await AsyncStorage.getAllKeys();
+      const appKeys = keys.filter(
+        (key) =>
+          key.startsWith("course_") ||
+          key.startsWith("progress_") ||
+          key.startsWith("attendance_"),
+      );
+      if (appKeys.length > 0) {
+        await AsyncStorage.multiRemove(appKeys);
+      }
 
       dispatch({ type: "LOGOUT" });
 
-      console.log("Logout successful - all storage cleared");
+      console.log("✅ Logout successful - all storage cleared");
     } catch (error) {
       console.error("Logout error:", error);
       // Still dispatch logout even if storage removal fails
@@ -354,29 +386,52 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     }
   };
 
+  // ========================
+  // UPDATE PROFILE
+  // ========================
   const updateProfile = async (profile: Partial<UserProfile>) => {
     if (!state.user) return;
 
     try {
-      if (state.user.role === "teacher") {
-        const token = await AsyncStorage.getItem("auth_token");
-        if (token) {
-          await fetch(`${BASE_URL}/teacher/profile`, {
-            method: "PUT",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${token}`,
-            },
-            body: JSON.stringify(profile),
-          });
-        }
+      const token = await AsyncStorage.getItem("auth_token");
+      if (!token) return;
+
+      const userRole = state.user.role;
+      let endpoint = "";
+
+      if (userRole === "teacher") {
+        endpoint = "/teacher/profile";
+      } else if (userRole === "student") {
+        endpoint = "/student/profile";
+      } else if (userRole === "parent") {
+        endpoint = "/parent/profile";
+      } else {
+        // Admin or other roles might not have profile update
+        const updatedUser = { ...state.user, ...profile };
+        await AsyncStorage.setItem("user_data", JSON.stringify(updatedUser));
+        dispatch({ type: "UPDATE_PROFILE", payload: updatedUser });
+        Alert.alert("موفقیت", "پروفایل با موفقیت به‌روزرسانی شد.");
+        return;
       }
 
-      const updatedUser = { ...state.user, ...profile };
-      await AsyncStorage.setItem("user_data", JSON.stringify(updatedUser));
-      dispatch({ type: "UPDATE_PROFILE", payload: updatedUser });
+      const response = await fetch(`${BASE_URL}${endpoint}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(profile),
+      });
 
-      Alert.alert("موفقیت", "پروفایل با موفقیت به‌روزرسانی شد.");
+      if (response.ok) {
+        const updatedData = await response.json();
+        const updatedUser = { ...state.user, ...updatedData };
+        await AsyncStorage.setItem("user_data", JSON.stringify(updatedUser));
+        dispatch({ type: "UPDATE_PROFILE", payload: updatedUser });
+        Alert.alert("موفقیت", "پروفایل با موفقیت به‌روزرسانی شد.");
+      } else {
+        throw new Error("Failed to update profile");
+      }
     } catch (error) {
       console.error("Update profile error:", error);
       Alert.alert("خطا", "در به‌روزرسانی پروفایل خطایی رخ داد.");
@@ -399,8 +454,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   const getCourseProgress = (courseId: number) =>
     state.user?.courseProgress?.[courseId] || 0;
 
-  const getChildren = (): ParentChild[] =>
-    state.user?.role === "parent" ? state.user.children || [] : [];
+  const getChildren = (): ParentChild[] => {
+    if (state.user?.role === "parent") {
+      return state.user.children || [];
+    }
+    return [];
+  };
 
   const getActiveChild = (): ParentChild | null => {
     if (state.user?.role !== "parent") return null;
@@ -418,11 +477,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     dispatch({ type: "SET_ACTIVE_CHILD", payload: childId });
   };
 
-  const addChild = async () => {};
-  const removeChild = async () => {};
+  const addChild = async () => {
+    Alert.alert("اطلاعات", "این قابلیت در نسخه بعدی اضافه خواهد شد.");
+  };
+
+  const removeChild = async () => {
+    Alert.alert("اطلاعات", "این قابلیت در نسخه بعدی اضافه خواهد شد.");
+  };
+
   const refreshUserData = async () => {
     await fetchUserProfile();
   };
+
   const setLoading = (loading: boolean) =>
     dispatch({ type: "SET_LOADING", payload: loading });
 

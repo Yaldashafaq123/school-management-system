@@ -223,7 +223,7 @@ export default function EditCourse() {
       title: lesson.title,
       description: lesson.description,
       videoUrl: lesson.videoUrl,
-      duration: lesson.duration,
+      duration: lesson.duration?.toString() || "", // Convert number to string for display
       is_free: lesson.isFree,
       order: lesson.order,
     });
@@ -251,6 +251,7 @@ export default function EditCourse() {
     ]);
   };
 
+  // FIXED: Convert duration to number before sending to API
   const handleSaveLesson = async () => {
     if (!lessonForm.title.trim()) {
       Alert.alert("خطا", "عنوان درس الزامی است.");
@@ -262,29 +263,49 @@ export default function EditCourse() {
       return;
     }
 
+    // Validate duration is a number
+    const durationNum = lessonForm.duration ? parseInt(lessonForm.duration) : 0;
+    if (lessonForm.duration && isNaN(durationNum)) {
+      Alert.alert("خطا", "مدت زمان باید یک عدد باشد");
+      return;
+    }
+
     try {
+      const lessonData = {
+        title: lessonForm.title,
+        description: lessonForm.description,
+        videoUrl: lessonForm.videoUrl,
+        duration: durationNum, // ✅ Convert string to number
+        is_free: lessonForm.is_free,
+        order: lessonForm.order,
+      };
+
       if (editingLesson && editingLesson.id) {
         const response = await teacherCoursesApi.updateLesson(
           editingLesson.id,
           {
-            ...lessonForm,
+            ...lessonData,
             course_id: Number(id),
           },
         );
 
         if (response.success) {
+          // Update local state with the converted duration
+          const updatedLesson = {
+            ...editingLesson,
+            ...lessonData,
+            id: editingLesson.id,
+          };
           setLessons(
             lessons.map((lesson) =>
-              lesson.id === editingLesson.id
-                ? { ...editingLesson, ...lessonForm, id: editingLesson.id }
-                : lesson,
+              lesson.id === editingLesson.id ? updatedLesson : lesson,
             ),
           );
           Alert.alert("موفقیت", "درس با موفقیت ویرایش شد.");
         }
       } else {
         const response = await teacherCoursesApi.createLesson(Number(id), {
-          ...lessonForm,
+          ...lessonData,
           course_id: Number(id),
         });
 
@@ -295,7 +316,8 @@ export default function EditCourse() {
       }
       setShowLessonModal(false);
       setEditingLesson(null);
-    } catch {
+    } catch (error) {
+      console.error("Error saving lesson:", error);
       Alert.alert("خطا", "مشکلی در ذخیره درس پیش آمد.");
     }
   };
@@ -339,7 +361,7 @@ export default function EditCourse() {
     return true;
   };
 
-  // In handleSubmit function
+  // FIXED: Ensure duration is sent as number
   const handleSubmit = async () => {
     if (!validateForm()) return;
 
@@ -357,7 +379,7 @@ export default function EditCourse() {
         title: formData.title,
         description: formData.description,
         subject: formData.subject,
-        duration: parseInt(formData.duration) || 0,
+        duration: parseInt(formData.duration) || 0, // ✅ Convert string to number
         schedule: formData.schedule,
         capacity: formData.capacity ? parseInt(formData.capacity) : undefined,
         thumbnail: thumbnailUrl,
@@ -550,7 +572,7 @@ export default function EditCourse() {
                             color={Colors.textSecondary}
                           />
                           <Text style={styles.lessonMetaText}>
-                            {lesson.duration}
+                            {lesson.duration} دقیقه
                           </Text>
                         </View>
 
@@ -858,17 +880,19 @@ export default function EditCourse() {
               </View>
 
               <View style={styles.modalFormGroup}>
-                <Text style={styles.modalLabel}>مدت زمان</Text>
+                <Text style={styles.modalLabel}>مدت زمان (دقیقه)</Text>
                 <TextInput
                   style={styles.modalInput}
-                  placeholder="مثال: 15:30"
+                  placeholder="مثال: 20"
+                  placeholderTextColor={Colors.textSecondary}
                   value={lessonForm.duration}
                   onChangeText={(text) =>
                     setLessonForm((prev) => ({ ...prev, duration: text }))
                   }
+                  keyboardType="numeric"
                 />
                 <Text style={styles.modalHint}>
-                  فرمت: دقیقه:ثانیه (مثال: 25:45)
+                  مدت زمان درس را به دقیقه وارد کنید
                 </Text>
               </View>
 

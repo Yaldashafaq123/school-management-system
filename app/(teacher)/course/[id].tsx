@@ -1,23 +1,26 @@
 // app/(teacher)/course/[id].tsx
-import React, { useState, useEffect } from 'react';
+import { Ionicons } from "@expo/vector-icons";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import { useEffect, useState } from "react";
 import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-  Image,
-  Alert,
-  Switch,
-  Share,
   ActivityIndicator,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import { Colors } from '../../../constants/Colors';
-import { Header } from '../../../components/Header';
-import { teacherCoursesApi, Course } from '../../../src/config/teacherCoursesApi';
+  Alert,
+  Image,
+  ScrollView,
+  Share,
+  StyleSheet,
+  Switch,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { Header } from "../../../components/Header";
+import { Colors } from "../../../constants/Colors";
+import {
+  Course,
+  teacherCoursesApi,
+} from "../../../src/config/teacherCoursesApi";
 
 export default function CourseDetails() {
   const { id } = useLocalSearchParams();
@@ -39,8 +42,8 @@ export default function CourseDetails() {
         setIsActive(response.data.is_active);
       }
     } catch (error) {
-      console.error('Error fetching course:', error);
-      Alert.alert('خطا', 'مشکلی در دریافت اطلاعات دوره پیش آمد.');
+      console.error("Error fetching course:", error);
+      Alert.alert("خطا", "مشکلی در دریافت اطلاعات دوره پیش آمد.");
     } finally {
       setLoading(false);
     }
@@ -55,32 +58,32 @@ export default function CourseDetails() {
         title: course.title,
       });
     } catch (error) {
-      console.error('Error sharing:', error);
+      console.error("Error sharing:", error);
     }
   };
 
   const handleDelete = () => {
     Alert.alert(
-      'حذف دوره',
-      'آیا مطمئن هستید که می‌خواهید این دوره را حذف کنید؟ این عمل قابل بازگشت نیست.',
+      "حذف دوره",
+      "آیا مطمئن هستید که می‌خواهید این دوره را حذف کنید؟ این عمل قابل بازگشت نیست.",
       [
-        { text: 'لغو', style: 'cancel' },
+        { text: "لغو", style: "cancel" },
         {
-          text: 'حذف',
-          style: 'destructive',
+          text: "حذف",
+          style: "destructive",
           onPress: async () => {
             try {
               const response = await teacherCoursesApi.deleteCourse(Number(id));
               if (response.success) {
-                Alert.alert('موفقیت', 'دوره با موفقیت حذف شد.');
-                router.push('/(teacher)/courses');
+                Alert.alert("موفقیت", "دوره با موفقیت حذف شد.");
+                router.push("/(teacher)/courses");
               }
             } catch (error) {
-              Alert.alert('خطا', 'مشکلی در حذف دوره پیش آمد.');
+              Alert.alert("خطا", "مشکلی در حذف دوره پیش آمد.");
             }
           },
         },
-      ]
+      ],
     );
   };
 
@@ -93,21 +96,25 @@ export default function CourseDetails() {
       const response = await teacherCoursesApi.toggleCourseStatus(Number(id));
       if (response.success) {
         setIsActive(value);
-        setCourse(prev => prev ? { ...prev, is_active: value } : prev);
+        setCourse((prev) => (prev ? { ...prev, is_active: value } : prev));
       }
     } catch (error) {
-      Alert.alert('خطا', 'مشکلی در تغییر وضعیت دوره پیش آمد.');
+      Alert.alert("خطا", "مشکلی در تغییر وضعیت دوره پیش آمد.");
     }
   };
 
   const formatPrice = (price: number) => {
-    return price.toLocaleString('fa-IR') + ' تومان';
+    return price.toLocaleString("fa-IR") + " تومان";
   };
 
   if (loading) {
     return (
-      <SafeAreaView style={styles.container} edges={['top']}>
-        <Header title="جزئیات دوره" showBack onBackPress={() => router.back()} />
+      <SafeAreaView style={styles.container} edges={["top"]}>
+        <Header
+          title="جزئیات دوره"
+          showBack
+          onBackPress={() => router.back()}
+        />
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={Colors.primary} />
           <Text style={styles.loadingText}>در حال بارگذاری...</Text>
@@ -118,8 +125,12 @@ export default function CourseDetails() {
 
   if (!course) {
     return (
-      <SafeAreaView style={styles.container} edges={['top']}>
-        <Header title="جزئیات دوره" showBack onBackPress={() => router.back()} />
+      <SafeAreaView style={styles.container} edges={["top"]}>
+        <Header
+          title="جزئیات دوره"
+          showBack
+          onBackPress={() => router.back()}
+        />
         <View style={styles.errorContainer}>
           <Ionicons name="alert-circle" size={60} color={Colors.danger} />
           <Text style={styles.errorText}>دوره یافت نشد</Text>
@@ -129,7 +140,7 @@ export default function CourseDetails() {
   }
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
+    <SafeAreaView style={styles.container} edges={["top"]}>
       <Header
         title="جزئیات دوره"
         showBack
@@ -148,9 +159,13 @@ export default function CourseDetails() {
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
         {/* Course Image */}
-        <Image 
-          source={{ uri: course.thumbnail_url || 'https://via.placeholder.com/800x400/3B82F6/FFFFFF?text=دوره' }} 
-          style={styles.courseImage} 
+        <Image
+          source={{
+            uri:
+              course.thumbnail_url ||
+              "https://via.placeholder.com/800x400/3B82F6/FFFFFF?text=دوره",
+          }}
+          style={styles.courseImage}
         />
 
         {/* Course Header */}
@@ -159,23 +174,25 @@ export default function CourseDetails() {
             <Text style={styles.courseTitle}>{course.title}</Text>
             <View style={styles.courseBadge}>
               <Ionicons
-                name={isActive ? 'checkmark-circle' : 'close-circle'}
+                name={isActive ? "checkmark-circle" : "close-circle"}
                 size={16}
                 color={isActive ? Colors.success : Colors.danger}
               />
-              <Text style={[
-                styles.courseStatus,
-                { color: isActive ? Colors.success : Colors.danger }
-              ]}>
-                {isActive ? 'فعال' : 'غیرفعال'}
+              <Text
+                style={[
+                  styles.courseStatus,
+                  { color: isActive ? Colors.success : Colors.danger },
+                ]}
+              >
+                {isActive ? "فعال" : "غیرفعال"}
               </Text>
             </View>
           </View>
-          
+
           <View style={styles.courseMeta}>
             <View style={styles.metaItem}>
               <Ionicons name="book" size={16} color={Colors.textSecondary} />
-              <Text style={styles.metaText}>{course.subject || 'عمومی'}</Text>
+              <Text style={styles.metaText}>{course.subject || "عمومی"}</Text>
             </View>
             <View style={styles.metaItem}>
               <Ionicons name="time" size={16} color={Colors.textSecondary} />
@@ -193,7 +210,9 @@ export default function CourseDetails() {
           </View>
           <View style={styles.statCard}>
             <Ionicons name="star" size={24} color={Colors.warning} />
-            <Text style={styles.statValue}>{course.rating?.toFixed(1) || 0}</Text>
+            <Text style={styles.statValue}>
+              {course.rating?.toFixed(1) || 0}
+            </Text>
             <Text style={styles.statLabel}>امتیاز</Text>
           </View>
         </View>
@@ -202,7 +221,7 @@ export default function CourseDetails() {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>توضیحات دوره</Text>
           <Text style={styles.courseDescription}>
-            {course.description || 'توضیحاتی برای این دوره ثبت نشده است.'}
+            {course.description || "توضیحاتی برای این دوره ثبت نشده است."}
           </Text>
         </View>
 
@@ -213,7 +232,11 @@ export default function CourseDetails() {
             <View style={styles.list}>
               {course.objectives.map((objective, index) => (
                 <View key={index} style={styles.listItem}>
-                  <Ionicons name="checkmark-circle" size={16} color={Colors.success} />
+                  <Ionicons
+                    name="checkmark-circle"
+                    size={16}
+                    color={Colors.success}
+                  />
                   <Text style={styles.listText}>{objective.text}</Text>
                 </View>
               ))}
@@ -228,7 +251,11 @@ export default function CourseDetails() {
             <View style={styles.list}>
               {course.requirements.map((requirement, index) => (
                 <View key={index} style={styles.listItem}>
-                  <Ionicons name="alert-circle" size={16} color={Colors.warning} />
+                  <Ionicons
+                    name="alert-circle"
+                    size={16}
+                    color={Colors.warning}
+                  />
                   <Text style={styles.listText}>{requirement.text}</Text>
                 </View>
               ))}
@@ -255,7 +282,12 @@ export default function CourseDetails() {
               style={styles.actionButton}
               onPress={() => router.push(`./${id}/manage`)}
             >
-              <View style={[styles.actionIcon, { backgroundColor: 'rgba(59, 130, 246, 0.1)' }]}>
+              <View
+                style={[
+                  styles.actionIcon,
+                  { backgroundColor: "rgba(59, 130, 246, 0.1)" },
+                ]}
+              >
                 <Ionicons name="settings" size={24} color={Colors.primary} />
               </View>
               <Text style={styles.actionText}>مدیریت دوره</Text>
@@ -263,10 +295,21 @@ export default function CourseDetails() {
 
             <TouchableOpacity
               style={styles.actionButton}
-              onPress={() => router.push(`/(teacher)/assignment/create?course=${id}`)}
+              onPress={() =>
+                router.push(`/(teacher)/assignment/create?course=${id}`)
+              }
             >
-              <View style={[styles.actionIcon, { backgroundColor: 'rgba(16, 185, 129, 0.1)' }]}>
-                <Ionicons name="document-text" size={24} color={Colors.success} />
+              <View
+                style={[
+                  styles.actionIcon,
+                  { backgroundColor: "rgba(16, 185, 129, 0.1)" },
+                ]}
+              >
+                <Ionicons
+                  name="document-text"
+                  size={24}
+                  color={Colors.success}
+                />
               </View>
               <Text style={styles.actionText}>تکلیف جدید</Text>
             </TouchableOpacity>
@@ -275,7 +318,12 @@ export default function CourseDetails() {
               style={styles.actionButton}
               onPress={() => router.push(`/(teacher)/exam/create?course=${id}`)}
             >
-              <View style={[styles.actionIcon, { backgroundColor: 'rgba(245, 158, 11, 0.1)' }]}>
+              <View
+                style={[
+                  styles.actionIcon,
+                  { backgroundColor: "rgba(245, 158, 11, 0.1)" },
+                ]}
+              >
                 <Ionicons name="clipboard" size={24} color={Colors.warning} />
               </View>
               <Text style={styles.actionText}>آزمون جدید</Text>
@@ -289,11 +337,8 @@ export default function CourseDetails() {
           <Text style={styles.dangerZoneDescription}>
             این عملیات قابل بازگشت نیستند. لطفاً با دقت اقدام کنید.
           </Text>
-          
-          <TouchableOpacity
-            style={styles.deleteButton}
-            onPress={handleDelete}
-          >
+
+          <TouchableOpacity style={styles.deleteButton} onPress={handleDelete}>
             <Ionicons name="trash" size={20} color="#fff" />
             <Text style={styles.deleteButtonText}>حذف دوره</Text>
           </TouchableOpacity>
@@ -310,8 +355,8 @@ const styles = StyleSheet.create({
   },
   loadingContainer: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
   },
   loadingText: {
     marginTop: 12,
@@ -320,8 +365,8 @@ const styles = StyleSheet.create({
   },
   errorContainer: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
     padding: 40,
   },
   errorText: {
@@ -330,14 +375,14 @@ const styles = StyleSheet.create({
     marginTop: 16,
   },
   headerActions: {
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: 16,
   },
   content: {
     flex: 1,
   },
   courseImage: {
-    width: '100%',
+    width: "100%",
     height: 200,
     backgroundColor: Colors.border,
   },
@@ -348,34 +393,34 @@ const styles = StyleSheet.create({
     borderBottomColor: Colors.border,
   },
   courseHeaderTop: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
     marginBottom: 12,
   },
   courseTitle: {
     fontSize: 20,
-    fontWeight: 'bold',
+    fontWeight: "bold",
     color: Colors.text,
     flex: 1,
   },
   courseBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 4,
     marginLeft: 8,
   },
   courseStatus: {
     fontSize: 14,
-    fontWeight: '500',
+    fontWeight: "500",
   },
   courseMeta: {
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: 16,
   },
   metaItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 4,
   },
   metaText: {
@@ -383,7 +428,7 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
   },
   statsGrid: {
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: 12,
     padding: 20,
     backgroundColor: Colors.card,
@@ -395,13 +440,13 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.background,
     borderRadius: 12,
     padding: 16,
-    alignItems: 'center',
+    alignItems: "center",
     borderWidth: 1,
     borderColor: Colors.border,
   },
   statValue: {
     fontSize: 20,
-    fontWeight: 'bold',
+    fontWeight: "bold",
     color: Colors.text,
     marginTop: 8,
     marginBottom: 4,
@@ -417,14 +462,14 @@ const styles = StyleSheet.create({
     borderBottomColor: Colors.border,
   },
   actionSection: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     marginBottom: 20,
   },
   sectionTitle: {
     fontSize: 16,
-    fontWeight: 'bold',
+    fontWeight: "bold",
     color: Colors.text,
     marginBottom: 12,
   },
@@ -432,14 +477,14 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: Colors.text,
     lineHeight: 24,
-    textAlign: 'justify',
+    textAlign: "justify",
   },
   list: {
     gap: 8,
   },
   listItem: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
+    flexDirection: "row",
+    alignItems: "flex-start",
     gap: 8,
   },
   listText: {
@@ -449,8 +494,8 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   toggleContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 8,
   },
   toggleLabel: {
@@ -458,13 +503,13 @@ const styles = StyleSheet.create({
     color: Colors.text,
   },
   actionsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
+    flexDirection: "row",
+    flexWrap: "wrap",
     gap: 12,
   },
   actionButton: {
-    width: '48%',
-    alignItems: 'center',
+    width: "48%",
+    alignItems: "center",
     backgroundColor: Colors.background,
     padding: 16,
     borderRadius: 12,
@@ -475,27 +520,27 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: 24,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
     marginBottom: 12,
   },
   actionText: {
     fontSize: 12,
     color: Colors.text,
-    fontWeight: '500',
-    textAlign: 'center',
+    fontWeight: "500",
+    textAlign: "center",
   },
   dangerZone: {
     margin: 20,
     padding: 20,
-    backgroundColor: 'rgba(239, 68, 68, 0.1)',
+    backgroundColor: "rgba(239, 68, 68, 0.1)",
     borderRadius: 12,
     borderWidth: 1,
     borderColor: Colors.danger,
   },
   dangerZoneTitle: {
     fontSize: 18,
-    fontWeight: 'bold',
+    fontWeight: "bold",
     color: Colors.danger,
     marginBottom: 8,
   },
@@ -506,17 +551,17 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   deleteButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
     backgroundColor: Colors.danger,
     paddingVertical: 12,
     borderRadius: 8,
     gap: 8,
   },
   deleteButtonText: {
-    color: '#fff',
+    color: "#fff",
     fontSize: 16,
-    fontWeight: 'bold',
+    fontWeight: "bold",
   },
 });

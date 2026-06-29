@@ -285,8 +285,6 @@ export default function TeacherCourses() {
     <SafeAreaView style={styles.container} edges={["top"]}>
       <Header
         title="مدیریت دوره‌ها"
-        showBack
-        onBackPress={() => router.back()}
         rightComponent={
           <TouchableOpacity onPress={handleCreateCourse}>
             <Ionicons name="add-circle" size={28} color={Colors.primary} />
@@ -485,6 +483,19 @@ export default function TeacherCourses() {
                     </View>
 
                     <View style={styles.actionButtons}>
+                      {/* NEW: Edit/Add Lessons Button */}
+                      <TouchableOpacity
+                        style={styles.editButton}
+                        onPress={() => handleEditCourse(course.id)}
+                      >
+                        <Ionicons
+                          name="create-outline"
+                          size={18}
+                          color={Colors.primary}
+                        />
+                        <Text style={styles.editText}>ویرایش و دروس</Text>
+                      </TouchableOpacity>
+
                       <TouchableOpacity
                         style={[
                           styles.statusButton,
@@ -704,6 +715,23 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
+    gap: 12,
+  },
+  editButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(59, 130, 246, 0.1)",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    gap: 6,
+    flex: 1,
+    justifyContent: "center",
+  },
+  editText: {
+    fontSize: 12,
+    color: Colors.primary,
+    fontWeight: "500",
   },
   statusButton: {
     flexDirection: "row",
@@ -723,20 +751,6 @@ const styles = StyleSheet.create({
   },
   statusText: {
     fontSize: 12,
-    fontWeight: "500",
-  },
-  editButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "rgba(59, 130, 246, 0.1)",
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 8,
-    gap: 6,
-  },
-  editText: {
-    fontSize: 12,
-    color: Colors.primary,
     fontWeight: "500",
   },
 });

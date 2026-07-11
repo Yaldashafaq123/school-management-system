@@ -1,10 +1,15 @@
 // app/(parent)/attendance/index.tsx
-import { parentAttendanceApi, AttendanceOverview, MonthlyAttendanceData, WeeklyAttendance } from '@/src/config/parentAttendanceApi';
-import { parentChildApi } from '@/src/config/parentChildApi';
-import { useAuth } from '@/contexts/AuthContext';
-import { useRouter } from 'expo-router';
-import { Calendar, TrendingUp, ChevronDown } from "lucide-react-native";
-import React, { useCallback, useEffect, useState } from "react";
+import { useAuth } from "@/contexts/AuthContext";
+import {
+  AttendanceOverview,
+  MonthlyAttendanceData,
+  parentAttendanceApi,
+  WeeklyAttendance,
+} from "@/src/config/parentAttendanceApi";
+import { parentChildApi } from "@/src/config/parentChildApi";
+import { useRouter } from "expo-router";
+import { Calendar, ChevronDown, TrendingUp } from "lucide-react-native";
+import { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
   RefreshControl,
@@ -22,46 +27,69 @@ interface Child {
   class: string;
 }
 
-// Helper function to get status text in Persian
+// ✅ Helper function to get status text - NO conversion, just returns the status
 function getStatusText(status: string) {
-  switch (status) {
-    case "present":
-      return "حاضر";
-    case "absent":
-      return "غایب";
-    case "late":
-      return "تأخیر";
-    case "excused":
-      return "مرخصی";
-    case "holiday":
-      return "تعطیل";
-    case "weekend":
-      return "آخرهفته";
-    case "future":
-      return "آینده";
-    default:
-      return status;
-  }
+  // The backend now sends the correct Persian text directly
+  // Just return what the backend sends
+  return status;
 }
 
-// Helper function to get status style
+// ✅ Helper function to get status style
 function getStatusStyle(status: string) {
-  switch (status) {
-    case "present":
-      return styles.present;
-    case "absent":
-      return styles.absent;
-    case "late":
-      return styles.late;
-    case "excused":
-      return styles.excused;
-    case "holiday":
-      return styles.holiday;
-    case "weekend":
-      return styles.weekend;
-    default:
-      return styles.weekend;
-  }
+  const statusMap: Record<string, any> = {
+    حاضر: styles.present,
+    present: styles.present,
+    PRESENT: styles.present,
+    غایب: styles.absent,
+    absent: styles.absent,
+    ABSENT: styles.absent,
+    تأخیر: styles.late,
+    late: styles.late,
+    LATE: styles.late,
+    مرخصی: styles.excused,
+    excused: styles.excused,
+    EXCUSED: styles.excused,
+    تعطیل: styles.holiday,
+    holiday: styles.holiday,
+    HOLIDAY: styles.holiday,
+    آخرهفته: styles.weekend,
+    weekend: styles.weekend,
+    WEEKEND: styles.weekend,
+    آینده: styles.weekend,
+    future: styles.weekend,
+    FUTURE: styles.weekend,
+  };
+  return statusMap[status] || styles.weekend;
+}
+
+// ✅ Helper function to get status display text - NO conversion
+function getStatusDisplayText(status: string) {
+  // The backend sends the correct Persian text directly
+  // Just return what the backend sends
+  const statusMap: Record<string, string> = {
+    حاضر: "حاضر",
+    present: "حاضر",
+    PRESENT: "حاضر",
+    غایب: "غایب",
+    absent: "غایب",
+    ABSENT: "غایب",
+    تأخیر: "تأخیر",
+    late: "تأخیر",
+    LATE: "تأخیر",
+    مرخصی: "مرخصی",
+    excused: "مرخصی",
+    EXCUSED: "مرخصی",
+    تعطیل: "تعطیل",
+    holiday: "تعطیل",
+    HOLIDAY: "تعطیل",
+    آخرهفته: "آخرهفته",
+    weekend: "آخرهفته",
+    WEEKEND: "آخرهفته",
+    آینده: "آینده",
+    future: "آینده",
+    FUTURE: "آینده",
+  };
+  return statusMap[status] || status;
 }
 
 export default function AttendanceMonitor() {
@@ -69,7 +97,8 @@ export default function AttendanceMonitor() {
   const { user: _user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [attendanceData, setAttendanceData] = useState<AttendanceOverview | null>(null);
+  const [attendanceData, setAttendanceData] =
+    useState<AttendanceOverview | null>(null);
   const [selectedChildId, setSelectedChildId] = useState<number | null>(null);
   const [children, setChildren] = useState<Child[]>([]);
   const [showChildSelector, setShowChildSelector] = useState(false);
@@ -79,17 +108,19 @@ export default function AttendanceMonitor() {
     try {
       const response = await parentChildApi.getChildren();
       console.log("Children response:", response);
-      
+
       if (response.success && response.data) {
-        setChildren(response.data.children);
-        
+        // Handle both possible response structures
+        const childrenData = response.data.children || response.data;
+        setChildren(childrenData);
+
         // Get stored active child or use first child
         const storedId = await parentChildApi.getStoredActiveChildId();
-        if (storedId && response.data.children.some(c => c.id === storedId)) {
+        if (storedId && childrenData.some((c) => c.id === storedId)) {
           setSelectedChildId(storedId);
-        } else if (response.data.children.length > 0) {
-          setSelectedChildId(response.data.children[0].id);
-          await parentChildApi.setActiveChild(response.data.children[0].id);
+        } else if (childrenData.length > 0) {
+          setSelectedChildId(childrenData[0].id);
+          await parentChildApi.setActiveChild(childrenData[0].id);
         }
       }
     } catch (error) {
@@ -103,13 +134,14 @@ export default function AttendanceMonitor() {
       setLoading(false);
       return;
     }
-    
+
     try {
       setLoading(true);
       console.log("Fetching attendance for child:", selectedChildId);
-      const response = await parentAttendanceApi.getAttendanceOverview(selectedChildId);
+      const response =
+        await parentAttendanceApi.getAttendanceOverview(selectedChildId);
       console.log("Attendance API response:", response);
-      
+
       if (response.success && response.data) {
         setAttendanceData(response.data);
       } else {
@@ -117,7 +149,7 @@ export default function AttendanceMonitor() {
         setAttendanceData(null);
       }
     } catch (error) {
-      console.error('Error loading attendance:', error);
+      console.error("Error loading attendance:", error);
       setAttendanceData(null);
     } finally {
       setLoading(false);
@@ -147,7 +179,7 @@ export default function AttendanceMonitor() {
     setShowChildSelector(false);
   };
 
-  const selectedChild = children.find(c => c.id === selectedChildId);
+  const selectedChild = children.find((c) => c.id === selectedChildId);
 
   if (loading) {
     return (
@@ -188,12 +220,15 @@ export default function AttendanceMonitor() {
             onPress={() => setShowChildSelector(true)}
           >
             <Text style={styles.childSelectorText}>
-              {selectedChild?.name || "انتخاب فرزند"} <ChevronDown size={16} color="#6b7280" />
+              {selectedChild?.name || "انتخاب فرزند"}{" "}
+              <ChevronDown size={16} color="#6b7280" />
             </Text>
           </TouchableOpacity>
         </View>
         <View style={styles.emptyDataContainer}>
-          <Text style={styles.emptyDataTitle}>اطلاعات حضور و غیاب موجود نیست</Text>
+          <Text style={styles.emptyDataTitle}>
+            اطلاعات حضور و غیاب موجود نیست
+          </Text>
           <Text style={styles.emptyDataSubtitle}>
             هنوز هیچ ثبت حضور و غیابی برای این دانش‌آموز انجام نشده است
           </Text>
@@ -218,7 +253,7 @@ export default function AttendanceMonitor() {
           <RefreshControl
             refreshing={refreshing}
             onRefresh={handleRefresh}
-            colors={['#3b82f6']}
+            colors={["#3b82f6"]}
           />
         }
       >
@@ -229,7 +264,8 @@ export default function AttendanceMonitor() {
             onPress={() => setShowChildSelector(true)}
           >
             <Text style={styles.childSelectorText}>
-              {attendanceData?.student?.name || "دانش‌آموز"} <ChevronDown size={16} color="#6b7280" />
+              {attendanceData?.student?.name || "دانش‌آموز"}{" "}
+              <ChevronDown size={16} color="#6b7280" />
             </Text>
           </TouchableOpacity>
           <Text style={styles.studentClass}>
@@ -257,21 +293,24 @@ export default function AttendanceMonitor() {
               weeklyData.map((day: WeeklyAttendance, index: number) => (
                 <View key={index} style={styles.dayCard}>
                   <Text style={styles.dayName}>{day.day}</Text>
-                  <View
-                    style={[
-                      styles.dateCircle,
-                      getStatusStyle(day.status),
-                    ]}
-                  >
+                  <View style={[styles.dateCircle, getStatusStyle(day.status)]}>
                     <Text style={styles.dateText}>{day.date}</Text>
                   </View>
-                  <Text style={[styles.statusText, getStatusStyle(day.status) === styles.present && styles.statusPresentText]}>
-                    {getStatusText(day.status)}
+                  <Text
+                    style={[
+                      styles.statusText,
+                      getStatusStyle(day.status) === styles.present &&
+                        styles.statusPresentText,
+                    ]}
+                  >
+                    {getStatusDisplayText(day.status)}
                   </Text>
                 </View>
               ))
             ) : (
-              <Text style={styles.emptyText}>اطلاعاتی برای این هفته موجود نیست</Text>
+              <Text style={styles.emptyText}>
+                اطلاعاتی برای این هفته موجود نیست
+              </Text>
             )}
           </View>
         </View>
@@ -288,7 +327,10 @@ export default function AttendanceMonitor() {
                     <Text style={styles.monthName}>{month.month}</Text>
                     <View style={styles.progressBackground}>
                       <View
-                        style={[styles.progressFill, { height: `${percentage}%` }]}
+                        style={[
+                          styles.progressFill,
+                          { height: `${percentage}%` },
+                        ]}
                       />
                     </View>
                     <Text style={styles.monthStats}>
@@ -298,7 +340,9 @@ export default function AttendanceMonitor() {
                 );
               })
             ) : (
-              <Text style={styles.emptyText}>اطلاعاتی برای ماهانه موجود نیست</Text>
+              <Text style={styles.emptyText}>
+                اطلاعاتی برای ماهانه موجود نیست
+              </Text>
             )}
           </View>
         </View>

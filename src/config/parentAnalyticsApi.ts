@@ -2,157 +2,97 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { BASE_URL } from "./api";
 
-export interface ReadinessComponent {
-  attendance: number | null;
-  assignments: number | null;
-  weeklyAssessments: number | null;
-  monthlyExams: number | null;
-  halfYearExams: number | null;
-  growth: number | null;
-}
-
-export interface Readiness {
-  score: number | null;
-  components: ReadinessComponent;
-  confidence: "LOW" | "MEDIUM" | "HIGH";
-  dataCompleteness: number;
-}
-
-export interface RankInfo {
-  rank: number;
-  total: number;
-}
-
-export interface Rankings {
-  class: RankInfo;
-  school: RankInfo;
-  percentile: {
-    score: number;
-    label: string;
-  };
-}
-
-export interface BehaviorMetrics {
-  classAverageDifference: number;
-  schoolAverageDifference: number;
-  classAverage: number;
-  schoolAverage: number;
-  studentScore: number;
-  hasData: boolean;
-}
-
-export interface HistoryDataPoint {
-  month: string;
-  fullMonth: string;
-  average: number;
-  count: number;
-}
-
-export interface ReadinessHistory {
-  data: HistoryDataPoint[];
-  currentScore: number | null;
-  trendDirection: "IMPROVING" | "DECLINING" | "STABLE";
-  trendPercentage: number;
-  hasData: boolean;
+export interface Child {
+  id: number;
+  name: string;
+  class: string;
+  classId: number;
+  profileImage?: string | null;
 }
 
 export interface SubjectAnalytics {
-  subjectId: number;
   subjectName: string;
   currentAverage: number | null;
   previousAverage: number | null;
   growth: number | null;
   classAverage: number | null;
   schoolAverage: number | null;
-  classification: "STRONG" | "AVERAGE" | "WEAK" | "CRITICAL" | "NO_DATA";
+  classification: string;
   hasData: boolean;
 }
 
-export interface Risk {
-  level: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
-  score: number;
-  factors: string[];
-  factorsChecked: number;
-}
-
-export interface Recommendation {
-  id: number;
-  type: string;
-  category: string;
-  priority: "HIGH" | "MEDIUM" | "LOW";
-  message: string;
-  actionable: boolean;
-}
-
 export interface StudentAnalyticsResponse {
-  student: {
-    id: number;
-    name: string;
-    class: string;
-    rollNumber: string;
+  studentId: number;
+  studentName: string;
+  className: string;
+  academicYear: string;
+  hasAnalytics: boolean;
+
+  readiness: {
+    score: number | null;
+    confidence: string;
+    dataCompleteness: number;
+    components: {
+      attendance: number | null;
+      assignments: number | null;
+      weeklyAssessments: number | null;
+      monthlyExams: number | null;
+      halfYearExams: number | null;
+      growth: number | null;
+    };
   };
-  readiness: Readiness;
-  rankings: Rankings;
-  behaviorMetrics: BehaviorMetrics;
-  readinessHistory: ReadinessHistory;
+
+  attendance: {
+    total: number;
+    present: number;
+    absent: number;
+    late: number;
+    excused: number;
+    score: number | null;
+  };
+
   growth: {
     score: number | null;
-    percentage: number | null;
+    percentage: number;
+    direction: string;
   };
+
   trend: {
-    direction: "IMPROVING" | "DECLINING" | "STABLE";
+    direction: string;
     percentage: number;
     hasData: boolean;
-    dataPoints: number;
   };
+
+  rankings: {
+    class: { rank: number; total: number };
+    school: { rank: number; total: number };
+    percentile: { value: number; label: string };
+  };
+
+  risk: {
+    level: string;
+    factors: string[];
+  };
+
+  subjects: SubjectAnalytics[];
+  recommendations: { priority: string; message: string }[];
   predictedFinal: {
     min: number | null;
     max: number | null;
     confidence: number;
   };
-  subjects: SubjectAnalytics[];
-  risk: Risk;
-  recommendations: Recommendation[];
-  attendance: {
-    score: number | null;
-    present: number;
-    absent: number;
-    late: number;
-    excused: number;
-    total: number;
-  };
-  assignments: {
-    score: number | null;
-    submitted: number;
-    graded: number;
-    total: number;
-  };
-  hasAnalytics: boolean;
-}
-
-export interface Child {
-  id: number;
-  name: string;
-  class: string;
-  classId: number;
-  profileImage?: string;
-  active: boolean;
-}
-
-export interface ChildrenListResponse {
-  children: Child[];
-  activeChildId: number | null;
+  behaviorMetrics: { classAverage: number; schoolAverage: number };
 }
 
 export const parentAnalyticsApi = {
-  // Get all children for parent
+  // Get children with analytics data
   getChildren: async (): Promise<{
     success: boolean;
-    data: ChildrenListResponse;
+    data: { children: Child[]; activeChildId: number | null };
   }> => {
     try {
       const token = await AsyncStorage.getItem("auth_token");
-      const response = await fetch(`${BASE_URL}/parent/children`, {
+      const response = await fetch(`${BASE_URL}/parent/analytics/children`, {
         method: "GET",
         headers: {
           Authorization: `Bearer ${token}`,
@@ -162,38 +102,26 @@ export const parentAnalyticsApi = {
       const result = await response.json();
 
       if (result.success && result.data) {
-        if (result.data.children !== undefined) {
-          return result;
-        }
-        if (Array.isArray(result.data)) {
-          return {
-            success: true,
-            data: {
-              children: result.data,
-              activeChildId: result.data.length > 0 ? result.data[0].id : null,
-            },
-          };
-        }
+        return result;
       }
-      return result;
+      return { success: false, data: { children: [], activeChildId: null } };
     } catch (error) {
       console.error("Error fetching children:", error);
       return { success: false, data: { children: [], activeChildId: null } };
     }
   },
 
-  // Get student analytics for a child
+  // Get student analytics
   getStudentAnalytics: async (
-    studentId: number,
+    childId: number,
   ): Promise<{
     success: boolean;
-    data?: StudentAnalyticsResponse;
-    message?: string;
+    data: StudentAnalyticsResponse | null;
   }> => {
     try {
       const token = await AsyncStorage.getItem("auth_token");
       const response = await fetch(
-        `${BASE_URL}/analytics/student/${studentId}`,
+        `${BASE_URL}/parent/analytics/student/${childId}`,
         {
           method: "GET",
           headers: {
@@ -203,21 +131,21 @@ export const parentAnalyticsApi = {
         },
       );
       const result = await response.json();
-      return result;
+
+      if (result.success && result.data) {
+        return result;
+      }
+      return { success: false, data: null };
     } catch (error) {
-      console.error("Error fetching student analytics:", error);
-      return { success: false, message: "خطا در دریافت اطلاعات" };
+      console.error("Error fetching analytics:", error);
+      return { success: false, data: null };
     }
   },
 
   // Set active child
   setActiveChild: async (
     childId: number,
-  ): Promise<{
-    success: boolean;
-    message: string;
-    data?: { activeChildId: number };
-  }> => {
+  ): Promise<{ success: boolean; message: string }> => {
     try {
       const token = await AsyncStorage.getItem("auth_token");
       const response = await fetch(`${BASE_URL}/parent/children/active`, {

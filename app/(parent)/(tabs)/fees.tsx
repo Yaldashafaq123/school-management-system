@@ -133,7 +133,12 @@ export default function FeeManagement() {
     }
   };
 
-  const formatAmount = (amount: number) => {
+  // Replace the formatAmount function with this safe version
+  const formatAmount = (amount: number | null | undefined) => {
+    // ✅ Check if amount is null or undefined
+    if (amount === null || amount === undefined || isNaN(amount)) {
+      return "0 " + CURRENCY;
+    }
     return amount.toLocaleString("fa-AF") + " " + CURRENCY;
   };
 

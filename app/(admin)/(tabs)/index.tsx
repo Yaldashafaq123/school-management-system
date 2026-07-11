@@ -2,10 +2,7 @@
 import { Header } from "@/components/Header";
 import { Colors } from "@/constants/Colors";
 import { useAuth } from "@/contexts/AuthContext";
-import {
-  adminApi,
-  DashboardStats
-} from "@/src/config/adminApi";
+import { adminApi, DashboardStats } from "@/src/config/adminApi";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { Link, useRouter } from "expo-router";
@@ -420,6 +417,8 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
     padding: 16,
+    // ✅ ADD THIS: Ensures proper scrolling
+    paddingBottom: 40,
   },
   loadingContainer: {
     flex: 1,
@@ -436,6 +435,8 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     padding: 20,
     marginBottom: 24,
+    // ✅ ADD THIS: Prevents compression
+    flexShrink: 0,
   },
   welcomeContent: {
     flexDirection: "row",
@@ -457,16 +458,22 @@ const styles = StyleSheet.create({
     flexWrap: "wrap",
     gap: 12,
     marginBottom: 24,
+    // ✅ ADD THIS: Forces proper wrapping
+    justifyContent: "space-between",
   },
   statCard: {
-    flex: 1,
-    minWidth: "45%",
+    // ✅ CHANGE: Don't use flex:1 with percentages
+    width: "47%", // Use exact width instead of flex:1
     backgroundColor: Colors.card,
     borderRadius: 12,
     padding: 16,
     alignItems: "center",
     borderWidth: 1,
     borderColor: Colors.border,
+    // ✅ ADD THIS: Prevents shrinking
+    flexShrink: 0,
+    // ✅ ADD THIS: Prevents growing beyond container
+    flexGrow: 0,
   },
   statIcon: {
     width: 48,
@@ -475,31 +482,39 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     marginBottom: 12,
+    flexShrink: 0,
   },
   statValue: {
     fontSize: 20,
     fontWeight: "bold",
     color: Colors.text,
     marginBottom: 4,
+    // ✅ ADD THIS: Prevents text from breaking layout
+    minHeight: 28,
   },
   statLabel: {
     fontSize: 12,
     color: Colors.textSecondary,
+    textAlign: "center",
   },
   section: {
     marginBottom: 24,
+    // ✅ ADD THIS: Ensures section doesn't compress
+    flexShrink: 0,
   },
   sectionHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     marginBottom: 16,
+    flexShrink: 0,
   },
   sectionTitle: {
     fontSize: 18,
     fontWeight: "bold",
     color: Colors.text,
     marginBottom: 16,
+    flexShrink: 0,
   },
   seeAllText: {
     fontSize: 14,
@@ -511,36 +526,50 @@ const styles = StyleSheet.create({
     flexWrap: "wrap",
     gap: 12,
     marginBottom: 16,
+    // ✅ ADD THIS: Prevents wrapping issues
+    justifyContent: "space-between",
   },
   moduleCard: {
-    flex: 1,
-    minWidth: "30%",
+    // ✅ CHANGE: Use exact width
+    width: "30%",
     alignItems: "center",
     backgroundColor: Colors.card,
     padding: 20,
     borderRadius: 12,
     borderWidth: 1,
     borderColor: Colors.border,
+    // ✅ ADD THESE: Prevent compression
+    flexShrink: 0,
+    flexGrow: 0,
+    minHeight: 80,
   },
   moduleTitle: {
     fontSize: 12,
     color: Colors.text,
     fontWeight: "500",
     marginTop: 8,
+    textAlign: "center",
   },
   actionsGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
     gap: 12,
+    // ✅ ADD THIS: Ensures proper spacing
+    justifyContent: "space-between",
   },
   actionCard: {
-    width: "48%",
+    // ✅ CHANGE: Use exact width
+    width: "47%",
     alignItems: "center",
     backgroundColor: Colors.card,
     padding: 20,
     borderRadius: 12,
     borderWidth: 1,
     borderColor: Colors.border,
+    // ✅ ADD THESE: Prevent compression
+    flexShrink: 0,
+    flexGrow: 0,
+    minHeight: 100,
   },
   actionIcon: {
     width: 48,
@@ -549,6 +578,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     marginBottom: 12,
+    flexShrink: 0,
   },
   actionText: {
     fontSize: 12,
@@ -562,12 +592,14 @@ const styles = StyleSheet.create({
     padding: 16,
     borderWidth: 1,
     borderColor: Colors.border,
+    flexShrink: 0,
   },
   financialItem: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     marginBottom: 12,
+    flexShrink: 0,
   },
   financialLabel: {
     fontSize: 14,
@@ -584,15 +616,18 @@ const styles = StyleSheet.create({
     padding: 16,
     borderWidth: 1,
     borderColor: Colors.border,
+    flexShrink: 0,
   },
   healthItem: {
     marginBottom: 16,
+    flexShrink: 0,
   },
   healthInfo: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     marginBottom: 8,
+    flexShrink: 0,
   },
   healthLabel: {
     fontSize: 14,
@@ -608,6 +643,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.border,
     borderRadius: 3,
     overflow: "hidden",
+    flexShrink: 0,
   },
   healthBarFill: {
     height: "100%",
@@ -623,10 +659,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
     borderWidth: 1,
     borderColor: Colors.border,
+    flexShrink: 0,
   },
   emptyStateText: {
     fontSize: 14,
     color: Colors.textSecondary,
+    textAlign: "center",
   },
   activityItem: {
     flexDirection: "row",
@@ -637,6 +675,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.border,
     gap: 12,
+    flexShrink: 0,
   },
   activityIcon: {
     width: 32,
@@ -645,9 +684,11 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(59, 130, 246, 0.1)",
     justifyContent: "center",
     alignItems: "center",
+    flexShrink: 0,
   },
   activityContent: {
     flex: 1,
+    flexShrink: 1,
   },
   activityText: {
     fontSize: 14,
@@ -667,12 +708,14 @@ const styles = StyleSheet.create({
     padding: 20,
     borderWidth: 1,
     borderColor: Colors.border,
+    flexShrink: 0,
   },
   systemStatusHeader: {
     flexDirection: "row",
     alignItems: "center",
     marginBottom: 16,
     gap: 12,
+    flexShrink: 0,
   },
   systemStatusTitle: {
     fontSize: 16,
@@ -684,6 +727,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 4,
     borderRadius: 12,
+    flexShrink: 0,
   },
   statusBadgeText: {
     fontSize: 12,
@@ -692,9 +736,11 @@ const styles = StyleSheet.create({
   systemStatusInfo: {
     flexDirection: "row",
     justifyContent: "space-between",
+    flexShrink: 0,
   },
   systemStatusItem: {
     alignItems: "center",
+    flexShrink: 0,
   },
   systemStatusLabel: {
     fontSize: 12,

@@ -841,7 +841,7 @@ class FinanceApi {
             item.roll_number ||
             null,
           user: {
-            fullName: user.fullName || `دانش‌آموز #${item.id}`,
+            fullName: user.fullName || `داjjjjjنش‌آموز #${item.id}`,
             email: user.email || item.email || "",
             phone: user.phone || item.phone || "",
           },

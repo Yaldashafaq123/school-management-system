@@ -1,6 +1,13 @@
-// types/index.ts
-export type UserRole = "student" | "teacher" | "admin" | "parent";
+export type UserRole = "admin" | "teacher" | "student" | "parent" | "finance";
 
+export interface FinanceStaff {
+  id: number;
+  position: string;
+  department: string;
+  isActive: boolean;
+  joinDate: string;
+  salary?: number;
+}
 export interface User {
   id: number;
   fullName: string; // Changed from 'fullname' to match backend
@@ -12,10 +19,14 @@ export interface User {
   phone?: string;
   verified?: boolean;
   createdAt?: string;
+    originalRole?: string;  // Original role from backend (ADMIN, FINANCE, etc.)
+  userType?: string;      // For routing
   // ✅ Add these role-specific ID fields
   teacherId?: number | null; // For TEACHER role
   studentId?: number | null; // For STUDENT role
   parentId?: number | null; // For PARENT role
+  financeId?: number | null; // ✅ NEW
+  financeStaff?: FinanceStaff | null; // ✅ NEW
   // Optional fields - defined ONLY ONCE
   stats?: DashboardStats;
   enrolledCourses?: number[];

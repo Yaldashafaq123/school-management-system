@@ -4,7 +4,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Application from "expo-application";
 import Constants from "expo-constants";
 import { Slot, useRouter, useSegments } from "expo-router";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -19,7 +19,6 @@ import {
 } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { AuthProvider, useAuth } from "../contexts/AuthContext";
-import { useRef } from "react";
 // Enable RTL for Farsi
 I18nManager.allowRTL(true);
 I18nManager.forceRTL(true);
@@ -288,6 +287,10 @@ function RootLayoutNav() {
           break;
         case "parent":
           router.replace("/(parent)/(tabs)");
+          break;
+        case "finance":
+          // cast to any to satisfy router.replace typing for nested group path
+          router.replace("/(finance)/(tabs)" as unknown as any);
           break;
         default:
           router.replace("/(auth)/login");

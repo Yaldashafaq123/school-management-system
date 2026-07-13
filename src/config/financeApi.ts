@@ -3,6 +3,65 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { BASE_URL } from "./api";
 
 // ==================== TYPES ====================
+// src/config/financeApi.ts - Add these methods to the FinanceApi class
+
+// ==================== FINANCE PROFILE ====================
+
+export interface FinanceProfile {
+  user: {
+    id: number;
+    fullName: string;
+    email: string;
+    phone: string;
+    role: string;
+    profileImage?: string;
+    isActive: boolean;
+    createdAt: string;
+  };
+  financeStaff: {
+    id: number;
+    position: string;
+    department: string;
+    isActive: boolean;
+    joinDate: string;
+    salary: number | null;
+  };
+  statistics: {
+    totalStudents: number;
+    totalAssignments: number;
+    activeAssignments: number;
+    completedAssignments: number;
+    collectionRate: number;
+    totalOutstanding: number;
+    monthlyCollection: number;
+  };
+}
+
+export interface FinanceStats {
+  summary: {
+    totalStudents: number;
+    totalTeachers: number;
+    totalClasses: number;
+    totalAssignments: number;
+    activeAssignments: number;
+    completedAssignments: number;
+    collectionRate: number;
+    totalOutstanding: number;
+    monthlyCollection: number;
+    monthlyExpenses: number;
+    pendingFees: number;
+    overdueRecords: number;
+  };
+  financeStaff: {
+    id: number;
+    position: string;
+    department: string;
+    joinDate: string;
+    salary: number | null;
+  };
+}
+
+// Add to FinanceApi class:
 
 export interface FeeTemplate {
   id: number;
@@ -380,7 +439,37 @@ class FinanceApi {
       throw error;
     }
   }
+  async getProfile(): Promise<{ success: boolean; data: FinanceProfile }> {
+    return this.request("/profile");
+  }
 
+  async updateProfile(data: {
+    fullName?: string;
+    phone?: string;
+    position?: string;
+    department?: string;
+    salary?: number;
+    profileImage?: string;
+  }): Promise<{ success: boolean; data: any }> {
+    return this.request("/profile", {
+      method: "PUT",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async getStats(): Promise<{ success: boolean; data: FinanceStats }> {
+    return this.request("/stats");
+  }
+
+  async changePassword(data: {
+    currentPassword: string;
+    newPassword: string;
+  }): Promise<{ success: boolean; message: string }> {
+    return this.request("/change-password", {
+      method: "PUT",
+      body: JSON.stringify(data),
+    });
+  }
   // ==================== DASHBOARD ====================
   async getDashboard(): Promise<{ success: boolean; data: DashboardSummary }> {
     return this.request("/dashboard/summary");

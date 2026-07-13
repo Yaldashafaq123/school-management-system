@@ -1,4 +1,4 @@
-// app/(auth)/login.tsx - FULLY FIXED VERSION
+// app/(auth)/login.tsx - FIXED VERSION
 
 import { Colors } from "@/constants/Colors";
 import { useAuth } from "@/contexts/AuthContext";
@@ -20,6 +20,16 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+
+// ✅ Define route type to avoid TypeScript errors
+type AppRoute =
+  | "/(admin)/(tabs)"
+  | "/(teacher)/(tabs)"
+  | "/(student)/(tabs)"
+  | "/(parent)/(tabs)"
+  | "/(finance)/(tabs)"
+  | "/(auth)/login"
+  | "/";
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -62,6 +72,7 @@ export default function LoginScreen() {
       // Wait a moment for storage to update
       await new Promise((resolve) => setTimeout(resolve, 500));
 
+      // ✅ FIX: Get userData AFTER login
       const userDataStr = await AsyncStorage.getItem("user_data");
 
       if (!userDataStr) {
@@ -70,33 +81,40 @@ export default function LoginScreen() {
       }
 
       const userData = JSON.parse(userDataStr);
-      console.log("✅ User role after login:", userData.role);
 
-      // ✅ FIX: Keep role as is (already uppercase from backend)
-      const role = userData.role;
+      // ✅ Use userType from backend for routing
+      const role = userData.userType || userData.role;
+      const roleLower = role?.toLowerCase();
 
-      // Navigation based on role
-      switch (role) {
-        case "ADMIN":
-          console.log("✅ Navigating to Admin Dashboard");
-          router.replace("/(admin)/(tabs)");
+      console.log("✅ User role for routing:", roleLower);
+
+      // ✅ Navigation based on role with proper typing
+      let route: AppRoute = "/";
+
+      switch (roleLower) {
+        case "admin":
+          route = "/(admin)/(tabs)";
           break;
-        case "TEACHER":
-          console.log("✅ Navigating to Teacher Dashboard");
-          router.replace("/(teacher)/(tabs)");
+        case "teacher":
+          route = "/(teacher)/(tabs)";
           break;
-        case "STUDENT":
-          console.log("✅ Navigating to Student Dashboard");
-          router.replace("/(student)/(tabs)");
+        case "student":
+          route = "/(student)/(tabs)";
           break;
-        case "PARENT":
-          console.log("✅ Navigating to Parent Dashboard");
-          router.replace("/(parent)/(tabs)");
+        case "parent":
+          route = "/(parent)/(tabs)";
+          break;
+        case "finance":
+          console.log("✅ Navigating to Finance Dashboard");
+          route = "/(finance)/(tabs)";
           break;
         default:
-          console.log("⚠️ Unknown role, navigating to home:", role);
-          router.replace("/");
+          console.log("⚠️ Unknown role, navigating to home:", roleLower);
+          route = "/";
       }
+
+      // ✅ Use replace with proper route
+      router.replace(route as any);
     } catch (error: any) {
       console.error("Login error:", error);
       Alert.alert(

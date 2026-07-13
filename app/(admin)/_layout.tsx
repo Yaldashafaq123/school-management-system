@@ -27,6 +27,7 @@ export default function AdminLayout() {
         return <Redirect href="/(teacher)/(tabs)" />;
       case "PARENT":
         return <Redirect href="/(parent)/(tabs)" />;
+    
       default:
         return <Redirect href="/(auth)/login" />;
     }

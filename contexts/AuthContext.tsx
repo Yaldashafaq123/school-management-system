@@ -1,4 +1,4 @@
-// contexts/AuthContext.tsx - FULLY FIXED WITH CORRECT TYPE MATCHING
+// contexts/AuthContext.tsx - Updated with FINANCE support
 
 import { BASE_URL } from "@/src/config/api";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -49,6 +49,8 @@ interface AuthContextType extends AuthState {
   refreshUserData: () => Promise<void>;
   setLoading: (loading: boolean) => void;
   isInitialized: boolean;
+  userRole: UserRole | null;
+  isFinance: boolean;
 }
 
 const initialState: AuthState = {
@@ -115,13 +117,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   const [isInitialized, setIsInitialized] = useState(false);
 
   // ========================
-  // HELPER: Normalize role to lowercase (matching UserRole type)
+  // HELPER: Normalize role to lowercase
   // ========================
   const normalizeRole = (role: string | undefined): UserRole | null => {
     if (!role) return null;
     const lowerRole = role.toLowerCase();
-    // Check if it's a valid UserRole (all lowercase)
-    const validRoles: UserRole[] = ["admin", "teacher", "student", "parent"];
+    // ✅ ADDED: 'finance' to valid roles
+    const validRoles: UserRole[] = [
+      "admin",
+      "teacher",
+      "student",
+      "parent",
+      "finance",
+    ];
     if (validRoles.includes(lowerRole as UserRole)) {
       return lowerRole as UserRole;
     }
@@ -161,7 +169,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   }, []);
 
   // ========================
-  // FETCH USER PROFILE
+  // FETCH USER PROFILE - Updated
   // ========================
   const fetchUserProfile = async () => {
     try {
@@ -173,9 +181,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
 
       const currentUser = JSON.parse(userDataStr);
       const userRole = normalizeRole(currentUser.role);
+      const userType = currentUser.userType || userRole;
 
-      // Skip profile fetch for admin users
-      if (userRole === "admin") {
+      // Skip profile fetch for admin/finance users (they don't have profile endpoints)
+      if (userRole === "admin" || userRole === "finance") {
         return;
       }
 
@@ -215,7 +224,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   };
 
   // ========================
-  // FIXED LOGIN FUNCTION
+  // LOGIN - Updated for FINANCE
   // ========================
   const login = async (credentials: LoginCredentials) => {
     try {
@@ -232,7 +241,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         }),
       });
 
-      // Check if response is JSON
       const contentType = response.headers.get("content-type");
       if (!contentType || !contentType.includes("application/json")) {
         const text = await response.text();
@@ -249,16 +257,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       }
 
       const token = data.token;
-
-      // ✅ FIX: Use data.User (capital U) from backend
       const userData = data.User || data.user || data;
 
-      // Debug log
-      console.log("Login response data:", JSON.stringify(data, null, 2));
-      console.log("User data extracted:", JSON.stringify(userData, null, 2));
+      // ✅ Use userType from backend for routing, fallback to role
+      const routeRole = userData.userType || userData.role;
+      const normalizedRole = normalizeRole(routeRole) || "student";
 
-      // Normalize role to lowercase (matching UserRole type)
-      const normalizedRole = normalizeRole(userData.role) || "student";
+      // ✅ Extract finance staff data
+      const financeStaff = userData.FinanceStaff || userData.finance || null;
 
       const user: User = {
         id: userData.id || 0,
@@ -266,12 +272,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         email: userData.email || credentials.email,
         phone: userData.phone || "",
         role: normalizedRole,
+        // ✅ Store original role for reference
+        originalRole: userData.role,
+        userType: routeRole,
         verified: userData.verified || true,
         createdAt: userData.createdAt || new Date().toISOString(),
         profile_image: userData.profileImage || userData.profile_image,
         teacherId: userData.Teacher?.id || userData.teacher?.id || null,
         studentId: userData.Student?.id || userData.student?.id || null,
         parentId: userData.Parent?.id || userData.parent?.id || null,
+        financeId: financeStaff?.id || null, // ✅ NEW
+        financeStaff: financeStaff, // ✅ NEW
         stats: {},
         enrolledCourses: [],
         courseProgress: {},
@@ -279,9 +290,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         active_child_id: undefined,
       };
 
-      // Debug log role
       console.log("✅ User role extracted:", user.role);
-      console.log("✅ Full user object:", user);
+      console.log("✅ User type for routing:", user.userType || user.role);
+      console.log("✅ Finance staff data:", user.financeStaff);
 
       await AsyncStorage.setItem("auth_token", token);
       await AsyncStorage.setItem("user_data", JSON.stringify(user));
@@ -291,7 +302,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         payload: { user, token },
       });
 
-      // Fetch additional profile data
       setTimeout(() => {
         fetchUserProfile();
       }, 100);
@@ -306,9 +316,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   };
 
   // ========================
-  // FIXED REGISTER FUNCTION
+  // REGISTER - Updated for FINANCE
   // ========================
-  const register = async (data: RegisterData & { childEmail?: string }) => {
+  const register = async (
+    data: RegisterData & {
+      childEmail?: string;
+      position?: string;
+      department?: string;
+      joinDate?: string;
+      salary?: number;
+    },
+  ) => {
     try {
       dispatch({ type: "SET_LOADING", payload: true });
 
@@ -316,9 +334,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         name: data.name,
         email: data.email,
         password: data.password,
-        role: data.role.toLowerCase(), // Send lowercase to backend
+        role: data.role.toUpperCase(), // Send uppercase to backend
         phone: data.phone || "",
       };
+
+      // ✅ Add finance-specific fields
+      if (data.role === "finance") {
+        backendData.position = data.position || "Finance Officer";
+        backendData.department = data.department || "Finance Department";
+        backendData.joinDate = data.joinDate || new Date().toISOString();
+        backendData.salary = data.salary || 0;
+      }
 
       // Add child email if parent registration
       if (data.role === "parent" && data.childEmail) {
@@ -354,17 +380,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   };
 
   // ========================
-  // LOGOUT - Clear ALL storage
+  // LOGOUT
   // ========================
   const logout = async () => {
     try {
-      // Clear all auth-related items
       await AsyncStorage.removeItem("auth_token");
       await AsyncStorage.removeItem("user_data");
       await AsyncStorage.removeItem("userToken");
       await AsyncStorage.removeItem("user_role");
 
-      // Clear any other app data if needed
       const keys = await AsyncStorage.getAllKeys();
       const appKeys = keys.filter(
         (key) =>
@@ -377,17 +401,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       }
 
       dispatch({ type: "LOGOUT" });
-
       console.log("✅ Logout successful - all storage cleared");
     } catch (error) {
       console.error("Logout error:", error);
-      // Still dispatch logout even if storage removal fails
       dispatch({ type: "LOGOUT" });
     }
   };
 
   // ========================
-  // UPDATE PROFILE
+  // UPDATE PROFILE - Updated
   // ========================
   const updateProfile = async (profile: Partial<UserProfile>) => {
     if (!state.user) return;
@@ -406,7 +428,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       } else if (userRole === "parent") {
         endpoint = "/parent/profile";
       } else {
-        // Admin or other roles might not have profile update
+        // Admin, Finance, or other roles
         const updatedUser = { ...state.user, ...profile };
         await AsyncStorage.setItem("user_data", JSON.stringify(updatedUser));
         dispatch({ type: "UPDATE_PROFILE", payload: updatedUser });
@@ -492,9 +514,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   const setLoading = (loading: boolean) =>
     dispatch({ type: "SET_LOADING", payload: loading });
 
+  // ✅ Computed properties
+  const userRole = state.user?.role || null;
+  const isFinance = userRole === "finance";
+
   const value: AuthContextType = {
     ...state,
     isInitialized,
+    userRole,
+    isFinance,
     login,
     register,
     logout,

@@ -1,0 +1,306 @@
+// app/(hr)/(tabs)/attendance.tsx - Connected to Backend
+import {
+  getStatusColor,
+  getStatusText,
+  hrApi,
+  TodayAttendance,
+} from "@/src/config/hrApi";
+import { Ionicons } from "@expo/vector-icons";
+import { useEffect, useState } from "react";
+import {
+  ActivityIndicator,
+  FlatList,
+  RefreshControl,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
+
+export default function AttendanceScreen() {
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [attendance, setAttendance] = useState<TodayAttendance[]>([]);
+  const [summary, setSummary] = useState({ present: 0, absent: 0, total: 0 });
+  const [selectedDate, setSelectedDate] = useState(new Date());
+
+  useEffect(() => {
+    fetchAttendance();
+  }, []);
+
+  const fetchAttendance = async () => {
+    try {
+      const response = await hrApi.getTodayAttendance();
+      if (response.success) {
+        setAttendance(response.data.attendance);
+        setSummary(response.data.summary);
+      }
+    } catch (error) {
+      console.error("Fetch attendance error:", error);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+
+  const onRefresh = () => {
+    setRefreshing(true);
+    fetchAttendance();
+  };
+
+  const getStatusIcon = (status: string) => {
+    switch (status) {
+      case "present":
+        return "checkmark-circle";
+      case "late":
+        return "time";
+      case "absent":
+        return "close-circle";
+      default:
+        return "help-circle";
+    }
+  };
+
+  const renderItem = ({ item }: { item: TodayAttendance }) => (
+    <View style={styles.card}>
+      <View style={styles.cardLeft}>
+        <View style={styles.avatar}>
+          <Text style={styles.avatarText}>{item.name.charAt(0)}</Text>
+        </View>
+        <View>
+          <Text style={styles.staffName}>{item.name}</Text>
+          <Text style={styles.roleText}>{item.role}</Text>
+          {item.time && <Text style={styles.timeText}>⏰ {item.time}</Text>}
+        </View>
+      </View>
+      <View
+        style={[
+          styles.statusBadge,
+          { backgroundColor: getStatusColor(item.status) + "15" },
+        ]}
+      >
+        <Ionicons
+          name={getStatusIcon(item.status) as any}
+          size={16}
+          color={getStatusColor(item.status)}
+        />
+        <Text
+          style={[styles.statusText, { color: getStatusColor(item.status) }]}
+        >
+          {getStatusText(item.status)}
+        </Text>
+      </View>
+    </View>
+  );
+
+  if (loading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#8b5cf6" />
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.container}>
+      {/* Date Header */}
+      <View style={styles.dateHeader}>
+        <TouchableOpacity>
+          <Ionicons name="chevron-back" size={24} color="#1e293b" />
+        </TouchableOpacity>
+        <Text style={styles.dateText}>
+          {selectedDate.toLocaleDateString("fa-IR", {
+            weekday: "long",
+            year: "numeric",
+            month: "long",
+            day: "numeric",
+          })}
+        </Text>
+        <TouchableOpacity>
+          <Ionicons name="chevron-forward" size={24} color="#1e293b" />
+        </TouchableOpacity>
+      </View>
+
+      {/* Summary Cards */}
+      <View style={styles.summaryGrid}>
+        <View style={[styles.summaryCard, { borderLeftColor: "#10b981" }]}>
+          <Text style={[styles.summaryValue, { color: "#10b981" }]}>
+            {summary.present}
+          </Text>
+          <Text style={styles.summaryLabel}>حاضر</Text>
+        </View>
+        <View style={[styles.summaryCard, { borderLeftColor: "#f59e0b" }]}>
+          <Text style={[styles.summaryValue, { color: "#f59e0b" }]}>
+            {summary.total - summary.present}
+          </Text>
+          <Text style={styles.summaryLabel}>غایب</Text>
+        </View>
+        <View style={[styles.summaryCard, { borderLeftColor: "#8b5cf6" }]}>
+          <Text style={[styles.summaryValue, { color: "#8b5cf6" }]}>
+            {summary.total}
+          </Text>
+          <Text style={styles.summaryLabel}>مجموع</Text>
+        </View>
+      </View>
+
+      {/* Attendance List */}
+      <Text style={styles.listTitle}>لیست حضور و غیاب</Text>
+      <FlatList
+        data={attendance}
+        renderItem={renderItem}
+        keyExtractor={(item) => item.id.toString()}
+        contentContainerStyle={styles.listContent}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        }
+        ListEmptyComponent={
+          <View style={styles.emptyContainer}>
+            <Ionicons name="time-outline" size={48} color="#94a3b8" />
+            <Text style={styles.emptyText}>هیچ رکورد حضوری یافت نشد</Text>
+          </View>
+        }
+      />
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: "#f1f5f9",
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#f1f5f9",
+  },
+  dateHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    backgroundColor: "#fff",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: "#e2e8f0",
+  },
+  dateText: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#1e293b",
+    fontFamily: "VazirBold",
+  },
+  summaryGrid: {
+    flexDirection: "row",
+    gap: 12,
+    padding: 16,
+  },
+  summaryCard: {
+    flex: 1,
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    padding: 12,
+    borderLeftWidth: 4,
+    elevation: 2,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    alignItems: "center",
+  },
+  summaryValue: {
+    fontSize: 24,
+    fontWeight: "700",
+    fontFamily: "VazirBold",
+  },
+  summaryLabel: {
+    fontSize: 13,
+    color: "#64748b",
+    fontFamily: "Vazir",
+  },
+  listTitle: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#1e293b",
+    paddingHorizontal: 16,
+    paddingBottom: 8,
+    fontFamily: "VazirBold",
+  },
+  listContent: {
+    paddingHorizontal: 16,
+    paddingBottom: 20,
+    gap: 12,
+  },
+  card: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    padding: 12,
+    elevation: 2,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+  },
+  cardLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  avatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "#ede9fe",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  avatarText: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#8b5cf6",
+    fontFamily: "VazirBold",
+  },
+  staffName: {
+    fontSize: 14,
+    fontWeight: "500",
+    color: "#1e293b",
+    fontFamily: "Vazir",
+  },
+  roleText: {
+    fontSize: 12,
+    color: "#94a3b8",
+    fontFamily: "Vazir",
+  },
+  timeText: {
+    fontSize: 12,
+    color: "#94a3b8",
+    fontFamily: "Vazir",
+  },
+  statusBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8,
+    gap: 4,
+  },
+  statusText: {
+    fontSize: 12,
+    fontWeight: "600",
+    fontFamily: "Vazir",
+  },
+  emptyContainer: {
+    alignItems: "center",
+    paddingVertical: 60,
+  },
+  emptyText: {
+    marginTop: 16,
+    fontSize: 16,
+    color: "#94a3b8",
+    fontFamily: "Vazir",
+  },
+});

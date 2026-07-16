@@ -292,6 +292,12 @@ function RootLayoutNav() {
           // cast to any to satisfy router.replace typing for nested group path
           router.replace("/(finance)/(tabs)" as unknown as any);
           break;
+        case "hr": // ✅ NEW
+          router.replace("/(hr)/(tabs)" as unknown as any);
+          break;
+        case "principal": // ✅ NEW
+          router.replace("/(principal)/(tabs)" as unknown as any);
+          break;
         default:
           router.replace("/(auth)/login");
       }

@@ -28,6 +28,8 @@ type AppRoute =
   | "/(student)/(tabs)"
   | "/(parent)/(tabs)"
   | "/(finance)/(tabs)"
+  | "/(hr)/(tabs)"
+  | "/(principal)/(tabs)"
   | "/(auth)/login"
   | "/";
 
@@ -108,6 +110,11 @@ export default function LoginScreen() {
           console.log("✅ Navigating to Finance Dashboard");
           route = "/(finance)/(tabs)";
           break;
+        case "hr": // ✅ NEW
+          route = "/(hr)/(tabs)";
+          break;
+        case "principal": // ✅ NEW
+          route = "/(principal)/(tabs)";
         default:
           console.log("⚠️ Unknown role, navigating to home:", roleLower);
           route = "/";

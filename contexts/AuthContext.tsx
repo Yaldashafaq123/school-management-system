@@ -129,6 +129,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       "student",
       "parent",
       "finance",
+      "hr",
+      "principal",
     ];
     if (validRoles.includes(lowerRole as UserRole)) {
       return lowerRole as UserRole;

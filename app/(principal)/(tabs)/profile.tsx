@@ -1,14 +1,18 @@
-// app/(principal)/(tabs)/profile.tsx
+// app/(principal)/(tabs)/profile.tsx - Connected to Backend
 import { useAuth } from "@/contexts/AuthContext";
+import { principalApi, PrincipalProfile } from "@/src/config/principalApi";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
+import { useEffect, useState } from "react";
 import {
-    Alert,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Alert,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
 
 type MenuItem = {
@@ -23,6 +27,32 @@ type MenuItem = {
 export default function PrincipalProfileScreen() {
   const router = useRouter();
   const { user, logout } = useAuth();
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [profile, setProfile] = useState<PrincipalProfile | null>(null);
+
+  useEffect(() => {
+    fetchProfile();
+  }, []);
+
+  const fetchProfile = async () => {
+    try {
+      const response = await principalApi.getProfile();
+      if (response.success) {
+        setProfile(response.data);
+      }
+    } catch (error) {
+      console.error("Profile error:", error);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+
+  const onRefresh = () => {
+    setRefreshing(true);
+    fetchProfile();
+  };
 
   const menuItems: MenuItem[] = [
     {
@@ -70,31 +100,68 @@ export default function PrincipalProfileScreen() {
     },
   ];
 
+  if (loading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#f59e0b" />
+      </View>
+    );
+  }
+
+  const stats = profile?.statistics || {
+    totalStudents: 0,
+    totalTeachers: 0,
+    totalClasses: 0,
+    attendanceRate: 0,
+  };
+
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={styles.content}
+      refreshControl={
+        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+      }
+    >
       <View style={styles.profileHeader}>
         <View style={styles.avatarContainer}>
           <Ionicons name="person" size={48} color="#fff" />
         </View>
-        <Text style={styles.userName}>{user?.fullName || "مدیر مکتب"}</Text>
-        <Text style={styles.userRole}>مدیریت مکتب</Text>
-        <Text style={styles.userEmail}>{user?.email || ""}</Text>
+        <Text style={styles.userName}>
+          {profile?.user.fullName || user?.fullName || "مدیر مکتب"}
+        </Text>
+        <Text style={styles.userRole}>
+          {profile?.principalStaff.position || "مدیریت مکتب"}
+        </Text>
+        <Text style={styles.userEmail}>
+          {profile?.user.email || user?.email || ""}
+        </Text>
+        {profile?.principalStaff.experience && (
+          <Text style={styles.userExperience}>
+            سابقه: {profile.principalStaff.experience}
+          </Text>
+        )}
+        {profile?.principalStaff.qualification && (
+          <Text style={styles.userQualification}>
+            مدرک: {profile.principalStaff.qualification}
+          </Text>
+        )}
       </View>
 
       <View style={styles.statsContainer}>
         <View style={styles.statItem}>
-          <Text style={styles.statValue}>۳۲۰</Text>
+          <Text style={styles.statValue}>{stats.totalStudents}</Text>
           <Text style={styles.statLabel}>شاگردان</Text>
         </View>
         <View style={styles.statDivider} />
         <View style={styles.statItem}>
-          <Text style={styles.statValue}>۲۸</Text>
+          <Text style={styles.statValue}>{stats.totalTeachers}</Text>
           <Text style={styles.statLabel}>اساتید</Text>
         </View>
         <View style={styles.statDivider} />
         <View style={styles.statItem}>
-          <Text style={styles.statValue}>۹۲%</Text>
-          <Text style={styles.statLabel}>حضور</Text>
+          <Text style={styles.statValue}>{stats.totalClasses}</Text>
+          <Text style={styles.statLabel}>صنوف</Text>
         </View>
       </View>
 
@@ -141,6 +208,12 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "#f1f5f9",
   },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#f1f5f9",
+  },
   content: {
     paddingBottom: 40,
   },
@@ -177,6 +250,18 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: "#94a3b8",
     marginTop: 4,
+    fontFamily: "Vazir",
+  },
+  userExperience: {
+    fontSize: 13,
+    color: "#64748b",
+    marginTop: 4,
+    fontFamily: "Vazir",
+  },
+  userQualification: {
+    fontSize: 13,
+    color: "#64748b",
+    marginTop: 2,
     fontFamily: "Vazir",
   },
   statsContainer: {

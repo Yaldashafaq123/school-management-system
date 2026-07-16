@@ -1,10 +1,21 @@
-// app/(principal)/(tabs)/index.tsx
+// app/(principal)/(tabs)/index.tsx - FIXED with relative paths
+
 import { useAuth } from "@/contexts/AuthContext";
+import { principalApi, PrincipalDashboard } from "@/src/config/principalApi";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
-import { useState } from "react";
 import {
+  BookOpen,
+  Calendar,
+  CalendarDays,
+  ClipboardList,
+  Percent,
+  Users,
+} from "lucide-react-native";
+import { useEffect, useState } from "react";
+import {
+  ActivityIndicator,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -13,16 +24,104 @@ import {
   View,
 } from "react-native";
 
+type AcademicModule = {
+  title: string;
+  description: string;
+  icon: any;
+  route: any; // ✅ Changed to 'any' to fix TypeScript errors
+  color: string;
+};
+
 export default function PrincipalDashboardScreen() {
   const router = useRouter();
   const { user } = useAuth();
+  const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [dashboard, setDashboard] = useState<PrincipalDashboard | null>(null);
 
-  const stats = {
-    totalStudents: 320,
-    totalTeachers: 28,
-    totalClasses: 12,
-    attendanceRate: 92,
+  useEffect(() => {
+    fetchDashboard();
+  }, []);
+
+  const fetchDashboard = async () => {
+    try {
+      const response = await principalApi.getDashboard();
+      if (response.success) {
+        setDashboard(response.data);
+      }
+    } catch (error) {
+      console.error("Dashboard error:", error);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+
+  const onRefresh = () => {
+    setRefreshing(true);
+    fetchDashboard();
+  };
+
+  // ✅ Academic Management Modules - Using relative paths
+  const academicModules: AcademicModule[] = [
+    {
+      title: "تنظیم سال تحصیلی",
+      description: "تنظیم ترم‌ها، رخصتی‌ها و تقویم آموزشی",
+      icon: CalendarDays,
+      route: "./academic/years-setup",
+      color: "#007AFF",
+    },
+    {
+      title: "صنف‌ها و بخش‌ها",
+      description: "ایجاد صنف‌ها و تعیین استادان",
+      icon: Users,
+      route: "./classes",
+      color: "#34C759",
+    },
+    {
+      title: "مدیریت مضامین",
+      description: "افزودن یا حذف مضامین و تعیین استادان",
+      icon: BookOpen,
+      route: "./academic/subjects",
+      color: "#FF9500",
+    },
+    {
+      title: "ایجاد تقسیم اوقات",
+      description: "ایجاد و ویرایش تقسیم اوقات مرکزی",
+      icon: Calendar,
+      route: "./academic/timetable",
+      color: "#5856D6",
+    },
+    {
+      title: "مدیریت امتحانات",
+      description: "تنظیم برنامه امتحانات و تعیین اطاق‌ها",
+      icon: ClipboardList,
+      route: "./academic/exams",
+      color: "#FF2D55",
+    },
+    {
+      title: "سیستم نمره‌دهی",
+      description: "تنظیم مقیاس نمرات و معیار قبولی",
+      icon: Percent,
+      route: "./academic/grading-system",
+      color: "#AF52DE",
+    },
+  ];
+
+  if (loading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#f59e0b" />
+        <Text style={styles.loadingText}>در حال بارگذاری...</Text>
+      </View>
+    );
+  }
+
+  const stats = dashboard?.summary || {
+    totalStudents: 0,
+    totalTeachers: 0,
+    totalClasses: 0,
+    attendanceRate: 0,
   };
 
   return (
@@ -30,10 +129,7 @@ export default function PrincipalDashboardScreen() {
       style={styles.container}
       contentContainerStyle={styles.content}
       refreshControl={
-        <RefreshControl
-          refreshing={refreshing}
-          onRefresh={() => setRefreshing(false)}
-        />
+        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
       }
     >
       {/* Welcome Card */}
@@ -46,9 +142,7 @@ export default function PrincipalDashboardScreen() {
         <View style={styles.welcomeContent}>
           <View>
             <Text style={styles.welcomeGreeting}>سلام 👋</Text>
-            <Text style={styles.welcomeName}>
-              {user?.fullName || "مدیر"}
-            </Text>
+            <Text style={styles.welcomeName}>{user?.fullName || "مدیر"}</Text>
             <Text style={styles.welcomeRole}>مدیریت مکتب</Text>
           </View>
           <View style={styles.welcomeAvatar}>
@@ -92,14 +186,16 @@ export default function PrincipalDashboardScreen() {
         </View>
       </View>
 
-      {/* Quick Actions */}
+      {/* Quick Actions - Row 1 */}
       <Text style={styles.sectionTitle}>دسترسی سریع</Text>
       <View style={styles.quickActionsGrid}>
         <TouchableOpacity
           style={styles.quickActionCard}
-          onPress={() => router.push("/(principal)/students")}
+          onPress={() => router.push("./students")}
         >
-          <View style={[styles.quickActionIcon, { backgroundColor: "#fef3c7" }]}>
+          <View
+            style={[styles.quickActionIcon, { backgroundColor: "#fef3c7" }]}
+          >
             <Ionicons name="school" size={28} color="#f59e0b" />
           </View>
           <Text style={styles.quickActionTitle}>شاگردان</Text>
@@ -107,9 +203,11 @@ export default function PrincipalDashboardScreen() {
 
         <TouchableOpacity
           style={styles.quickActionCard}
-          onPress={() => router.push("/(principal)/teachers")}
+          onPress={() => router.push("./teachers")}
         >
-          <View style={[styles.quickActionIcon, { backgroundColor: "#dbeafe" }]}>
+          <View
+            style={[styles.quickActionIcon, { backgroundColor: "#dbeafe" }]}
+          >
             <Ionicons name="people" size={28} color="#3b82f6" />
           </View>
           <Text style={styles.quickActionTitle}>اساتید</Text>
@@ -117,22 +215,80 @@ export default function PrincipalDashboardScreen() {
 
         <TouchableOpacity
           style={styles.quickActionCard}
-          onPress={() => router.push("/(principal)/reports")}
+          onPress={() => router.push("./classes")}
         >
-          <View style={[styles.quickActionIcon, { backgroundColor: "#d1fae5" }]}>
-            <Ionicons name="bar-chart" size={28} color="#10b981" />
+          <View
+            style={[styles.quickActionIcon, { backgroundColor: "#d1fae5" }]}
+          >
+            <Ionicons name="book" size={28} color="#10b981" />
           </View>
-          <Text style={styles.quickActionTitle}>راپورها</Text>
+          <Text style={styles.quickActionTitle}>صنوف</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
           style={styles.quickActionCard}
-          onPress={() => router.push("/(principal)/profile")}
+          onPress={() => router.push("./reports")}
         >
-          <View style={[styles.quickActionIcon, { backgroundColor: "#ede9fe" }]}>
-            <Ionicons name="person" size={28} color="#8b5cf6" />
+          <View
+            style={[styles.quickActionIcon, { backgroundColor: "#ede9fe" }]}
+          >
+            <Ionicons name="bar-chart" size={28} color="#8b5cf6" />
           </View>
-          <Text style={styles.quickActionTitle}>پروفایل</Text>
+          <Text style={styles.quickActionTitle}>راپورها</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Quick Actions - Row 2 (Academic Management) */}
+      <Text style={[styles.sectionTitle, { marginTop: 8 }]}>
+        مدیریت امور آموزشی
+      </Text>
+      <View style={styles.quickActionsGrid}>
+        <TouchableOpacity
+          style={styles.quickActionCard}
+          onPress={() => router.push("./academic/years-setup")}
+        >
+          <View
+            style={[styles.quickActionIcon, { backgroundColor: "#007AFF15" }]}
+          >
+            <CalendarDays size={28} color="#007AFF" />
+          </View>
+          <Text style={styles.quickActionTitle}>سال تحصیلی</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.quickActionCard}
+          onPress={() => router.push("./academic/subjects")}
+        >
+          <View
+            style={[styles.quickActionIcon, { backgroundColor: "#FF950015" }]}
+          >
+            <BookOpen size={28} color="#FF9500" />
+          </View>
+          <Text style={styles.quickActionTitle}>مضامین</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.quickActionCard}
+          onPress={() => router.push("./academic/timetable")}
+        >
+          <View
+            style={[styles.quickActionIcon, { backgroundColor: "#5856D615" }]}
+          >
+            <Calendar size={28} color="#5856D6" />
+          </View>
+          <Text style={styles.quickActionTitle}>تقسیم اوقات</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.quickActionCard}
+          onPress={() => router.push("./academic/exams")}
+        >
+          <View
+            style={[styles.quickActionIcon, { backgroundColor: "#FF2D5515" }]}
+          >
+            <ClipboardList size={28} color="#FF2D55" />
+          </View>
+          <Text style={styles.quickActionTitle}>امتحانات</Text>
         </TouchableOpacity>
       </View>
 
@@ -174,6 +330,18 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#f1f5f9",
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#f1f5f9",
+  },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 16,
+    color: "#64748b",
+    fontFamily: "Vazir",
   },
   content: {
     padding: 16,
@@ -262,7 +430,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     flexWrap: "wrap",
     gap: 12,
-    marginBottom: 24,
+    marginBottom: 16,
   },
   quickActionCard: {
     flex: 1,

@@ -281,14 +281,14 @@ export default function PrincipalDashboardScreen() {
 
         <TouchableOpacity
           style={styles.quickActionCard}
-          onPress={() => router.push("./academic/exams")}
+          onPress={() => router.push("./academic")}
         >
           <View
             style={[styles.quickActionIcon, { backgroundColor: "#FF2D5515" }]}
           >
             <ClipboardList size={28} color="#FF2D55" />
           </View>
-          <Text style={styles.quickActionTitle}>امتحانات</Text>
+          <Text style={styles.quickActionTitle}>مدیریت امور آموزشی</Text>
         </TouchableOpacity>
       </View>
 

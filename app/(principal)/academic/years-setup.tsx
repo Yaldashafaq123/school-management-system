@@ -1,33 +1,32 @@
-// app/(admin)/academic/index.tsx
-import { Header } from "@/components/Header";
-import { Colors } from "@/constants/Colors";
-import { useAuth } from "@/contexts/AuthContext";
-import { AcademicYear, adminAcademicApi } from "@/src/config/adminAcademicApi";
-import { Calendar, Edit2, Plus, Trash2 } from "lucide-react-native";
+// app/(principal)/academic/years-setup.tsx
+import {
+    AcademicYear,
+    principalAcademicApi,
+} from "@/src/config/principalAcademicApi";
+import { Ionicons } from "@expo/vector-icons";
+import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import {
-  ActivityIndicator,
-  Alert,
-  Modal,
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
-  Switch,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Alert,
+    FlatList,
+    Modal,
+    RefreshControl,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
 
-export default function AcademicYearSetup() {
-  const { user, token } = useAuth();
+export default function YearsSetupScreen() {
+  const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [academicYears, setAcademicYears] = useState<AcademicYear[]>([]);
-  const [showAddModal, setShowAddModal] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  const [newYear, setNewYear] = useState({
+  const [years, setYears] = useState<AcademicYear[]>([]);
+  const [modalVisible, setModalVisible] = useState(false);
+  const [editingYear, setEditingYear] = useState<AcademicYear | null>(null);
+  const [formData, setFormData] = useState({
     name: "",
     startDate: "",
     endDate: "",
@@ -35,486 +34,412 @@ export default function AcademicYearSetup() {
   });
 
   useEffect(() => {
-    loadAcademicYears();
+    fetchYears();
   }, []);
 
-  const loadAcademicYears = async () => {
+  const fetchYears = async () => {
     try {
-      setLoading(true);
-      const response = await adminAcademicApi.getAcademicYears();
-      if (response.success && response.data) {
-        setAcademicYears(response.data);
+      const response = await principalAcademicApi.getAcademicYears();
+      if (response.success) {
+        setYears(response.data);
       }
     } catch (error) {
-      console.error("Error loading academic years:", error);
+      console.error("Fetch years error:", error);
+      Alert.alert("خطا", "خطا در دریافت سال‌های تحصیلی");
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   };
 
-  const handleRefresh = async () => {
+  const onRefresh = () => {
     setRefreshing(true);
-    await loadAcademicYears();
-    setRefreshing(false);
+    fetchYears();
   };
 
-  const handleAddAcademicYear = async () => {
-    if (!newYear.name || !newYear.startDate || !newYear.endDate) {
-      Alert.alert("خطا", "لطفا تمام فیلدها را پر کنید");
+  const handleSave = async () => {
+    if (!formData.name || !formData.startDate || !formData.endDate) {
+      Alert.alert("خطا", "لطفاً تمام فیلدها را پر کنید");
       return;
     }
 
-    // Validate date format (Jalali: 1403/01/01)
-    const dateRegex = /^\d{4}\/\d{2}\/\d{2}$/;
-    if (
-      !dateRegex.test(newYear.startDate) ||
-      !dateRegex.test(newYear.endDate)
-    ) {
-      Alert.alert("خطا", "فرمت تاریخ باید به صورت ۱۴۰۳/۰۱/۰۱ باشد");
-      return;
-    }
-
-    setSubmitting(true);
     try {
-      const response = await adminAcademicApi.createAcademicYear(newYear);
-      if (response.success) {
-        Alert.alert("موفقیت", response.message);
-        setShowAddModal(false);
-        setNewYear({ name: "", startDate: "", endDate: "", isActive: false });
-        loadAcademicYears();
+      let response;
+      if (editingYear) {
+        response = await principalAcademicApi.updateAcademicYear(
+          editingYear.id,
+          formData,
+        );
       } else {
-        Alert.alert("خطا", response.message);
+        response = await principalAcademicApi.createAcademicYear(formData);
       }
-    } catch (error) {
-      Alert.alert("خطا", "خطا در ایجاد سال تحصیلی");
-    } finally {
-      setSubmitting(false);
+
+      if (response.success) {
+        Alert.alert(
+          "موفقیت",
+          editingYear ? "سال تحصیلی به‌روزرسانی شد" : "سال تحصیلی ایجاد شد",
+        );
+        setModalVisible(false);
+        setEditingYear(null);
+        setFormData({ name: "", startDate: "", endDate: "", isActive: false });
+        fetchYears();
+      }
+    } catch (error: any) {
+      Alert.alert("خطا", error.message || "خطا در ذخیره‌سازی");
     }
   };
 
-  const handleSetActive = async (id: number) => {
-    try {
-      const response = await adminAcademicApi.setActiveAcademicYear(id);
-      if (response.success) {
-        Alert.alert("موفقیت", response.message);
-        loadAcademicYears();
-      } else {
-        Alert.alert("خطا", response.message);
-      }
-    } catch (error) {
-      Alert.alert("خطا", "خطا در تنظیم سال تحصیلی فعال");
-    }
-  };
-
-  const handleDeleteYear = async (id: number, name: string) => {
-    Alert.alert(
-      "حذف سال تحصیلی",
-      `آیا از حذف سال تحصیلی "${name}" مطمئن هستید؟`,
-      [
-        { text: "لغو", style: "cancel" },
-        {
-          text: "حذف",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              const response = await adminAcademicApi.deleteAcademicYear(id);
-              if (response.success) {
-                Alert.alert("موفقیت", response.message);
-                loadAcademicYears();
-              } else {
-                Alert.alert("خطا", response.message);
-              }
-            } catch (error) {
-              Alert.alert("خطا", "خطا در حذف سال تحصیلی");
+  const handleDelete = (id: number) => {
+    Alert.alert("حذف سال تحصیلی", "آیا مطمئن هستید؟", [
+      { text: "لغو", style: "cancel" },
+      {
+        text: "حذف",
+        style: "destructive",
+        onPress: async () => {
+          try {
+            const response = await principalAcademicApi.deleteAcademicYear(id);
+            if (response.success) {
+              Alert.alert("موفقیت", "سال تحصیلی حذف شد");
+              fetchYears();
             }
-          },
+          } catch (error: any) {
+            Alert.alert("خطا", error.message || "خطا در حذف");
+          }
         },
-      ],
-    );
+      },
+    ]);
   };
+
+  const renderYear = ({ item }: { item: AcademicYear }) => (
+    <View style={styles.card}>
+      <View style={styles.cardHeader}>
+        <View>
+          <Text style={styles.cardTitle}>{item.name}</Text>
+          <Text style={styles.cardDate}>
+            {new Date(item.startDate).toLocaleDateString("fa-IR")} -{" "}
+            {new Date(item.endDate).toLocaleDateString("fa-IR")}
+          </Text>
+        </View>
+        <View
+          style={[
+            styles.statusBadge,
+            { backgroundColor: item.isActive ? "#d1fae5" : "#fef3c7" },
+          ]}
+        >
+          <Text
+            style={[
+              styles.statusText,
+              { color: item.isActive ? "#10b981" : "#f59e0b" },
+            ]}
+          >
+            {item.isActive ? "فعال" : "غیرفعال"}
+          </Text>
+        </View>
+      </View>
+      <View style={styles.cardActions}>
+        <TouchableOpacity
+          style={[styles.actionButton, { backgroundColor: "#3b82f6" }]}
+          onPress={() => {
+            setEditingYear(item);
+            setFormData({
+              name: item.name,
+              startDate: new Date(item.startDate).toISOString().split("T")[0],
+              endDate: new Date(item.endDate).toISOString().split("T")[0],
+              isActive: item.isActive,
+            });
+            setModalVisible(true);
+          }}
+        >
+          <Ionicons name="create-outline" size={18} color="#fff" />
+          <Text style={styles.actionText}>ویرایش</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.actionButton, { backgroundColor: "#ef4444" }]}
+          onPress={() => handleDelete(item.id)}
+        >
+          <Ionicons name="trash-outline" size={18} color="#fff" />
+          <Text style={styles.actionText}>حذف</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
 
   if (loading) {
     return (
-      <SafeAreaView style={styles.container} edges={["top"]}>
-        <Header title="سال‌های تحصیلی" showBack />
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={Colors.primary} />
-          <Text style={styles.loadingText}>در حال بارگذاری...</Text>
-        </View>
-      </SafeAreaView>
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#f59e0b" />
+      </View>
     );
   }
 
   return (
-    <SafeAreaView style={styles.container} edges={["top"]}>
-      <Header
-        title="سال‌های تحصیلی"
-        showBack
-        rightComponent={
-          <TouchableOpacity onPress={() => setShowAddModal(true)}>
-            <Plus size={24} color={Colors.primary} />
-          </TouchableOpacity>
+    <View style={styles.container}>
+      {/* Header */}
+      <View style={styles.header}>
+        <TouchableOpacity onPress={() => router.back()}>
+          <Ionicons name="arrow-back" size={24} color="#1e293b" />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>سال‌های تحصیلی</Text>
+        <TouchableOpacity
+          style={styles.addButton}
+          onPress={() => {
+            setEditingYear(null);
+            setFormData({
+              name: "",
+              startDate: "",
+              endDate: "",
+              isActive: false,
+            });
+            setModalVisible(true);
+          }}
+        >
+          <Ionicons name="add" size={24} color="#fff" />
+        </TouchableOpacity>
+      </View>
+
+      {/* List */}
+      <FlatList
+        data={years}
+        renderItem={renderYear}
+        keyExtractor={(item) => item.id.toString()}
+        contentContainerStyle={styles.listContent}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        }
+        ListEmptyComponent={
+          <View style={styles.emptyContainer}>
+            <Ionicons name="calendar-outline" size={48} color="#94a3b8" />
+            <Text style={styles.emptyText}>هیچ سال تحصیلی یافت نشد</Text>
+          </View>
         }
       />
 
-      <ScrollView
-        style={styles.content}
-        showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={handleRefresh}
-            colors={[Colors.primary]}
-          />
-        }
-      >
-        {/* Academic Years List */}
-        <View style={styles.listContainer}>
-          {academicYears.length === 0 ? (
-            <View style={styles.emptyState}>
-              <Calendar size={60} color={Colors.textSecondary} />
-              <Text style={styles.emptyStateTitle}>سال تحصیلی ثبت نشده</Text>
-              <Text style={styles.emptyStateText}>
-                برای افزودن سال تحصیلی جدید، روی دکمه + در بالای صفحه کلیک کنید
-              </Text>
-            </View>
-          ) : (
-            academicYears.map((year) => (
-              <View key={year.id} style={styles.yearCard}>
-                <View style={styles.yearHeader}>
-                  <View style={styles.yearInfo}>
-                    <Text style={styles.yearName}>{year.name}</Text>
-                    <Text style={styles.yearDates}>
-                      {year.startDate} تا {year.endDate}
-                    </Text>
-                    {year.stats && (
-                      <Text style={styles.yearStats}>
-                        {year.stats.totalClasses} صنف •{" "}
-                        {year.stats.totalStudents} دانش‌آموز
-                      </Text>
-                    )}
-                  </View>
-                  <View style={styles.yearActions}>
-                    <Switch
-                      value={year.isActive}
-                      onValueChange={() => handleSetActive(year.id)}
-                      trackColor={{
-                        false: Colors.border,
-                        true: Colors.primary,
-                      }}
-                    />
-                    <Text
-                      style={[
-                        styles.activeLabel,
-                        year.isActive && styles.activeLabelActive,
-                      ]}
-                    >
-                      {year.isActive ? "فعال" : "غیرفعال"}
-                    </Text>
-                  </View>
-                </View>
+      {/* Modal */}
+      <Modal visible={modalVisible} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>
+              {editingYear ? "ویرایش سال تحصیلی" : "ایجاد سال تحصیلی جدید"}
+            </Text>
 
-                <View style={styles.yearFooter}>
-                  <TouchableOpacity
-                    style={styles.editButton}
-                    onPress={() => Alert.alert("ویرایش", "در حال توسعه")}
-                  >
-                    <Edit2 size={16} color={Colors.primary} />
-                    <Text style={styles.editButtonText}>ویرایش</Text>
-                  </TouchableOpacity>
+            <Text style={styles.label}>نام سال تحصیلی</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="مثال: سال تحصیلی ۱۴۰۴-۱۴۰۵"
+              value={formData.name}
+              onChangeText={(text) => setFormData({ ...formData, name: text })}
+            />
 
-                  <TouchableOpacity
-                    style={styles.deleteButton}
-                    onPress={() => handleDeleteYear(year.id, year.name)}
-                  >
-                    <Trash2 size={16} color={Colors.danger} />
-                    <Text style={styles.deleteButtonText}>حذف</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            ))
-          )}
-        </View>
-      </ScrollView>
+            <Text style={styles.label}>تاریخ شروع</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="YYYY-MM-DD"
+              value={formData.startDate}
+              onChangeText={(text) =>
+                setFormData({ ...formData, startDate: text })
+              }
+            />
 
-      {/* Add New Year Modal */}
-      <Modal
-        visible={showAddModal}
-        animationType="slide"
-        presentationStyle="pageSheet"
-        onRequestClose={() => setShowAddModal(false)}
-      >
-        <SafeAreaView style={styles.modalContainer}>
-          <View style={styles.modalHeader}>
-            <TouchableOpacity onPress={() => setShowAddModal(false)}>
-              <Text style={styles.modalCancel}>لغو</Text>
-            </TouchableOpacity>
-            <Text style={styles.modalTitle}>افزودن سال تحصیلی جدید</Text>
+            <Text style={styles.label}>تاریخ پایان</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="YYYY-MM-DD"
+              value={formData.endDate}
+              onChangeText={(text) =>
+                setFormData({ ...formData, endDate: text })
+              }
+            />
+
             <TouchableOpacity
-              onPress={handleAddAcademicYear}
-              disabled={submitting}
+              style={[styles.checkboxRow, { marginVertical: 12 }]}
+              onPress={() =>
+                setFormData({ ...formData, isActive: !formData.isActive })
+              }
             >
-              <Text style={styles.modalSave}>
-                {submitting ? "در حال..." : "ذخیره"}
-              </Text>
-            </TouchableOpacity>
-          </View>
-
-          <ScrollView style={styles.modalContent}>
-            <View style={styles.form}>
-              <View style={styles.formGroup}>
-                <Text style={styles.formLabel}>نام سال تحصیلی *</Text>
-                <TextInput
-                  style={styles.formInput}
-                  placeholder="مثال: ۱۴۰۴-۱۴۰۵"
-                  value={newYear.name}
-                  onChangeText={(text) =>
-                    setNewYear({ ...newYear, name: text })
-                  }
-                  textAlign="right"
-                />
-              </View>
-
-              <View style={styles.formGroup}>
-                <Text style={styles.formLabel}>تاریخ شروع (جلالی) *</Text>
-                <TextInput
-                  style={styles.formInput}
-                  placeholder="۱۴۰۴/۰۱/۰۱"
-                  value={newYear.startDate}
-                  onChangeText={(text) =>
-                    setNewYear({ ...newYear, startDate: text })
-                  }
-                  textAlign="right"
-                />
-                <Text style={styles.formHint}>
-                  فرمت: سال/ماه/روز (مثال: ۱۴۰۴/۰۱/۰۱)
-                </Text>
-              </View>
-
-              <View style={styles.formGroup}>
-                <Text style={styles.formLabel}>تاریخ پایان (جلالی) *</Text>
-                <TextInput
-                  style={styles.formInput}
-                  placeholder="۱۴۰۵/۱۲/۲۹"
-                  value={newYear.endDate}
-                  onChangeText={(text) =>
-                    setNewYear({ ...newYear, endDate: text })
-                  }
-                  textAlign="right"
-                />
-                <Text style={styles.formHint}>
-                  فرمت: سال/ماه/روز (مثال: ۱۴۰۵/۱۲/۲۹)
-                </Text>
-              </View>
-
-              <View style={styles.formGroup}>
-                <View style={styles.switchRow}>
-                  <Text style={styles.formLabel}>فعال کردن این سال تحصیلی</Text>
-                  <Switch
-                    value={newYear.isActive}
-                    onValueChange={(value) =>
-                      setNewYear({ ...newYear, isActive: value })
-                    }
-                    trackColor={{ false: Colors.border, true: Colors.primary }}
-                  />
-                </View>
-                {newYear.isActive && (
-                  <Text style={styles.switchHint}>
-                    با فعال کردن این سال، سال تحصیلی قبلی غیرفعال می‌شود
-                  </Text>
+              <View
+                style={[
+                  styles.checkbox,
+                  formData.isActive && styles.checkboxChecked,
+                ]}
+              >
+                {formData.isActive && (
+                  <Ionicons name="checkmark" size={16} color="#fff" />
                 )}
               </View>
+              <Text style={styles.checkboxLabel}>فعال</Text>
+            </TouchableOpacity>
+
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.cancelButton]}
+                onPress={() => setModalVisible(false)}
+              >
+                <Text style={styles.cancelButtonText}>لغو</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.saveButton]}
+                onPress={handleSave}
+              >
+                <Text style={styles.saveButtonText}>ذخیره</Text>
+              </TouchableOpacity>
             </View>
-          </ScrollView>
-        </SafeAreaView>
+          </View>
+        </View>
       </Modal>
-    </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: Colors.background,
-  },
-  content: {
-    flex: 1,
-  },
+  container: { flex: 1, backgroundColor: "#f1f5f9" },
   loadingContainer: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    padding: 20,
+    backgroundColor: "#f1f5f9",
   },
-  loadingText: {
-    marginTop: 16,
-    fontSize: 16,
-    color: Colors.textSecondary,
-  },
-  listContainer: {
-    padding: 16,
-  },
-  emptyState: {
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 60,
-  },
-  emptyStateTitle: {
-    fontSize: 18,
-    fontWeight: "bold",
-    color: Colors.text,
-    marginTop: 16,
-    marginBottom: 8,
-  },
-  emptyStateText: {
-    fontSize: 14,
-    color: Colors.textSecondary,
-    textAlign: "center",
-  },
-  yearCard: {
-    backgroundColor: Colors.card,
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  yearHeader: {
+  header: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 16,
-  },
-  yearInfo: {
-    flex: 1,
-  },
-  yearName: {
-    fontSize: 18,
-    fontWeight: "bold",
-    color: Colors.text,
-    marginBottom: 4,
-  },
-  yearDates: {
-    fontSize: 14,
-    color: Colors.textSecondary,
-    marginBottom: 4,
-  },
-  yearStats: {
-    fontSize: 12,
-    color: Colors.primary,
-  },
-  yearActions: {
-    alignItems: "center",
-  },
-  activeLabel: {
-    fontSize: 12,
-    color: Colors.textSecondary,
-    marginTop: 4,
-  },
-  activeLabelActive: {
-    color: Colors.success,
-    fontWeight: "bold",
-  },
-  yearFooter: {
-    flexDirection: "row",
-    justifyContent: "flex-end",
-    gap: 16,
-    paddingTop: 16,
-    borderTopWidth: 1,
-    borderTopColor: Colors.border,
-  },
-  editButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderRadius: 8,
-    backgroundColor: "rgba(59, 130, 246, 0.1)",
-  },
-  editButtonText: {
-    fontSize: 14,
-    color: Colors.primary,
-    fontWeight: "500",
-  },
-  deleteButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderRadius: 8,
-    backgroundColor: "rgba(239, 68, 68, 0.1)",
-  },
-  deleteButtonText: {
-    fontSize: 14,
-    color: Colors.danger,
-    fontWeight: "500",
-  },
-  modalContainer: {
-    flex: 1,
-    backgroundColor: Colors.background,
-  },
-  modalHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingHorizontal: 20,
-    paddingVertical: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: "#fff",
     borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
+    borderBottomColor: "#e2e8f0",
   },
-  modalTitle: {
-    fontSize: 18,
-    fontWeight: "bold",
-    color: Colors.text,
+  headerTitle: {
+    fontSize: 20,
+    fontWeight: "700",
+    color: "#1e293b",
+    fontFamily: "VazirBold",
   },
-  modalCancel: {
+  addButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: "#f59e0b",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  listContent: { padding: 16, gap: 12 },
+  card: {
+    backgroundColor: "#fff",
+    borderRadius: 16,
+    padding: 16,
+    elevation: 2,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+  },
+  cardHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  cardTitle: {
     fontSize: 16,
-    color: Colors.danger,
+    fontWeight: "600",
+    color: "#1e293b",
+    fontFamily: "VazirBold",
   },
-  modalSave: {
+  cardDate: {
+    fontSize: 13,
+    color: "#64748b",
+    marginTop: 4,
+    fontFamily: "Vazir",
+  },
+  statusBadge: { paddingHorizontal: 12, paddingVertical: 4, borderRadius: 8 },
+  statusText: { fontSize: 12, fontWeight: "600", fontFamily: "Vazir" },
+  cardActions: {
+    flexDirection: "row",
+    gap: 8,
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: "#f1f5f9",
+  },
+  actionButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 6,
+    borderRadius: 8,
+    gap: 6,
+  },
+  actionText: { color: "#fff", fontSize: 13, fontFamily: "Vazir" },
+  emptyContainer: { alignItems: "center", paddingVertical: 60 },
+  emptyText: {
+    marginTop: 16,
     fontSize: 16,
-    color: Colors.primary,
-    fontWeight: "bold",
+    color: "#94a3b8",
+    fontFamily: "Vazir",
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 20,
   },
   modalContent: {
-    flex: 1,
-    padding: 20,
+    backgroundColor: "#fff",
+    borderRadius: 16,
+    padding: 24,
+    width: "100%",
+    maxWidth: 400,
   },
-  form: {
-    gap: 20,
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: "700",
+    color: "#1e293b",
+    marginBottom: 16,
+    fontFamily: "VazirBold",
+    textAlign: "center",
   },
-  formGroup: {
-    gap: 8,
-  },
-  formLabel: {
+  label: {
     fontSize: 14,
     fontWeight: "600",
-    color: Colors.text,
+    color: "#1e293b",
+    marginTop: 12,
+    marginBottom: 4,
+    fontFamily: "Vazir",
   },
-  formInput: {
-    backgroundColor: Colors.card,
-    borderRadius: 8,
+  input: {
+    backgroundColor: "#f1f5f9",
+    borderRadius: 10,
     padding: 12,
-    borderWidth: 1,
-    borderColor: Colors.border,
     fontSize: 15,
-    color: Colors.text,
-    textAlign: "right",
+    color: "#1e293b",
+    fontFamily: "Vazir",
   },
-  formHint: {
-    fontSize: 12,
-    color: Colors.textSecondary,
-  },
-  switchRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
+  checkboxRow: { flexDirection: "row", alignItems: "center", gap: 10 },
+  checkbox: {
+    width: 24,
+    height: 24,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: "#d1d5db",
+    justifyContent: "center",
     alignItems: "center",
   },
-  switchHint: {
-    fontSize: 12,
-    color: Colors.textSecondary,
-    marginTop: 4,
+  checkboxChecked: { backgroundColor: "#f59e0b", borderColor: "#f59e0b" },
+  checkboxLabel: { fontSize: 15, color: "#1e293b", fontFamily: "Vazir" },
+  modalActions: { flexDirection: "row", gap: 12, marginTop: 16 },
+  modalButton: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 10,
+    alignItems: "center",
+  },
+  cancelButton: { backgroundColor: "#f1f5f9" },
+  cancelButtonText: { color: "#64748b", fontSize: 15, fontFamily: "Vazir" },
+  saveButton: { backgroundColor: "#f59e0b" },
+  saveButtonText: {
+    color: "#fff",
+    fontSize: 15,
+    fontWeight: "600",
+    fontFamily: "Vazir",
   },
 });

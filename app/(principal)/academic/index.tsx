@@ -2,27 +2,27 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import {
-  BookOpen,
-  Calendar,
-  CalendarDays,
-  ChevronRight,
-  ClipboardList,
-  Percent,
-  Users,
+    BookOpen,
+    Calendar,
+    CalendarDays,
+    ChevronRight,
+    ClipboardList,
+    Percent,
+    Users,
 } from "lucide-react-native";
 import {
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
 } from "react-native";
 
 interface AcademicModule {
   title: string;
   description: string;
   icon: any;
-  href: string;
+  route: string;
   color: string;
 }
 
@@ -34,55 +34,54 @@ export default function AcademicManagement() {
       title: "تنظیم سال تحصیلی",
       description: "تنظیم ترم‌ها، رخصتی‌ها و تقویم آموزشی",
       icon: CalendarDays,
-      href: "/(principal)/academic/years-setup",
+      route: "/(principal)/academic/years-setup",
       color: "#007AFF",
     },
     {
       title: "صنف‌ها و بخش‌ها",
       description: "ایجاد صنف‌ها و تعیین استادان",
       icon: Users,
-      href: "/(principal)/classes",
+      route: "/(principal)/classes",
       color: "#34C759",
     },
     {
       title: "مدیریت مضامین",
       description: "افزودن یا حذف مضامین و تعیین استادان",
       icon: BookOpen,
-      href: "/(principal)/academic/subjects",
+      route: "/(principal)/academic/subjects",
       color: "#FF9500",
     },
     {
       title: "ایجاد تقسیم اوقات",
       description: "ایجاد و ویرایش تقسیم اوقات مرکزی",
       icon: Calendar,
-      href: "/(principal)/academic/timetable",
+      route: "/(principal)/academic/timetable",
       color: "#5856D6",
     },
     {
       title: "مدیریت امتحانات",
       description: "تنظیم برنامه امتحانات و تعیین اطاق‌ها",
       icon: ClipboardList,
-      href: "/(principal)/academic/exams",
+      route: "/(principal)/academic/exams",
       color: "#FF2D55",
     },
     {
       title: "سیستم نمره‌دهی",
       description: "تنظیم مقیاس نمرات و معیار قبولی",
       icon: Percent,
-      href: "/(principal)/academic/grading-system",
+      route: "/(principal)/academic/grading-system",
       color: "#AF52DE",
     },
   ];
 
   return (
     <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
-      {/* Header with Back Button */}
+      {/* Header */}
       <View style={styles.header}>
         <View style={styles.headerContent}>
           <TouchableOpacity
             style={styles.backButton}
             onPress={() => router.back()}
-            hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
           >
             <View style={styles.backButtonInner}>
               <Ionicons name="arrow-back" size={24} color="#1d1d1f" />
@@ -105,7 +104,7 @@ export default function AcademicManagement() {
             <TouchableOpacity
               key={index}
               style={styles.card}
-              onPress={() => router.push(module.href as any)}
+              onPress={() => router.push(module.route as any)}
             >
               <View
                 style={[
@@ -143,50 +142,6 @@ export default function AcademicManagement() {
             <View style={styles.statCard}>
               <Text style={styles.statNumber}>8</Text>
               <Text style={styles.statLabel}>امتحانات پیشِ‌رو</Text>
-            </View>
-          </View>
-        </View>
-
-        {/* Recent Activities */}
-        <View style={styles.activitiesContainer}>
-          <Text style={styles.statsTitle}>آخرین تغییرات</Text>
-          <View style={styles.activityList}>
-            <View style={styles.activityItem}>
-              <View
-                style={[styles.activityIcon, { backgroundColor: "#007AFF20" }]}
-              >
-                <Ionicons name="calendar-outline" size={18} color="#007AFF" />
-              </View>
-              <View style={styles.activityContent}>
-                <Text style={styles.activityTitle}>
-                  تقویم تحصیلی به‌روزرسانی شد
-                </Text>
-                <Text style={styles.activityTime}>۲ ساعت پیش</Text>
-              </View>
-            </View>
-            <View style={styles.activityItem}>
-              <View
-                style={[styles.activityIcon, { backgroundColor: "#34C75920" }]}
-              >
-                <Ionicons name="people-outline" size={18} color="#34C759" />
-              </View>
-              <View style={styles.activityContent}>
-                <Text style={styles.activityTitle}>صنف جدید هشتم اضافه شد</Text>
-                <Text style={styles.activityTime}>دیروز</Text>
-              </View>
-            </View>
-            <View style={styles.activityItem}>
-              <View
-                style={[styles.activityIcon, { backgroundColor: "#FF950020" }]}
-              >
-                <Ionicons name="book-outline" size={18} color="#FF9500" />
-              </View>
-              <View style={styles.activityContent}>
-                <Text style={styles.activityTitle}>
-                  ماده جدید ریاضی تعریف شد
-                </Text>
-                <Text style={styles.activityTime}>۳ روز پیش</Text>
-              </View>
             </View>
           </View>
         </View>
@@ -231,7 +186,7 @@ const styles = StyleSheet.create({
     borderColor: "#e5e5ea",
   },
   backButtonText: {
-    fontSize: 8,
+    fontSize: 14,
     fontWeight: "500",
     color: "#1d1d1f",
   },
@@ -336,42 +291,5 @@ const styles = StyleSheet.create({
     color: "#8E8E93",
     marginTop: 4,
     textAlign: "center",
-  },
-  activitiesContainer: {
-    padding: 20,
-    backgroundColor: "white",
-  },
-  activityList: {
-    gap: 12,
-  },
-  activityItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: "#f5f5f7",
-  },
-  activityIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  activityContent: {
-    flex: 1,
-  },
-  activityTitle: {
-    fontSize: 15,
-    fontWeight: "500",
-    color: "#1d1d1f",
-    marginBottom: 4,
-    textAlign: "right",
-  },
-  activityTime: {
-    fontSize: 13,
-    color: "#8E8E93",
-    textAlign: "right",
   },
 });

@@ -1,701 +1,450 @@
-// app/(admin)/academic/subjects.tsx
-import { useAuth } from "@/contexts/AuthContext";
+// app/(principal)/academic/subjects.tsx
 import {
-  adminSubjectApi,
-  Subject,
-  SubjectStats,
-} from "@/src/config/adminSubjectApi";
+    principalAcademicApi,
+    Subject,
+} from "@/src/config/principalAcademicApi";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import {
-  ActivityIndicator,
-  Alert,
-  FlatList,
-  Modal,
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Alert,
+    FlatList,
+    Modal,
+    RefreshControl,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
-import { Header } from "../../../components/Header";
-import { Colors } from "../../../constants/Colors";
 
-// Simplified Subject Form
-interface NewSubjectForm {
-  name: string;
-  description: string;
-  teacherId: number | null;
-}
-
-export default function SubjectsManagement() {
+export default function SubjectsScreen() {
   const router = useRouter();
-  const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [subjects, setSubjects] = useState<Subject[]>([]);
-  const [teachers, setTeachers] = useState<{ id: number; name: string }[]>([]);
-  const [stats, setStats] = useState<SubjectStats | null>(null);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [showAddModal, setShowAddModal] = useState(false);
+  const [search, setSearch] = useState("");
+  const [modalVisible, setModalVisible] = useState(false);
   const [editingSubject, setEditingSubject] = useState<Subject | null>(null);
-  const [submitting, setSubmitting] = useState(false);
-
-  const [newSubject, setNewSubject] = useState<NewSubjectForm>({
-    name: "",
-    description: "",
-    teacherId: null,
-  });
-
-  const loadData = useCallback(async () => {
-    try {
-      setLoading(true);
-      const [subjectsRes, statsRes, teachersRes] = await Promise.all([
-        adminSubjectApi.getSubjects({ search: searchQuery || undefined }),
-        adminSubjectApi.getSubjectStats(),
-        adminSubjectApi.getTeachers(),
-      ]);
-
-      if (subjectsRes.success && subjectsRes.data) {
-        setSubjects(subjectsRes.data.subjects);
-      }
-      if (statsRes.success && statsRes.data) {
-        setStats(statsRes.data);
-      }
-      if (teachersRes.success && teachersRes.data) {
-        setTeachers(teachersRes.data);
-      }
-    } catch (error) {
-      console.error("Error loading subjects:", error);
-    } finally {
-      setLoading(false);
-    }
-  }, [searchQuery]);
+  const [formData, setFormData] = useState({ name: "", description: "" });
 
   useEffect(() => {
-    loadData();
-  }, [loadData]);
+    fetchSubjects();
+  }, []);
 
-  const handleRefresh = async () => {
+  const fetchSubjects = async () => {
+    try {
+      const response = await principalAcademicApi.getSubjects({
+        search: search || undefined,
+        limit: 50,
+      });
+      if (response.success) {
+        setSubjects(response.data.subjects);
+      }
+    } catch (error) {
+      console.error("Fetch subjects error:", error);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+
+  const onRefresh = () => {
     setRefreshing(true);
-    await loadData();
-    setRefreshing(false);
+    fetchSubjects();
   };
 
-  const resetForm = () => {
-    setNewSubject({
-      name: "",
-      description: "",
-      teacherId: null,
-    });
-    setEditingSubject(null);
-    setShowAddModal(false);
+  const handleSearch = () => {
+    fetchSubjects();
   };
 
-  const handleSaveSubject = async () => {
-    if (!newSubject.name) {
-      Alert.alert("خطا", "لطفاً نام مضمون را وارد کنید");
+  const handleSave = async () => {
+    if (!formData.name.trim()) {
+      Alert.alert("خطا", "نام مضمون الزامی است");
       return;
     }
 
-    setSubmitting(true);
     try {
       let response;
-      const subjectData = {
-        name: newSubject.name,
-        description: newSubject.description,
-        teacherId: newSubject.teacherId,
-      };
-
       if (editingSubject) {
-        response = await adminSubjectApi.updateSubject(
+        response = await principalAcademicApi.updateSubject(
           editingSubject.id,
-          subjectData,
+          formData,
         );
       } else {
-        response = await adminSubjectApi.createSubject(subjectData);
+        response = await principalAcademicApi.createSubject(formData);
       }
 
       if (response.success) {
-        Alert.alert("موفقیت", response.message);
-        resetForm();
-        loadData();
-      } else {
-        Alert.alert("خطا", response.message);
+        Alert.alert(
+          "موفقیت",
+          editingSubject ? "مضمون به‌روزرسانی شد" : "مضمون ایجاد شد",
+        );
+        setModalVisible(false);
+        setEditingSubject(null);
+        setFormData({ name: "", description: "" });
+        fetchSubjects();
       }
-    } catch (error) {
-      Alert.alert("خطا", "خطا در ذخیره مضمون");
-    } finally {
-      setSubmitting(false);
+    } catch (error: any) {
+      Alert.alert("خطا", error.message || "خطا در ذخیره‌سازی");
     }
   };
 
-  const handleEditSubject = (subject: Subject) => {
-    setEditingSubject(subject);
-    setNewSubject({
-      name: subject.name,
-      description: subject.description || "",
-      teacherId: subject.teacherId || null,
-    });
-    setShowAddModal(true);
-  };
-
-  const handleDeleteSubject = (id: number, name: string) => {
-    Alert.alert("حذف مضمون", `آیا از حذف مضمون "${name}" مطمئن هستید؟`, [
+  const handleDelete = (id: number) => {
+    Alert.alert("حذف مضمون", "آیا مطمئن هستید؟", [
       { text: "لغو", style: "cancel" },
       {
         text: "حذف",
         style: "destructive",
         onPress: async () => {
           try {
-            const response = await adminSubjectApi.deleteSubject(id);
+            const response = await principalAcademicApi.deleteSubject(id);
             if (response.success) {
-              Alert.alert("موفقیت", response.message);
-              loadData();
-            } else {
-              Alert.alert("خطا", response.message);
+              Alert.alert("موفقیت", "مضمون حذف شد");
+              fetchSubjects();
             }
-          } catch (error) {
-            Alert.alert("خطا", "خطا در حذف مضمون");
+          } catch (error: any) {
+            Alert.alert("خطا", error.message || "خطا در حذف");
           }
         },
       },
     ]);
   };
 
-  const SubjectCard = ({ subject }: { subject: Subject }) => {
-    return (
-      <View style={styles.subjectCard}>
-        <View style={styles.subjectHeader}>
-          <Text style={styles.subjectName}>{subject.name}</Text>
-          {subject.teacherName && (
-            <View style={styles.teacherBadge}>
-              <Ionicons name="person" size={12} color={Colors.primary} />
-              <Text style={styles.teacherText}>{subject.teacherName}</Text>
-            </View>
+  const renderSubject = ({ item }: { item: Subject }) => (
+    <View style={styles.card}>
+      <View style={styles.cardHeader}>
+        <View style={styles.cardInfo}>
+          <Text style={styles.cardTitle}>{item.name}</Text>
+          {item.description && (
+            <Text style={styles.cardDesc}>{item.description}</Text>
           )}
         </View>
-
-        {subject.description && (
-          <Text style={styles.subjectDescription} numberOfLines={2}>
-            {subject.description}
-          </Text>
-        )}
-
-        {subject.classes && subject.classes.length > 0 && (
-          <View style={styles.classesContainer}>
-            <Text style={styles.classesLabel}>صنف‌ها:</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-              {subject.classes.map((cls, index) => (
-                <View key={cls.id} style={styles.classChip}>
-                  <Text style={styles.classChipText}>
-                    {cls.name} {cls.section || ""}
-                  </Text>
-                </View>
-              ))}
-            </ScrollView>
+        <View style={styles.badgeContainer}>
+          <View style={styles.badge}>
+            <Text style={styles.badgeText}>{item.classCount} صنف</Text>
           </View>
-        )}
-
-        <View style={styles.subjectActions}>
-          <TouchableOpacity
-            style={styles.actionButton}
-            onPress={() => handleEditSubject(subject)}
-          >
-            <Ionicons name="create-outline" size={16} color={Colors.primary} />
-            <Text style={styles.actionText}>ویرایش</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.actionButton}
-            onPress={() => handleDeleteSubject(subject.id, subject.name)}
-          >
-            <Ionicons name="trash-outline" size={16} color={Colors.danger} />
-            <Text style={[styles.actionText, { color: Colors.danger }]}>
-              حذف
+          <View style={[styles.badge, { backgroundColor: "#ede9fe" }]}>
+            <Text style={[styles.badgeText, { color: "#8b5cf6" }]}>
+              {item.teacherCount} استاد
             </Text>
-          </TouchableOpacity>
+          </View>
         </View>
       </View>
-    );
-  };
+      <View style={styles.cardActions}>
+        <TouchableOpacity
+          style={[styles.actionButton, { backgroundColor: "#3b82f6" }]}
+          onPress={() => {
+            setEditingSubject(item);
+            setFormData({
+              name: item.name,
+              description: item.description || "",
+            });
+            setModalVisible(true);
+          }}
+        >
+          <Ionicons name="create-outline" size={18} color="#fff" />
+          <Text style={styles.actionText}>ویرایش</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.actionButton, { backgroundColor: "#ef4444" }]}
+          onPress={() => handleDelete(item.id)}
+        >
+          <Ionicons name="trash-outline" size={18} color="#fff" />
+          <Text style={styles.actionText}>حذف</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
 
   if (loading) {
     return (
-      <SafeAreaView style={styles.container} edges={["top"]}>
-        <Header title="مدیریت مضامین" showBack />
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={Colors.primary} />
-          <Text style={styles.loadingText}>در حال بارگذاری...</Text>
-        </View>
-      </SafeAreaView>
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#f59e0b" />
+      </View>
     );
   }
 
   return (
-    <SafeAreaView style={styles.container} edges={["top"]}>
-      <Header
-        title="مدیریت مضامین"
-        showBack
-        rightComponent={
-          <TouchableOpacity
-            onPress={() => {
-              resetForm();
-              setShowAddModal(true);
-            }}
-          >
-            <Ionicons name="add-circle" size={24} color={Colors.primary} />
-          </TouchableOpacity>
-        }
-      />
+    <View style={styles.container}>
+      {/* Header */}
+      <View style={styles.header}>
+        <TouchableOpacity onPress={() => router.back()}>
+          <Ionicons name="arrow-back" size={24} color="#1e293b" />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>مدیریت مضامین</Text>
+        <TouchableOpacity
+          style={styles.addButton}
+          onPress={() => {
+            setEditingSubject(null);
+            setFormData({ name: "", description: "" });
+            setModalVisible(true);
+          }}
+        >
+          <Ionicons name="add" size={24} color="#fff" />
+        </TouchableOpacity>
+      </View>
 
       {/* Search */}
       <View style={styles.searchContainer}>
-        <Ionicons name="search-outline" size={20} color="#8E8E93" />
+        <Ionicons
+          name="search"
+          size={20}
+          color="#94a3b8"
+          style={styles.searchIcon}
+        />
         <TextInput
           style={styles.searchInput}
-          placeholder="جستجوی مضمون، استاد..."
-          value={searchQuery}
-          onChangeText={setSearchQuery}
-          textAlign="right"
+          placeholder="جستجوی مضامین..."
+          placeholderTextColor="#94a3b8"
+          value={search}
+          onChangeText={setSearch}
+          onSubmitEditing={handleSearch}
         />
+        {search.length > 0 && (
+          <TouchableOpacity
+            onPress={() => {
+              setSearch("");
+              handleSearch();
+            }}
+          >
+            <Ionicons name="close-circle" size={20} color="#94a3b8" />
+          </TouchableOpacity>
+        )}
       </View>
 
-      {/* Statistics */}
-      <View style={styles.statsContainer}>
-        <View style={styles.statItem}>
-          <Text style={styles.statNumber}>{stats?.total || 0}</Text>
-          <Text style={styles.statLabel}>مضامین کل</Text>
-        </View>
-      </View>
-
-      {/* Subjects List */}
+      {/* List */}
       <FlatList
         data={subjects}
-        renderItem={({ item }) => <SubjectCard subject={item} />}
+        renderItem={renderSubject}
         keyExtractor={(item) => item.id.toString()}
         contentContainerStyle={styles.listContent}
         refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={handleRefresh}
-            colors={[Colors.primary]}
-          />
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
         ListEmptyComponent={
-          <View style={styles.emptyState}>
-            <Ionicons name="book-outline" size={48} color="#C7C7CC" />
-            <Text style={styles.emptyStateText}>هیچ مضمونی یافت نشد</Text>
-            <TouchableOpacity
-              style={styles.addButton}
-              onPress={() => {
-                resetForm();
-                setShowAddModal(true);
-              }}
-            >
-              <Text style={styles.addButtonText}>ایجاد مضمون جدید</Text>
-            </TouchableOpacity>
+          <View style={styles.emptyContainer}>
+            <Ionicons name="book-outline" size={48} color="#94a3b8" />
+            <Text style={styles.emptyText}>هیچ مضمونی یافت نشد</Text>
           </View>
         }
       />
 
-      {/* Add/Edit Modal */}
-      <Modal
-        visible={showAddModal}
-        transparent
-        animationType="slide"
-        onRequestClose={resetForm}
-      >
+      {/* Modal */}
+      <Modal visible={modalVisible} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>
-                {editingSubject ? "ویرایش مضمون" : "ایجاد مضمون جدید"}
-              </Text>
-              <TouchableOpacity onPress={resetForm}>
-                <Ionicons name="close" size={24} color="#8E8E93" />
-              </TouchableOpacity>
-            </View>
+            <Text style={styles.modalTitle}>
+              {editingSubject ? "ویرایش مضمون" : "ایجاد مضمون جدید"}
+            </Text>
 
-            <ScrollView style={styles.modalForm}>
-              {/* Subject Name */}
-              <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>نام مضمون *</Text>
-                <TextInput
-                  style={styles.textInput}
-                  value={newSubject.name}
-                  onChangeText={(text) =>
-                    setNewSubject({ ...newSubject, name: text })
-                  }
-                  placeholder="مثال: ریاضی"
-                  textAlign="right"
-                />
-              </View>
+            <Text style={styles.label}>نام مضمون</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="مثال: ریاضی"
+              value={formData.name}
+              onChangeText={(text) => setFormData({ ...formData, name: text })}
+            />
 
-              {/* Description */}
-              <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>توضیحات (اختیاری)</Text>
-                <TextInput
-                  style={[styles.textInput, styles.textArea]}
-                  value={newSubject.description}
-                  onChangeText={(text) =>
-                    setNewSubject({ ...newSubject, description: text })
-                  }
-                  placeholder="توضیحات مربوط به مضمون..."
-                  multiline
-                  numberOfLines={3}
-                  textAlign="right"
-                />
-              </View>
-
-              {/* Teacher Selection */}
-              <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>استاد مسئول (اختیاری)</Text>
-                <ScrollView style={styles.teacherList} nestedScrollEnabled>
-                  <TouchableOpacity
-                    style={[
-                      styles.teacherOption,
-                      newSubject.teacherId === null &&
-                        styles.teacherOptionActive,
-                    ]}
-                    onPress={() =>
-                      setNewSubject({ ...newSubject, teacherId: null })
-                    }
-                  >
-                    <Ionicons name="person-outline" size={16} color="#8E8E93" />
-                    <Text style={styles.teacherOptionText}>بدون استاد</Text>
-                    {newSubject.teacherId === null && (
-                      <Ionicons
-                        name="checkmark"
-                        size={16}
-                        color={Colors.primary}
-                      />
-                    )}
-                  </TouchableOpacity>
-
-                  {teachers.map((teacher) => (
-                    <TouchableOpacity
-                      key={teacher.id}
-                      style={[
-                        styles.teacherOption,
-                        newSubject.teacherId === teacher.id &&
-                          styles.teacherOptionActive,
-                      ]}
-                      onPress={() =>
-                        setNewSubject({ ...newSubject, teacherId: teacher.id })
-                      }
-                    >
-                      <Ionicons
-                        name="person-outline"
-                        size={16}
-                        color="#8E8E93"
-                      />
-                      <Text style={styles.teacherOptionText}>
-                        {teacher.name}
-                      </Text>
-                      {newSubject.teacherId === teacher.id && (
-                        <Ionicons
-                          name="checkmark"
-                          size={16}
-                          color={Colors.primary}
-                        />
-                      )}
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
-              </View>
-            </ScrollView>
+            <Text style={styles.label}>توضیحات</Text>
+            <TextInput
+              style={[styles.input, styles.textArea]}
+              placeholder="توضیحات..."
+              value={formData.description}
+              onChangeText={(text) =>
+                setFormData({ ...formData, description: text })
+              }
+              multiline
+              numberOfLines={3}
+              textAlignVertical="top"
+            />
 
             <View style={styles.modalActions}>
-              <TouchableOpacity style={styles.cancelButton} onPress={resetForm}>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.cancelButton]}
+                onPress={() => setModalVisible(false)}
+              >
                 <Text style={styles.cancelButtonText}>لغو</Text>
               </TouchableOpacity>
-
               <TouchableOpacity
-                style={styles.saveButton}
-                onPress={handleSaveSubject}
-                disabled={submitting}
+                style={[styles.modalButton, styles.saveButton]}
+                onPress={handleSave}
               >
-                <Text style={styles.saveButtonText}>
-                  {submitting
-                    ? "در حال..."
-                    : editingSubject
-                      ? "به‌روزرسانی"
-                      : "ایجاد مضمون"}
-                </Text>
+                <Text style={styles.saveButtonText}>ذخیره</Text>
               </TouchableOpacity>
             </View>
           </View>
         </View>
       </Modal>
-    </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.background },
+  container: { flex: 1, backgroundColor: "#f1f5f9" },
   loadingContainer: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
+    backgroundColor: "#f1f5f9",
   },
-  loadingText: {
-    marginTop: 12,
-    fontSize: 16,
-    color: Colors.textSecondary,
+  header: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: "#fff",
+    borderBottomWidth: 1,
+    borderBottomColor: "#e2e8f0",
+  },
+  headerTitle: {
+    fontSize: 20,
+    fontWeight: "700",
+    color: "#1e293b",
+    fontFamily: "VazirBold",
+  },
+  addButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: "#f59e0b",
+    justifyContent: "center",
+    alignItems: "center",
   },
   searchContainer: {
     flexDirection: "row",
     alignItems: "center",
+    backgroundColor: "#fff",
     margin: 16,
-    backgroundColor: Colors.card,
-    padding: 12,
+    paddingHorizontal: 12,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: "#e2e8f0",
   },
+  searchIcon: { marginRight: 8 },
   searchInput: {
-    marginLeft: 12,
     flex: 1,
-    fontSize: 16,
-    color: Colors.text,
+    paddingVertical: 12,
+    fontSize: 15,
+    color: "#1e293b",
+    fontFamily: "Vazir",
   },
-  statsContainer: {
-    flexDirection: "row",
-    backgroundColor: Colors.card,
-    marginHorizontal: 16,
-    marginBottom: 16,
-    padding: 16,
+  listContent: { paddingHorizontal: 16, paddingBottom: 20, gap: 12 },
+  card: {
+    backgroundColor: "#fff",
     borderRadius: 16,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    justifyContent: "center",
-  },
-  statItem: {
-    alignItems: "center",
-  },
-  statNumber: {
-    fontSize: 24,
-    fontWeight: "bold",
-    color: Colors.primary,
-  },
-  statLabel: {
-    fontSize: 12,
-    color: Colors.textSecondary,
-    marginTop: 4,
-  },
-  listContent: {
     padding: 16,
+    elevation: 2,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
   },
-  subjectCard: {
-    backgroundColor: Colors.card,
-    marginBottom: 12,
-    padding: 16,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  subjectHeader: {
+  cardHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 8,
+    alignItems: "flex-start",
   },
-  subjectName: {
-    fontSize: 18,
+  cardInfo: { flex: 1 },
+  cardTitle: {
+    fontSize: 16,
     fontWeight: "600",
-    color: Colors.text,
+    color: "#1e293b",
+    fontFamily: "VazirBold",
   },
-  teacherBadge: {
+  cardDesc: {
+    fontSize: 13,
+    color: "#64748b",
+    marginTop: 2,
+    fontFamily: "Vazir",
+  },
+  badgeContainer: { flexDirection: "row", gap: 6 },
+  badge: {
+    backgroundColor: "#d1fae5",
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  badgeText: { fontSize: 11, color: "#10b981", fontFamily: "Vazir" },
+  cardActions: {
     flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: Colors.background,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-    gap: 4,
-  },
-  teacherText: {
-    fontSize: 12,
-    color: Colors.primary,
-  },
-  subjectDescription: {
-    fontSize: 14,
-    color: Colors.textSecondary,
-    lineHeight: 20,
-    marginBottom: 12,
-  },
-  classesContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    flexWrap: "wrap",
-    marginBottom: 12,
-  },
-  classesLabel: {
-    fontSize: 12,
-    color: Colors.textSecondary,
-    marginRight: 8,
-  },
-  classChip: {
-    backgroundColor: Colors.background,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
-    marginRight: 6,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  classChipText: {
-    fontSize: 11,
-    color: Colors.text,
-  },
-  subjectActions: {
-    flexDirection: "row",
-    gap: 16,
+    gap: 8,
+    marginTop: 12,
     paddingTop: 12,
     borderTopWidth: 1,
-    borderTopColor: Colors.border,
+    borderTopColor: "#f1f5f9",
   },
   actionButton: {
     flexDirection: "row",
     alignItems: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 6,
+    borderRadius: 8,
     gap: 6,
   },
-  actionText: {
-    fontSize: 14,
-    color: Colors.primary,
-    fontWeight: "500",
-  },
-  emptyState: {
-    alignItems: "center",
-    justifyContent: "center",
-    padding: 48,
-  },
-  emptyStateText: {
-    fontSize: 16,
-    color: Colors.textSecondary,
-    marginTop: 12,
-    textAlign: "center",
-  },
-  addButton: {
+  actionText: { color: "#fff", fontSize: 13, fontFamily: "Vazir" },
+  emptyContainer: { alignItems: "center", paddingVertical: 60 },
+  emptyText: {
     marginTop: 16,
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    backgroundColor: Colors.primary,
-    borderRadius: 12,
-  },
-  addButtonText: {
-    color: "white",
-    fontWeight: "600",
-    fontSize: 14,
+    fontSize: 16,
+    color: "#94a3b8",
+    fontFamily: "Vazir",
   },
   modalOverlay: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.5)",
-    justifyContent: "flex-end",
-  },
-  modalContent: {
-    backgroundColor: Colors.card,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    maxHeight: "90%",
-  },
-  modalHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
+    justifyContent: "center",
     alignItems: "center",
     padding: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
+  },
+  modalContent: {
+    backgroundColor: "#fff",
+    borderRadius: 16,
+    padding: 24,
+    width: "100%",
+    maxWidth: 400,
   },
   modalTitle: {
     fontSize: 20,
+    fontWeight: "700",
+    color: "#1e293b",
+    marginBottom: 16,
+    fontFamily: "VazirBold",
+    textAlign: "center",
+  },
+  label: {
+    fontSize: 14,
     fontWeight: "600",
-    color: Colors.text,
+    color: "#1e293b",
+    marginTop: 12,
+    marginBottom: 4,
+    fontFamily: "Vazir",
   },
-  modalForm: {
-    padding: 20,
+  input: {
+    backgroundColor: "#f1f5f9",
+    borderRadius: 10,
+    padding: 12,
+    fontSize: 15,
+    color: "#1e293b",
+    fontFamily: "Vazir",
   },
-  inputGroup: {
-    marginBottom: 20,
-  },
-  inputLabel: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: Colors.text,
-    marginBottom: 8,
-  },
-  textInput: {
-    backgroundColor: Colors.background,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    borderRadius: 12,
-    padding: 14,
-    fontSize: 16,
-    color: Colors.text,
-  },
-  textArea: {
-    minHeight: 80,
-    textAlignVertical: "top",
-  },
-  teacherList: {
-    maxHeight: 200,
-    gap: 8,
-  },
-  teacherOption: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    padding: 14,
-    backgroundColor: Colors.background,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    marginBottom: 8,
-  },
-  teacherOptionActive: {
-    backgroundColor: Colors.primary + "10",
-    borderColor: Colors.primary,
-  },
-  teacherOptionText: {
-    fontSize: 16,
-    color: Colors.text,
+  textArea: { minHeight: 80 },
+  modalActions: { flexDirection: "row", gap: 12, marginTop: 16 },
+  modalButton: {
     flex: 1,
-  },
-  modalActions: {
-    flexDirection: "row",
-    padding: 20,
-    paddingTop: 0,
-    gap: 12,
-  },
-  saveButton: {
-    flex: 2,
-    backgroundColor: Colors.primary,
-    padding: 16,
-    borderRadius: 12,
+    paddingVertical: 12,
+    borderRadius: 10,
     alignItems: "center",
   },
+  cancelButton: { backgroundColor: "#f1f5f9" },
+  cancelButtonText: { color: "#64748b", fontSize: 15, fontFamily: "Vazir" },
+  saveButton: { backgroundColor: "#f59e0b" },
   saveButtonText: {
-    color: "white",
+    color: "#fff",
+    fontSize: 15,
     fontWeight: "600",
-    fontSize: 16,
-  },
-  cancelButton: {
-    flex: 1,
-    padding: 16,
-    borderRadius: 12,
-    alignItems: "center",
-    backgroundColor: Colors.background,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  cancelButtonText: {
-    fontSize: 16,
-    color: Colors.textSecondary,
-    fontWeight: "500",
+    fontFamily: "Vazir",
   },
 });

@@ -35,6 +35,7 @@ export interface Subject {
 }
 
 export interface TimetableEntry {
+  startTime: string;
   id: number | null;
   period: number;
   time: string;
@@ -113,7 +114,66 @@ class PrincipalAcademicApi {
       throw error;
     }
   }
+  // src/config/principalAcademicApi.ts - Add these methods
 
+  // ==================== GRADING SYSTEM ====================
+
+  async getGradingSchemes(): Promise<ApiResponse<any[]>> {
+    return this.request("/grading-schemes");
+  }
+
+  async createGradingScheme(data: {
+    name: string;
+    description?: string;
+    type: string;
+    passingGrade: string;
+    isDefault?: boolean;
+    grades: Array<{
+      grade: string;
+      range: string;
+      points: number;
+      remark: string;
+    }>;
+  }): Promise<ApiResponse<any>> {
+    return this.request("/grading-schemes", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updateGradingScheme(
+    id: string,
+    data: {
+      name?: string;
+      description?: string;
+      type?: string;
+      passingGrade?: string;
+      isDefault?: boolean;
+      grades?: Array<{
+        grade: string;
+        range: string;
+        points: number;
+        remark: string;
+      }>;
+    },
+  ): Promise<ApiResponse<any>> {
+    return this.request(`/grading-schemes/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteGradingScheme(id: string): Promise<ApiResponse<any>> {
+    return this.request(`/grading-schemes/${id}`, {
+      method: "DELETE",
+    });
+  }
+
+  async setDefaultGradingScheme(id: string): Promise<ApiResponse<any>> {
+    return this.request(`/grading-schemes/${id}/default`, {
+      method: "PUT",
+    });
+  }
   // ==================== ACADEMIC YEARS ====================
   async getAcademicYears(): Promise<ApiResponse<AcademicYear[]>> {
     return this.request("/years");

@@ -1,12 +1,13 @@
-// app/(admin)/academic/timetable.tsx
+// app/(principal)/academic/timetable.tsx - FIXED VERSION
 import { useAuth } from "@/contexts/AuthContext";
 import {
-  adminTimetableApi,
-  ClassOption,
-  Period,
-  SubjectOption,
-} from "@/src/config/adminTimetableApi";
-import { Calendar, Edit2, Plus, Trash2 } from "lucide-react-native";
+  principalAcademicApi,
+  TimetableEntry,
+} from "@/src/config/principalAcademicApi";
+import { Ionicons } from "@expo/vector-icons";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { router } from "expo-router";
+import { Calendar, Edit2, Trash2 } from "lucide-react-native";
 import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
@@ -21,8 +22,6 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { Header } from "../../../components/Header";
-import { Colors } from "../../../constants/Colors";
 
 // Persian days mapping
 const PERSIAN_DAYS = [
@@ -45,17 +44,43 @@ const timeSlots = [
   "12:15 - 13:00",
 ];
 
-export default function TimetableGenerator() {
+// Color mapping for subjects
+const getSubjectColor = (subject: string) => {
+  if (!subject) return "#8E8E93";
+  const colors: Record<string, string> = {
+    ریاضی: "#007AFF",
+    علوم: "#34C759",
+    انگلیسی: "#FF9500",
+    تاریخ: "#AF52DE",
+    جغرافیا: "#FF2D55",
+    فیزیک: "#5856D6",
+    شیمی: "#FF3B30",
+    بیولوژی: "#5AC8FA",
+    کامپیوتر: "#FFCC00",
+    ورزش: "#4CD964",
+    BREAK: "#8E8E93",
+    تفسیر: "#8B5CF6",
+    کیمیا: "#F59E0B",
+    عقاید: "#EC4899",
+    دری: "#06B6D4",
+    پشتو: "#14B8A6",
+  };
+  return colors[subject] || "#8E8E93";
+};
+
+export default function TimetableScreen() {
   const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [classes, setClasses] = useState<ClassOption[]>([]);
-  const [subjects, setSubjects] = useState<SubjectOption[]>([]);
+  const [classes, setClasses] = useState<any[]>([]);
+  const [subjects, setSubjects] = useState<any[]>([]);
   const [selectedClassId, setSelectedClassId] = useState<number | null>(null);
   const [selectedDay, setSelectedDay] = useState<number>(0);
-  const [schedule, setSchedule] = useState<Period[]>([]);
+  const [schedule, setSchedule] = useState<TimetableEntry[]>([]);
   const [showAddModal, setShowAddModal] = useState(false);
-  const [editingPeriod, setEditingPeriod] = useState<Period | null>(null);
+  const [editingPeriod, setEditingPeriod] = useState<TimetableEntry | null>(
+    null,
+  );
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -81,24 +106,36 @@ export default function TimetableGenerator() {
     try {
       setLoading(true);
       setError(null);
-      const [classesRes, subjectsRes] = await Promise.all([
-        adminTimetableApi.getClasses(),
-        adminTimetableApi.getSubjects(),
-      ]);
 
-      if (classesRes.success && classesRes.data) {
-        setClasses(classesRes.data);
-        if (classesRes.data.length > 0 && !selectedClassId) {
-          setSelectedClassId(classesRes.data[0].id);
+      // Fetch classes
+      const classesResponse = await fetch(
+        `${process.env.EXPO_PUBLIC_API_URL}/principal/classes`,
+        {
+          headers: { Authorization: `Bearer ${await getToken()}` },
+        },
+      );
+      const classesResult = await classesResponse.json();
+
+      if (classesResult.success && classesResult.data) {
+        setClasses(classesResult.data);
+        if (classesResult.data.length > 0 && !selectedClassId) {
+          setSelectedClassId(classesResult.data[0].id);
         }
       } else {
         setError("خطا در بارگذاری صنف‌ها");
       }
 
-      if (subjectsRes.success && subjectsRes.data) {
-        setSubjects(subjectsRes.data);
-      } else {
-        setError("خطا در بارگذاری مضامین");
+      // Fetch subjects
+      const subjectsResponse = await fetch(
+        `${process.env.EXPO_PUBLIC_API_URL}/principal/academic/subjects`,
+        {
+          headers: { Authorization: `Bearer ${await getToken()}` },
+        },
+      );
+      const subjectsResult = await subjectsResponse.json();
+
+      if (subjectsResult.success && subjectsResult.data) {
+        setSubjects(subjectsResult.data.subjects || []);
       }
     } catch (err) {
       console.error("Error loading data:", err);
@@ -108,11 +145,16 @@ export default function TimetableGenerator() {
     }
   };
 
+  const getToken = async () => {
+    const token = await AsyncStorage.getItem("auth_token");
+    return token;
+  };
+
   const loadTimetable = async () => {
     if (!selectedClassId) return;
 
     try {
-      const response = await adminTimetableApi.getTimetable(
+      const response = await principalAcademicApi.getTimetable(
         selectedClassId,
         selectedDay,
       );
@@ -167,14 +209,14 @@ export default function TimetableGenerator() {
         subjectId = breakSubject?.id || 0;
       }
 
-      const response = await adminTimetableApi.savePeriod({
+      const response = await principalAcademicApi.saveTimetableEntry({
         classId: selectedClassId,
         day: selectedDay,
         period: newPeriod.period,
         subjectId: subjectId,
         teacherId: newPeriod.teacherId,
         room: newPeriod.room || "",
-        isBreak: newPeriod.isBreak,
+        // startTime and endTime will be auto-calculated
       });
 
       if (response.success) {
@@ -200,13 +242,13 @@ export default function TimetableGenerator() {
     }
   };
 
-  const handleEditPeriod = (period: Period) => {
+  const handleEditPeriod = (period: TimetableEntry) => {
     const subject = subjects.find((s) => s.name === period.subject);
     setEditingPeriod(period);
     setNewPeriod({
       period: period.period || 0,
       subjectId: subject?.id || 0,
-      teacherId: undefined,
+      teacherId: period.teacherId || undefined,
       room: period.room || "",
       isBreak: period.isBreak || false,
     });
@@ -226,7 +268,8 @@ export default function TimetableGenerator() {
         style: "destructive",
         onPress: async () => {
           try {
-            const response = await adminTimetableApi.deletePeriod(periodId);
+            const response =
+              await principalAcademicApi.deleteTimetableEntry(periodId);
             if (response.success) {
               Alert.alert(
                 "موفقیت",
@@ -245,35 +288,33 @@ export default function TimetableGenerator() {
     ]);
   };
 
-  const getSubjectColor = (subject: string) => {
-    if (!subject) return "#8E8E93";
-    const colors: Record<string, string> = {
-      ریاضی: "#007AFF",
-      علوم: "#34C759",
-      انگلیسی: "#FF9500",
-      تاریخ: "#AF52DE",
-      جغرافیا: "#FF2D55",
-      فیزیک: "#5856D6",
-      شیمی: "#FF3B30",
-      بیولوژی: "#5AC8FA",
-      کامپیوتر: "#FFCC00",
-      ورزش: "#4CD964",
-      BREAK: "#8E8E93",
-      تفسیر: "#8B5CF6",
-      کیمیا: "#F59E0B",
-      عقاید: "#EC4899",
-      دری: "#06B6D4",
-      پشتو: "#14B8A6",
-    };
-    return colors[subject] || "#8E8E93";
-  };
-
   if (loading) {
     return (
       <SafeAreaView style={styles.container} edges={["top"]}>
-        <Header title="برنامه هفتگی" showBack />
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => router.back()}>
+            <Ionicons name="arrow-back" size={24} color="#1e293b" />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>برنامه هفتگی</Text>
+          <TouchableOpacity
+            style={styles.addButton}
+            onPress={() => {
+              setEditingPeriod(null);
+              setNewPeriod({
+                period: 0,
+                subjectId: 0,
+                teacherId: undefined,
+                room: "",
+                isBreak: false,
+              });
+              setShowAddModal(true);
+            }}
+          >
+            <Ionicons name="add" size={24} color="#fff" />
+          </TouchableOpacity>
+        </View>
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={Colors.primary} />
+          <ActivityIndicator size="large" color="#f59e0b" />
           <Text style={styles.loadingText}>در حال بارگذاری...</Text>
         </View>
       </SafeAreaView>
@@ -283,7 +324,12 @@ export default function TimetableGenerator() {
   if (error) {
     return (
       <SafeAreaView style={styles.container} edges={["top"]}>
-        <Header title="برنامه هفتگی" showBack />
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => router.back()}>
+            <Ionicons name="arrow-back" size={24} color="#1e293b" />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>برنامه هفتگی</Text>
+        </View>
         <View style={styles.errorContainer}>
           <Text style={styles.errorText}>{error}</Text>
           <TouchableOpacity style={styles.retryButton} onPress={loadData}>
@@ -298,27 +344,28 @@ export default function TimetableGenerator() {
 
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
-      <Header
-        title="برنامه هفتگی"
-        showBack
-        rightComponent={
-          <TouchableOpacity
-            onPress={() => {
-              setEditingPeriod(null);
-              setNewPeriod({
-                period: 0,
-                subjectId: 0,
-                teacherId: undefined,
-                room: "",
-                isBreak: false,
-              });
-              setShowAddModal(true);
-            }}
-          >
-            <Plus size={24} color={Colors.primary} />
-          </TouchableOpacity>
-        }
-      />
+      <View style={styles.header}>
+        <TouchableOpacity onPress={() => router.back()}>
+          <Ionicons name="arrow-back" size={24} color="#1e293b" />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>برنامه هفتگی</Text>
+        <TouchableOpacity
+          style={styles.addButton}
+          onPress={() => {
+            setEditingPeriod(null);
+            setNewPeriod({
+              period: 0,
+              subjectId: 0,
+              teacherId: undefined,
+              room: "",
+              isBreak: false,
+            });
+            setShowAddModal(true);
+          }}
+        >
+          <Ionicons name="add" size={24} color="#fff" />
+        </TouchableOpacity>
+      </View>
 
       <ScrollView
         style={styles.content}
@@ -326,7 +373,7 @@ export default function TimetableGenerator() {
           <RefreshControl
             refreshing={refreshing}
             onRefresh={handleRefresh}
-            colors={[Colors.primary]}
+            colors={["#f59e0b"]}
           />
         }
       >
@@ -351,7 +398,7 @@ export default function TimetableGenerator() {
                         styles.selectorButtonTextActive,
                     ]}
                   >
-                    {cls.displayName || cls.name || `صنف ${cls.id}`}
+                    {cls.name} {cls.section || ""}
                   </Text>
                 </TouchableOpacity>
               ))}
@@ -391,9 +438,8 @@ export default function TimetableGenerator() {
         <View style={styles.timetableContainer}>
           <View style={styles.timetableHeader}>
             <Text style={styles.timetableTitle}>
-              {classes.find((c) => c.id === selectedClassId)?.displayName ||
-                "صنف"}{" "}
-              - {PERSIAN_DAYS[selectedDay]}
+              {classes.find((c) => c.id === selectedClassId)?.name || "صنف"} -{" "}
+              {PERSIAN_DAYS[selectedDay]}
             </Text>
           </View>
 
@@ -403,7 +449,7 @@ export default function TimetableGenerator() {
               <Text style={styles.emptyTitle}>برنامه‌ای ثبت نشده</Text>
               <Text style={styles.emptyText}>
                 برای{" "}
-                {classes.find((c) => c.id === selectedClassId)?.displayName ||
+                {classes.find((c) => c.id === selectedClassId)?.name ||
                   "این صنف"}{" "}
                 در روز {PERSIAN_DAYS[selectedDay]} برنامه‌ای ثبت نشده است
               </Text>
@@ -435,13 +481,13 @@ export default function TimetableGenerator() {
                         style={styles.periodActionButton}
                         onPress={() => handleEditPeriod(period)}
                       >
-                        <Edit2 size={14} color={Colors.primary} />
+                        <Edit2 size={14} color="#3b82f6" />
                       </TouchableOpacity>
                       <TouchableOpacity
                         style={styles.periodActionButton}
-                        onPress={() => handleDeletePeriod(period.id)}
+                        onPress={() => handleDeletePeriod(period.id!)}
                       >
-                        <Trash2 size={14} color={Colors.danger} />
+                        <Trash2 size={14} color="#ef4444" />
                       </TouchableOpacity>
                     </View>
                   </View>
@@ -549,7 +595,7 @@ export default function TimetableGenerator() {
                     <Text style={styles.label}>مضمون</Text>
                     <View style={styles.optionsGrid}>
                       {subjects
-                        .filter((s) => !s.isBreak)
+                        .filter((s) => s.name !== "BREAK")
                         .map((subject) => (
                           <TouchableOpacity
                             key={subject.id}
@@ -628,7 +674,31 @@ export default function TimetableGenerator() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.background,
+    backgroundColor: "#f1f5f9",
+  },
+  header: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: "#fff",
+    borderBottomWidth: 1,
+    borderBottomColor: "#e2e8f0",
+  },
+  headerTitle: {
+    fontSize: 20,
+    fontWeight: "700",
+    color: "#1e293b",
+    fontFamily: "VazirBold",
+  },
+  addButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: "#f59e0b",
+    justifyContent: "center",
+    alignItems: "center",
   },
   content: {
     flex: 1,
@@ -641,7 +711,7 @@ const styles = StyleSheet.create({
   loadingText: {
     marginTop: 12,
     fontSize: 16,
-    color: Colors.textSecondary,
+    color: "#64748b",
   },
   errorContainer: {
     flex: 1,
@@ -651,12 +721,12 @@ const styles = StyleSheet.create({
   },
   errorText: {
     fontSize: 16,
-    color: Colors.danger,
+    color: "#ef4444",
     textAlign: "center",
     marginBottom: 20,
   },
   retryButton: {
-    backgroundColor: Colors.primary,
+    backgroundColor: "#f59e0b",
     paddingHorizontal: 24,
     paddingVertical: 12,
     borderRadius: 8,
@@ -667,86 +737,86 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   selectorContainer: {
-    backgroundColor: Colors.card,
-    padding: 20,
+    backgroundColor: "#fff",
+    padding: 16,
     borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
+    borderBottomColor: "#e2e8f0",
   },
   selectorLabel: {
     fontSize: 16,
     fontWeight: "600",
-    color: Colors.text,
+    color: "#1e293b",
     marginBottom: 12,
   },
   selectorButtons: {
     flexDirection: "row",
-    gap: 12,
+    gap: 8,
     paddingBottom: 4,
   },
   selectorButton: {
-    paddingHorizontal: 20,
-    paddingVertical: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
     borderRadius: 20,
-    backgroundColor: Colors.background,
+    backgroundColor: "#f1f5f9",
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: "#e2e8f0",
   },
   selectorButtonActive: {
-    backgroundColor: Colors.primary,
-    borderColor: Colors.primary,
+    backgroundColor: "#f59e0b",
+    borderColor: "#f59e0b",
   },
   selectorButtonText: {
     fontSize: 14,
-    color: Colors.textSecondary,
+    color: "#64748b",
     fontWeight: "500",
   },
   selectorButtonTextActive: {
     color: "#fff",
   },
   timetableContainer: {
-    backgroundColor: Colors.card,
-    padding: 20,
+    backgroundColor: "#fff",
+    padding: 16,
     margin: 16,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: "#e2e8f0",
   },
   timetableHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 20,
+    marginBottom: 16,
   },
   timetableTitle: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: "600",
-    color: Colors.text,
+    color: "#1e293b",
   },
   emptyTimetable: {
     alignItems: "center",
     justifyContent: "center",
     padding: 40,
-    backgroundColor: Colors.background,
+    backgroundColor: "#f8fafc",
     borderRadius: 12,
     borderWidth: 2,
-    borderColor: Colors.border,
+    borderColor: "#e2e8f0",
     borderStyle: "dashed",
   },
   emptyTitle: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: "600",
-    color: Colors.text,
+    color: "#1e293b",
     marginTop: 16,
     marginBottom: 8,
   },
   emptyText: {
-    fontSize: 16,
-    color: Colors.textSecondary,
+    fontSize: 14,
+    color: "#64748b",
     textAlign: "center",
     marginBottom: 20,
   },
   emptyButton: {
-    backgroundColor: Colors.primary,
+    backgroundColor: "#f59e0b",
     paddingHorizontal: 24,
     paddingVertical: 12,
     borderRadius: 8,
@@ -760,7 +830,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   periodCard: {
-    backgroundColor: Colors.background,
+    backgroundColor: "#f8fafc",
     borderRadius: 12,
     padding: 16,
     borderLeftWidth: 4,
@@ -771,18 +841,18 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   breakCard: {
-    backgroundColor: "#F2F2F7",
+    backgroundColor: "#f1f5f9",
   },
   periodHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 12,
+    marginBottom: 8,
   },
   periodTime: {
     fontSize: 14,
     fontWeight: "600",
-    color: Colors.text,
+    color: "#1e293b",
   },
   periodActions: {
     flexDirection: "row",
@@ -792,21 +862,21 @@ const styles = StyleSheet.create({
     width: 28,
     height: 28,
     borderRadius: 8,
-    backgroundColor: Colors.card,
+    backgroundColor: "#fff",
     justifyContent: "center",
     alignItems: "center",
   },
   breakText: {
     fontSize: 18,
     fontWeight: "bold",
-    color: Colors.textSecondary,
+    color: "#64748b",
     textAlign: "center",
   },
   periodSubject: {
-    fontSize: 18,
-    fontWeight: "bold",
-    color: Colors.text,
-    marginBottom: 8,
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#1e293b",
+    marginBottom: 4,
   },
   periodDetails: {
     flexDirection: "row",
@@ -815,11 +885,11 @@ const styles = StyleSheet.create({
   },
   periodTeacher: {
     fontSize: 14,
-    color: Colors.textSecondary,
+    color: "#64748b",
   },
   periodRoom: {
     fontSize: 14,
-    color: Colors.textSecondary,
+    color: "#64748b",
   },
   modalOverlay: {
     flex: 1,
@@ -827,7 +897,7 @@ const styles = StyleSheet.create({
     justifyContent: "flex-end",
   },
   modalContent: {
-    backgroundColor: Colors.card,
+    backgroundColor: "#fff",
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     maxHeight: "90%",
@@ -838,27 +908,27 @@ const styles = StyleSheet.create({
     alignItems: "center",
     padding: 20,
     borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
+    borderBottomColor: "#e2e8f0",
   },
   modalTitle: {
     fontSize: 20,
     fontWeight: "600",
-    color: Colors.text,
+    color: "#1e293b",
   },
   closeButtonText: {
     fontSize: 20,
-    color: Colors.textSecondary,
+    color: "#64748b",
   },
   modalBody: {
     padding: 20,
   },
   formGroup: {
-    marginBottom: 24,
+    marginBottom: 20,
   },
   label: {
     fontSize: 16,
     fontWeight: "500",
-    color: Colors.text,
+    color: "#1e293b",
     marginBottom: 12,
   },
   optionsGrid: {
@@ -870,19 +940,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 8,
-    backgroundColor: Colors.background,
+    backgroundColor: "#f1f5f9",
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: "#e2e8f0",
     minWidth: 60,
     alignItems: "center",
   },
   optionButtonActive: {
-    backgroundColor: Colors.primary,
-    borderColor: Colors.primary,
+    backgroundColor: "#f59e0b",
+    borderColor: "#f59e0b",
   },
   optionText: {
     fontSize: 14,
-    color: Colors.textSecondary,
+    color: "#64748b",
   },
   optionTextActive: {
     color: "white",
@@ -897,13 +967,13 @@ const styles = StyleSheet.create({
     height: 24,
     borderRadius: 6,
     borderWidth: 2,
-    borderColor: Colors.border,
+    borderColor: "#e2e8f0",
     justifyContent: "center",
     alignItems: "center",
   },
   checkboxChecked: {
-    backgroundColor: Colors.primary,
-    borderColor: Colors.primary,
+    backgroundColor: "#f59e0b",
+    borderColor: "#f59e0b",
   },
   checkmark: {
     color: "white",
@@ -912,44 +982,44 @@ const styles = StyleSheet.create({
   },
   breakLabel: {
     fontSize: 16,
-    color: Colors.text,
+    color: "#1e293b",
   },
   textInput: {
-    backgroundColor: Colors.background,
+    backgroundColor: "#f1f5f9",
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: "#e2e8f0",
     borderRadius: 12,
-    padding: 14,
+    padding: 12,
     fontSize: 16,
-    color: Colors.text,
+    color: "#1e293b",
     textAlign: "right",
   },
   modalFooter: {
     flexDirection: "row",
     padding: 20,
     borderTopWidth: 1,
-    borderTopColor: Colors.border,
+    borderTopColor: "#e2e8f0",
     gap: 12,
   },
   cancelButton: {
     flex: 1,
     padding: 16,
     borderRadius: 8,
-    backgroundColor: Colors.background,
+    backgroundColor: "#f1f5f9",
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: "#e2e8f0",
     alignItems: "center",
   },
   cancelButtonText: {
     fontSize: 16,
     fontWeight: "500",
-    color: Colors.textSecondary,
+    color: "#64748b",
   },
   saveButton: {
     flex: 1,
     padding: 16,
     borderRadius: 8,
-    backgroundColor: Colors.primary,
+    backgroundColor: "#f59e0b",
     alignItems: "center",
   },
   saveButtonText: {

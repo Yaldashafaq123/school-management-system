@@ -1,6 +1,7 @@
-// app/(principal)/(tabs)/reports.tsx - FIXED
-import { formatCurrency, principalApi } from "@/src/config/principalApi";
+// app/(principal)/(tabs)/reports.tsx - Class & Student Reports
+import { principalApi } from "@/src/config/principalApi";
 import { Ionicons } from "@expo/vector-icons";
+import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
@@ -11,27 +12,6 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-
-// ✅ FIXED: Removed incorrect array brackets []
-type ReportData = {
-  summary: {
-    totalIncome: number;
-    totalExpenses: number;
-    netIncome: number;
-    totalFees: number;
-    totalSalaries: number;
-  };
-  expenseBreakdown: {
-    category: string;
-    amount: number;
-    percentage: number;
-  }[];
-  incomeBreakdown: {
-    category: string;
-    amount: number;
-    percentage: number;
-  }[];
-};
 
 type ClassReport = {
   id: number;
@@ -44,7 +24,17 @@ type ClassReport = {
   collectionRate: number;
 };
 
-// ✅ FIXED: Removed incorrect array brackets []
+type Student = {
+  id: number;
+  fullName: string;
+  email: string;
+  phone: string;
+  studentNumber: string;
+  status: string;
+  className: string;
+  classId: number;
+};
+
 type AttendanceReport = {
   month: number;
   year: number;
@@ -69,14 +59,17 @@ type AttendanceReport = {
 };
 
 export default function PrincipalReportsScreen() {
+  const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [activeTab, setActiveTab] = useState("financial");
-  const [financialData, setFinancialData] = useState<ReportData | null>(null);
+  const [activeTab, setActiveTab] = useState("classes");
   const [classData, setClassData] = useState<ClassReport[]>([]);
   const [attendanceData, setAttendanceData] = useState<AttendanceReport | null>(
     null,
   );
+  const [selectedClass, setSelectedClass] = useState<ClassReport | null>(null);
+  const [classStudents, setClassStudents] = useState<Student[]>([]);
+  const [showStudents, setShowStudents] = useState(false);
 
   useEffect(() => {
     fetchReports();
@@ -86,14 +79,11 @@ export default function PrincipalReportsScreen() {
     try {
       setLoading(true);
 
-      if (activeTab === "financial") {
-        const [financial, classes] = await Promise.all([
-          principalApi.getFinancialReport(),
-          principalApi.getClassReport(),
-        ]);
-
-        if (financial.success) setFinancialData(financial.data);
-        if (classes.success) setClassData(classes.data.classes || []);
+      if (activeTab === "classes") {
+        const classes = await principalApi.getClassReport();
+        if (classes.success) {
+          setClassData(classes.data.classes || []);
+        }
       } else if (activeTab === "attendance") {
         const response = await principalApi.getAttendanceReport();
         if (response.success) setAttendanceData(response.data);
@@ -111,6 +101,30 @@ export default function PrincipalReportsScreen() {
     fetchReports();
   };
 
+  const fetchClassStudents = async (classId: number, className: string) => {
+    try {
+      const response = await principalApi.getStudents({ classId, limit: 100 });
+      if (response.success) {
+        setClassStudents(response.data.students);
+        const classInfo = classData.find((c) => c.id === classId);
+        setSelectedClass(classInfo || null);
+        setShowStudents(true);
+      }
+    } catch (error) {
+      console.error("Fetch students error:", error);
+    }
+  };
+
+  const handleStudentPress = (studentId: number) => {
+    router.push(`/(principal)/students/${studentId}`);
+  };
+
+  const handleBackToClasses = () => {
+    setShowStudents(false);
+    setSelectedClass(null);
+    setClassStudents([]);
+  };
+
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
@@ -119,34 +133,16 @@ export default function PrincipalReportsScreen() {
     );
   }
 
-  const renderFinancialReport = () => (
+  const renderClassList = () => (
     <View>
-      {/* Summary Cards */}
-      <View style={styles.summaryGrid}>
-        <View style={[styles.summaryCard, { backgroundColor: "#d1fae5" }]}>
-          <Text style={styles.summaryLabel}>عواید کل</Text>
-          <Text style={[styles.summaryValue, { color: "#10b981" }]}>
-            {formatCurrency(financialData?.summary.totalIncome || 0)}
-          </Text>
-        </View>
-        <View style={[styles.summaryCard, { backgroundColor: "#fef3c7" }]}>
-          <Text style={styles.summaryLabel}>مصارف کل</Text>
-          <Text style={[styles.summaryValue, { color: "#f59e0b" }]}>
-            {formatCurrency(financialData?.summary.totalExpenses || 0)}
-          </Text>
-        </View>
-        <View style={[styles.summaryCard, { backgroundColor: "#dbeafe" }]}>
-          <Text style={styles.summaryLabel}>عواید خالص</Text>
-          <Text style={[styles.summaryValue, { color: "#3b82f6" }]}>
-            {formatCurrency(financialData?.summary.netIncome || 0)}
-          </Text>
-        </View>
-      </View>
-
-      {/* Class Collection Report */}
-      <Text style={styles.sectionTitle}>وصول فیس بر اساس صنف</Text>
+      <Text style={styles.sectionTitle}>لیست صنوف</Text>
       {classData.map((cls) => (
-        <View key={cls.id} style={styles.classCard}>
+        <TouchableOpacity
+          key={cls.id}
+          style={styles.classCard}
+          onPress={() => fetchClassStudents(cls.id, cls.name)}
+          activeOpacity={0.7}
+        >
           <View style={styles.classHeader}>
             <Text style={styles.className}>
               {cls.name} {cls.section}
@@ -159,13 +155,7 @@ export default function PrincipalReportsScreen() {
               <Text style={styles.classStatValue}>{cls.studentCount}</Text>
             </View>
             <View style={styles.classStat}>
-              <Text style={styles.classStatLabel}>فیس</Text>
-              <Text style={styles.classStatValue}>
-                {formatCurrency(cls.totalFees)}
-              </Text>
-            </View>
-            <View style={styles.classStat}>
-              <Text style={styles.classStatLabel}>وصول</Text>
+              <Text style={styles.classStatLabel}>نرخ وصول</Text>
               <Text style={styles.classStatValue}>{cls.collectionRate}%</Text>
             </View>
           </View>
@@ -181,8 +171,74 @@ export default function PrincipalReportsScreen() {
               ]}
             />
           </View>
-        </View>
+          <View style={styles.viewDetailsContainer}>
+            <Text style={styles.viewDetailsText}>مشاهده شاگردان</Text>
+            <Ionicons name="chevron-forward" size={18} color="#f59e0b" />
+          </View>
+        </TouchableOpacity>
       ))}
+    </View>
+  );
+
+  const renderStudentList = () => (
+    <View>
+      <TouchableOpacity style={styles.backButton} onPress={handleBackToClasses}>
+        <Ionicons name="arrow-back" size={20} color="#f59e0b" />
+        <Text style={styles.backButtonText}>بازگشت به لیست صنوف</Text>
+      </TouchableOpacity>
+
+      <Text style={styles.sectionTitle}>
+        شاگردان صنف {selectedClass?.name} {selectedClass?.section}
+      </Text>
+
+      {classStudents.length === 0 ? (
+        <View style={styles.emptyContainer}>
+          <Ionicons name="people-outline" size={48} color="#94a3b8" />
+          <Text style={styles.emptyText}>هیچ شاگردی در این صنف نیست</Text>
+        </View>
+      ) : (
+        classStudents.map((student) => (
+          <TouchableOpacity
+            key={student.id}
+            style={styles.studentCard}
+            onPress={() => handleStudentPress(student.id)}
+            activeOpacity={0.7}
+          >
+            <View style={styles.studentAvatar}>
+              <Text style={styles.studentAvatarText}>
+                {student.fullName.charAt(0)}
+              </Text>
+            </View>
+            <View style={styles.studentInfo}>
+              <Text style={styles.studentName}>{student.fullName}</Text>
+              <Text style={styles.studentDetail}>
+                {student.studentNumber} • {student.className}
+              </Text>
+            </View>
+            <View
+              style={[
+                styles.statusBadge,
+                {
+                  backgroundColor:
+                    student.status === "ACTIVE" ? "#d1fae5" : "#fef3c7",
+                },
+              ]}
+            >
+              <Text
+                style={[
+                  styles.statusText,
+                  {
+                    color: student.status === "ACTIVE" ? "#10b981" : "#f59e0b",
+                  },
+                ]}
+              >
+                {student.status === "ACTIVE" ? "فعال" : "غیرفعال"}
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color="#cbd5e1" />
+          </TouchableOpacity>
+        ))
+      )}
     </View>
   );
 
@@ -282,26 +338,34 @@ export default function PrincipalReportsScreen() {
       {/* Tab Switcher */}
       <View style={styles.tabContainer}>
         <TouchableOpacity
-          style={[styles.tab, activeTab === "financial" && styles.activeTab]}
-          onPress={() => setActiveTab("financial")}
+          style={[styles.tab, activeTab === "classes" && styles.activeTab]}
+          onPress={() => {
+            setActiveTab("classes");
+            setShowStudents(false);
+            setSelectedClass(null);
+          }}
         >
           <Ionicons
-            name="cash-outline"
+            name="school-outline"
             size={20}
-            color={activeTab === "financial" ? "#f59e0b" : "#64748b"}
+            color={activeTab === "classes" ? "#f59e0b" : "#64748b"}
           />
           <Text
             style={[
               styles.tabText,
-              activeTab === "financial" && styles.activeTabText,
+              activeTab === "classes" && styles.activeTabText,
             ]}
           >
-            مالی
+            صنوف
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={[styles.tab, activeTab === "attendance" && styles.activeTab]}
-          onPress={() => setActiveTab("attendance")}
+          onPress={() => {
+            setActiveTab("attendance");
+            setShowStudents(false);
+            setSelectedClass(null);
+          }}
         >
           <Ionicons
             name="time-outline"
@@ -326,8 +390,10 @@ export default function PrincipalReportsScreen() {
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
       >
-        {activeTab === "financial"
-          ? renderFinancialReport()
+        {activeTab === "classes"
+          ? showStudents
+            ? renderStudentList()
+            : renderClassList()
           : renderAttendanceReport()}
       </ScrollView>
     </View>
@@ -379,27 +445,6 @@ const styles = StyleSheet.create({
   content: {
     padding: 16,
     paddingBottom: 40,
-  },
-  summaryGrid: {
-    flexDirection: "row",
-    gap: 12,
-    marginBottom: 20,
-  },
-  summaryCard: {
-    flex: 1,
-    padding: 16,
-    borderRadius: 12,
-  },
-  summaryLabel: {
-    fontSize: 13,
-    color: "#64748b",
-    fontFamily: "Vazir",
-  },
-  summaryValue: {
-    fontSize: 20,
-    fontWeight: "700",
-    marginTop: 4,
-    fontFamily: "VazirBold",
   },
   sectionTitle: {
     fontSize: 18,
@@ -465,6 +510,82 @@ const styles = StyleSheet.create({
     height: "100%",
     borderRadius: 3,
   },
+  viewDetailsContainer: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    alignItems: "center",
+    marginTop: 10,
+    gap: 4,
+  },
+  viewDetailsText: {
+    fontSize: 13,
+    color: "#f59e0b",
+    fontFamily: "Vazir",
+  },
+  studentCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 8,
+    gap: 12,
+    elevation: 2,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+  },
+  studentAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "#fef3c7",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  studentAvatarText: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#f59e0b",
+    fontFamily: "VazirBold",
+  },
+  studentInfo: {
+    flex: 1,
+  },
+  studentName: {
+    fontSize: 15,
+    fontWeight: "500",
+    color: "#1e293b",
+    fontFamily: "Vazir",
+  },
+  studentDetail: {
+    fontSize: 12,
+    color: "#94a3b8",
+    fontFamily: "Vazir",
+  },
+  statusBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  statusText: {
+    fontSize: 11,
+    fontWeight: "600",
+    fontFamily: "Vazir",
+  },
+  backButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 12,
+    paddingVertical: 8,
+  },
+  backButtonText: {
+    fontSize: 15,
+    color: "#f59e0b",
+    fontFamily: "Vazir",
+  },
   attendanceSummary: {
     backgroundColor: "#fff",
     borderRadius: 12,
@@ -500,6 +621,18 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: "#94a3b8",
     marginTop: 2,
+    fontFamily: "Vazir",
+  },
+  emptyContainer: {
+    alignItems: "center",
+    paddingVertical: 40,
+    backgroundColor: "#fff",
+    borderRadius: 12,
+  },
+  emptyText: {
+    marginTop: 12,
+    fontSize: 16,
+    color: "#94a3b8",
     fontFamily: "Vazir",
   },
 });

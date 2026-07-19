@@ -65,19 +65,19 @@ export default function PrincipalProfileScreen() {
       id: "settings",
       title: "تنظیمات",
       icon: "settings-outline",
-      route: "/(principal)/settings",
+      route: "/(public)/settings",
     },
     {
       id: "notifications",
       title: "اعلانات",
       icon: "notifications-outline",
-      route: "/(principal)/notifications",
+      route: "/(public)/notifications",
     },
     {
       id: "help",
       title: "راهنما و پشتیبانی",
       icon: "help-circle-outline",
-      route: "/(principal)/help",
+      route: "/(public)/info",
     },
     {
       id: "logout",

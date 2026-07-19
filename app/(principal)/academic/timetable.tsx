@@ -1,21 +1,22 @@
-// app/(principal)/academic/timetable.tsx
+// app/(principal)/academic/timetable.tsx - FIXED
+
 import {
-    principalAcademicApi,
-    TimetableEntry,
+  principalAcademicApi,
+  TimetableEntry,
 } from "@/src/config/principalAcademicApi";
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import {
-    ActivityIndicator,
-    FlatList,
-    RefreshControl,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  FlatList,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
 
 const DAYS = [
@@ -57,14 +58,26 @@ export default function TimetableScreen() {
     }
   }, [selectedClass, selectedDay]);
 
+  // ✅ FIX: Use the API client with the correct endpoint
   const fetchClasses = async () => {
     try {
+      // Use the existing API client or direct fetch with proper URL
       const response = await fetch(
-        `${process.env.EXPO_PUBLIC_API_URL}/principal/classes`,
+        `${process.env.EXPO_PUBLIC_API_URL}/api/principal/classes`,
         {
-          headers: { Authorization: `Bearer ${await getToken()}` },
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${await getToken()}`,
+          },
         },
       );
+
+      // ✅ Check if response is OK before parsing JSON
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
       const result = await response.json();
       if (result.success) {
         setClasses(result.data);
@@ -327,7 +340,6 @@ const styles = StyleSheet.create({
     color: "#1e293b",
     fontFamily: "Vazir",
   },
-
   periodTeacher: { fontSize: 12, color: "#64748b", fontFamily: "Vazir" },
   emptyContainer: { alignItems: "center", paddingVertical: 60 },
   emptyText: {

@@ -11,18 +11,20 @@ export default function TeacherTabLayout() {
   return (
     <Tabs
       screenOptions={{
-        headerShown: false, // This hides headers for ALL tab screens
+        headerShown: false,
         tabBarStyle: {
           backgroundColor: Platform.OS === "ios" ? "transparent" : Colors.card,
           borderTopColor: Colors.border,
           borderTopWidth: 1,
 
-          // ✅ fixed height
+          // ✅ FIXED: Prevents clipping on left/right edges
+          paddingHorizontal: 12,
+
+          // ✅ FIXED: Proper height with safe area
           height: 60 + insets.bottom,
           paddingBottom: insets.bottom,
           paddingTop: 8,
 
-          // optional shadow
           shadowColor: "#000",
           shadowOffset: { width: 0, height: -2 },
           shadowOpacity: 0.05,
@@ -36,7 +38,8 @@ export default function TeacherTabLayout() {
                 <BlurView
                   tint="light"
                   intensity={80}
-                  style={StyleSheet.absoluteFill}
+                  // ✅ FIXED: Added borderRadius to match tab bar corners
+                  style={[StyleSheet.absoluteFill, { borderRadius: 0 }]}
                 />
               )
             : undefined,
@@ -70,7 +73,6 @@ export default function TeacherTabLayout() {
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="book" size={size} color={color} />
           ),
-          // No need to add anything here since headerShown: false is inherited
         }}
       />
 

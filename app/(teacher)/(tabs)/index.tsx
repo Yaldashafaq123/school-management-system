@@ -11,7 +11,10 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
 import { Header } from "../../../components/Header";
 import { Colors } from "../../../constants/Colors";
 import { useAuth } from "../../../contexts/AuthContext";
@@ -80,7 +83,7 @@ const defaultDashboard = {
       route: "/(teacher)/grading",
     },
     {
-      id: 8, // Add this new button
+      id: 8,
       title: " ارزیابی هفتگی",
       icon: "library",
       color: Colors.primary,
@@ -92,22 +95,16 @@ const defaultDashboard = {
 export default function TeacherDashboardTab() {
   const router = useRouter();
   const { user } = useAuth();
+  const insets = useSafeAreaInsets(); // ✅ ADDED
   const [dashboard, setDashboard] = useState(defaultDashboard);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
-  // Updated fetchDashboard function using apiFetch
   const fetchDashboard = async () => {
     try {
       setLoading(true);
-
-      // Use apiFetch which automatically handles:
-      // - Getting token from AsyncStorage
-      // - Adding Authorization header
-      // - Parsing JSON response
       const data = await apiRequest("/teacher/dashboard");
 
-      // Check if data has the expected structure
       if (data && data.stats) {
         setDashboard({
           stats: {
@@ -120,15 +117,13 @@ export default function TeacherDashboardTab() {
             rating: data.stats.rating || 0,
           },
           recentActivities: data.recentActivities || [],
-          quickActions: defaultDashboard.quickActions, // Keep default quick actions
+          quickActions: defaultDashboard.quickActions,
         });
       } else {
         console.log("Unexpected data format:", data);
-        // Keep using defaults if data format is wrong
       }
     } catch (error) {
       console.log("Dashboard API error:", error);
-      // Keep using defaultDashboard on error
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -169,7 +164,6 @@ export default function TeacherDashboardTab() {
     }
   };
 
-  // Show loading indicator while fetching
   if (loading) {
     return (
       <SafeAreaView style={[styles.container, styles.centerContent]}>
@@ -180,7 +174,8 @@ export default function TeacherDashboardTab() {
   }
 
   return (
-    <SafeAreaView style={styles.container} edges={["top"]}>
+    // ✅ FIXED: Removed edges prop to handle both top and bottom properly
+    <SafeAreaView style={styles.container}>
       <Header
         title="داشبورد معلم"
         rightComponent={
@@ -211,6 +206,10 @@ export default function TeacherDashboardTab() {
 
       <ScrollView
         style={styles.content}
+        // ✅ FIXED: Added contentContainerStyle with proper bottom padding
+        contentContainerStyle={{
+          paddingBottom: insets.bottom + 20, // Space above tab bar
+        }}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />

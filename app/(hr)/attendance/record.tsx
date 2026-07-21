@@ -1,30 +1,34 @@
-// app/(hr)/attendance/record.tsx
+// app/(hr)/attendance/record.tsx - Manual attendance recording
 import { hrApi } from "@/src/config/hrApi";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import {
-    ActivityIndicator,
-    Alert,
-    FlatList,
-    RefreshControl,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Alert,
+  FlatList,
+  RefreshControl,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
 
 type Staff = {
   id: number;
   fullName: string;
   role: string;
+  isActive: boolean;
 };
 
 export default function RecordAttendanceScreen() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [search, setSearch] = useState("");
   const [staff, setStaff] = useState<Staff[]>([]);
+  const [filteredStaff, setFilteredStaff] = useState<Staff[]>([]);
   const [todayAttendance, setTodayAttendance] = useState<Set<number>>(
     new Set(),
   );
@@ -32,6 +36,19 @@ export default function RecordAttendanceScreen() {
   useEffect(() => {
     fetchData();
   }, []);
+
+  useEffect(() => {
+    if (search.trim()) {
+      const filtered = staff.filter(
+        (s) =>
+          s.fullName.toLowerCase().includes(search.toLowerCase()) ||
+          s.role.toLowerCase().includes(search.toLowerCase()),
+      );
+      setFilteredStaff(filtered);
+    } else {
+      setFilteredStaff(staff);
+    }
+  }, [search, staff]);
 
   const fetchData = async () => {
     try {
@@ -41,17 +58,25 @@ export default function RecordAttendanceScreen() {
       ]);
 
       if (staffRes.success) {
-        setStaff(staffRes.data.staff);
+        const staffList = staffRes.data.staff.map((s: any) => ({
+          id: s.id,
+          fullName: s.fullName,
+          role: s.role,
+          isActive: s.isActive,
+        }));
+        setStaff(staffList);
+        setFilteredStaff(staffList);
       }
 
       if (attendanceRes.success) {
         const presentIds = new Set(
-          attendanceRes.data.attendance.map((a) => a.id),
+          attendanceRes.data.attendance.map((a: any) => a.id),
         );
         setTodayAttendance(presentIds);
       }
     } catch (error) {
       console.error("Fetch data error:", error);
+      Alert.alert("خطا", "خطا در دریافت اطلاعات");
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -65,9 +90,12 @@ export default function RecordAttendanceScreen() {
 
   const handleRecordAttendance = async (staffId: number) => {
     try {
+      const isPresent = todayAttendance.has(staffId);
+
       const response = await hrApi.recordAttendance({
         staffId,
-        punchType: "IN",
+        punchType: isPresent ? "OUT" : "IN",
+        deviceName: "Manual",
       });
 
       if (response.success) {
@@ -80,7 +108,10 @@ export default function RecordAttendanceScreen() {
           }
           return newSet;
         });
-        Alert.alert("موفقیت", "حضور با موفقیت ثبت شد");
+        Alert.alert(
+          "موفقیت",
+          isPresent ? "حضور خروج ثبت شد" : "حضور ورود ثبت شد",
+        );
       }
     } catch (error: any) {
       Alert.alert("خطا", error.message || "خطا در ثبت حضور");
@@ -105,7 +136,19 @@ export default function RecordAttendanceScreen() {
           </View>
           <View>
             <Text style={styles.staffName}>{item.fullName}</Text>
-            <Text style={styles.staffRole}>{item.role}</Text>
+            <Text style={styles.staffRole}>
+              {item.role === "TEACHER"
+                ? "استاد"
+                : item.role === "ADMIN"
+                  ? "مدیر"
+                  : item.role === "FINANCE"
+                    ? "مالی"
+                    : item.role === "HR"
+                      ? "منابع بشری"
+                      : item.role === "PRINCIPAL"
+                        ? "مدیر مکتب"
+                        : item.role}
+            </Text>
           </View>
         </View>
         <View
@@ -134,12 +177,14 @@ export default function RecordAttendanceScreen() {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#8b5cf6" />
+        <Text style={styles.loadingText}>در حال بارگذاری...</Text>
       </View>
     );
   }
 
   return (
     <View style={styles.container}>
+      {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()}>
           <Ionicons name="arrow-back" size={24} color="#1e293b" />
@@ -148,12 +193,41 @@ export default function RecordAttendanceScreen() {
         <View style={styles.headerPlaceholder} />
       </View>
 
-      <Text style={styles.subtitle}>
-        برای ثبت حضور روی هر کارمند ضربه بزنید
-      </Text>
+      {/* Search */}
+      <View style={styles.searchContainer}>
+        <Ionicons
+          name="search"
+          size={20}
+          color="#94a3b8"
+          style={styles.searchIcon}
+        />
+        <TextInput
+          style={styles.searchInput}
+          placeholder="جستجوی کارمندان..."
+          placeholderTextColor="#94a3b8"
+          value={search}
+          onChangeText={setSearch}
+        />
+        {search.length > 0 && (
+          <TouchableOpacity onPress={() => setSearch("")}>
+            <Ionicons name="close-circle" size={20} color="#94a3b8" />
+          </TouchableOpacity>
+        )}
+      </View>
 
+      {/* Info */}
+      <View style={styles.infoContainer}>
+        <Text style={styles.infoText}>
+          👆 برای ثبت حضور روی هر کارمند ضربه بزنید
+        </Text>
+        <Text style={styles.infoSubtext}>
+          {filteredStaff.length} کارمند فعال • {todayAttendance.size} نفر حاضر
+        </Text>
+      </View>
+
+      {/* List */}
       <FlatList
-        data={staff}
+        data={filteredStaff}
         renderItem={renderStaff}
         keyExtractor={(item) => item.id.toString()}
         contentContainerStyle={styles.listContent}
@@ -179,6 +253,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
     backgroundColor: "#f1f5f9",
   },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 16,
+    color: "#64748b",
+    fontFamily: "Vazir",
+  },
   header: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -196,21 +276,40 @@ const styles = StyleSheet.create({
     fontFamily: "VazirBold",
   },
   headerPlaceholder: { width: 40 },
-  subtitle: {
-    fontSize: 14,
-    color: "#64748b",
-    textAlign: "center",
-    paddingVertical: 12,
+  searchContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#fff",
+    margin: 12,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+  },
+  searchIcon: { marginRight: 8 },
+  searchInput: {
+    flex: 1,
+    paddingVertical: 10,
+    fontSize: 15,
+    color: "#1e293b",
     fontFamily: "Vazir",
   },
-  listContent: { padding: 16, gap: 12 },
+  infoContainer: { paddingHorizontal: 16, paddingBottom: 8 },
+  infoText: { fontSize: 14, color: "#64748b", fontFamily: "Vazir" },
+  infoSubtext: {
+    fontSize: 13,
+    color: "#94a3b8",
+    marginTop: 4,
+    fontFamily: "Vazir",
+  },
+  listContent: { paddingHorizontal: 16, paddingBottom: 20, gap: 10 },
   card: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     backgroundColor: "#fff",
     borderRadius: 12,
-    padding: 16,
+    padding: 14,
     elevation: 2,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
@@ -236,7 +335,7 @@ const styles = StyleSheet.create({
   },
   avatarTextPresent: { color: "#10b981" },
   staffName: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: "600",
     color: "#1e293b",
     fontFamily: "VazirBold",

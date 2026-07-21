@@ -35,25 +35,76 @@ export interface HRProfile {
   };
 }
 
+// src/config/hrApi.ts - Add these types
+
+// ✅ Add StaffType enum
+export type StaffType =
+  | "TEACHER"
+  | "ADMIN"
+  | "FINANCE"
+  | "HR"
+  | "PRINCIPAL"
+  | "CHEF"
+  | "GUARD"
+  | "DRIVER"
+  | "CLEANER"
+  | "SECURITY"
+  | "MAINTENANCE"
+  | "LIBRARIAN"
+  | "NURSE"
+  | "COUNSELOR"
+  | "COACH"
+  | "OTHER";
+
+// ✅ Update StaffMember interface
 export interface StaffMember {
   id: number;
   fullName: string;
+  nameFarsi?: string;
   email: string;
   phone: string;
   role: string;
+  staffType: StaffType;
+  position: string;
+  department: string;
   isActive: boolean;
   verified: boolean;
   createdAt: string;
   profileImage?: string;
   staffId?: number;
-  position?: string;
-  department?: string;
   joiningDate?: string;
   salary?: number;
   specialization?: string;
   teacherCode?: string;
   experience?: string;
   qualification?: string;
+
+  // Personal Info
+  fatherName?: string;
+  fatherNameFarsi?: string;
+  grandfatherName?: string;
+  civilId?: string;
+  birthDate?: string;
+  birthPlace?: string;
+  currentAddress?: string;
+  permanentAddress?: string;
+  emergencyContactName?: string;
+  emergencyContactPhone?: string;
+  sex?: string;
+  maritalStatus?: string;
+  bloodType?: string;
+  nationality?: string;
+  educationLevel?: string;
+  educationField?: string;
+  bankAccountNumber?: string;
+  bankName?: string;
+  insuranceNumber?: string;
+  insuranceProvider?: string;
+  hasInsurance?: boolean;
+
+  // Stats
+  attendanceCount?: number;
+  salaryCount?: number;
 }
 
 export interface StaffResponse {
@@ -86,6 +137,7 @@ export interface TodayAttendance {
 export interface AttendanceSummary {
   date: string;
   summary: {
+    late: number;
     present: number;
     absent: number;
     total: number;
@@ -266,19 +318,66 @@ class HRApi {
   }
 
   async createStaff(data: {
+    // Basic
     fullName: string;
+    nameFarsi?: string;
     email: string;
     phone?: string;
     password: string;
-    role: string;
+    role?: string;
+
+    // Staff Type (NEW)
+    staffType: StaffType;
     position?: string;
     department?: string;
-    salary?: number;
     joinDate?: string;
+    salary?: number;
+    isActive?: boolean;
+    notes?: string;
     specialization?: string;
-    experience?: string;
-    qualification?: string;
-    teacherCode?: string;
+    emergencyContact?: string;
+    emergencyPhone?: string;
+    contractFile?: string;
+    idCardFile?: string;
+    photoFile?: string;
+
+    // Personal Info (User model)
+    fatherName?: string;
+    fatherNameFarsi?: string;
+    grandfatherName?: string;
+    grandfatherNameFarsi?: string;
+    sex?: string;
+    maritalStatus?: string;
+    bloodType?: string;
+    civilId?: string;
+    civilIdIssueDate?: string;
+    civilIdExpiryDate?: string;
+    birthDate?: string;
+    birthPlace?: string;
+    nationality?: string;
+    currentAddress?: string;
+    permanentAddress?: string;
+    emergencyContactName?: string;
+    emergencyContactPhone?: string;
+    emergencyContactRelation?: string;
+    educationLevel?: string;
+    educationField?: string;
+    educationInstitution?: string;
+    graduationYear?: number;
+    workExperience?: string;
+    contractStartDate?: string;
+    contractEndDate?: string;
+    contractType?: string;
+    workSchedule?: string;
+    workShift?: string;
+    baseSalary?: number;
+    salaryCurrency?: string;
+    bankAccountNumber?: string;
+    bankName?: string;
+    insuranceNumber?: string;
+    insuranceProvider?: string;
+    hasInsurance?: boolean;
+    hasContract?: boolean;
   }): Promise<ApiResponse<any>> {
     return this.request("/staff", {
       method: "POST",

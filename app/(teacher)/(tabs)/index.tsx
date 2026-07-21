@@ -89,6 +89,41 @@ const defaultDashboard = {
       color: Colors.primary,
       route: "/(teacher)/WeeklyAssessment/WeeklyAssessmentListScreen",
     },
+    {
+      id: 9,
+      title: "درخواست مرخصی",
+      icon: "calendar",
+      color: Colors.warning,
+      route: "/(teacher)/requests/leave",
+    },
+    {
+      id: 10,
+      title: "درخواست افزایش معاش",
+      icon: "cash",
+      color: Colors.success,
+      route: "/(teacher)/requests/salary-raise",
+    },
+    {
+      id: 11,
+      title: "گزارش حضور و غیاب",
+      icon: "time",
+      color: Colors.info,
+      route: "/(teacher)/attendance/report",
+    },
+    {
+      id: 12,
+      title: "درخواست‌های من",
+      icon: "list",
+      color: Colors.primary,
+      route: "/(teacher)/requests",
+    },
+    {
+      id: 13,
+      title: "گزارش معاش",
+      icon: "cash",
+      color: Colors.success,
+      route: "/(teacher)/salary/report",
+    },
   ],
 };
 

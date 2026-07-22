@@ -3,15 +3,15 @@ import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import {
-    ActivityIndicator,
-    Alert,
-    FlatList,
-    RefreshControl,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Alert,
+  FlatList,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Header } from "../../../components/Header";
@@ -256,7 +256,7 @@ export default function WeeklyAssessmentListScreen() {
                 !selectedClass && styles.filterChipTextActive,
               ]}
             >
-              همه کلاس‌ها
+              همه صنف ها
             </Text>
           </TouchableOpacity>
           {classes.map((cls) => (

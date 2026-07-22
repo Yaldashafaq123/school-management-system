@@ -1,4 +1,4 @@
-// app/(student)/profile/index.tsx
+// app/(student)/(tabs)/profile.tsx - FULLY FIXED
 import { Header } from "@/components/Header";
 import { Colors } from "@/constants/Colors";
 import { useAuth } from "@/contexts/AuthContext";
@@ -26,16 +26,6 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-interface StudentProfileData {
-  bio?: string;
-  grade?: string;
-  school?: string;
-  birthDate?: string;
-  parentContact?: string;
-  address?: string;
-  interests?: string[];
-}
-
 interface Stats {
   total_courses: number;
   enrolled_courses: number;
@@ -45,9 +35,6 @@ interface Stats {
   assignments_pending: number;
   exams_upcoming: number;
 }
-
-// Use null for default profile image - will show placeholder
-const defaultProfileImage = null;
 
 export default function ProfileScreen() {
   const router = useRouter();
@@ -104,23 +91,38 @@ export default function ProfileScreen() {
       const response = await studentProfileApi.getProfile();
 
       if (response.success && response.data) {
-        const { user: userData, student, stats: statsData } = response.data;
+        // ✅ FIX: Use correct property names with type-safe fallbacks
+        const UserData = response.data.User || {};
+        const studentData = response.data.student || {};
+        const statsData = response.data.stats || {
+          total_courses: 0,
+          enrolled_courses: 0,
+          completed_courses: 0,
+          total_hours: 0,
+          certificates: 0,
+          assignments_pending: 0,
+          exams_upcoming: 0,
+        };
 
         setFormData({
-          fullName: userData.fullName || "",
-          email: userData.email || "",
-          phone: userData.phone || "",
-          bio: student.bio || "",
-          grade: student.grade || "",
-          school: student.school || "",
-          birthDate: student.birthDate || "",
-          parentContact: student.parentContact || "",
-          address: student.address || "",
-          interests: Array.isArray(student.interests) ? student.interests : [],
+          fullName: (UserData as any).fullName || "",
+          email: (UserData as any).email || "",
+          phone: (UserData as any).phone || "",
+          bio: (studentData as any).bio || "",
+          grade: (studentData as any).grade || "",
+          school: (studentData as any).school || "",
+          birthDate: (studentData as any).birthDate || "",
+          parentContact: (studentData as any).parentContact || "",
+          address: (studentData as any).address || "",
+          interests: Array.isArray((studentData as any).interests) 
+            ? (studentData as any).interests 
+            : [],
         });
 
-        setProfileImage(userData.profileImage || null);
+        setProfileImage((UserData as any).profileImage || null);
         setStats(statsData);
+      } else {
+        Alert.alert("خطا", response.message || "دریافت اطلاعات پروفایل با مشکل مواجه شد");
       }
     } catch (error) {
       console.error("Error loading profile:", error);
@@ -217,7 +219,7 @@ export default function ProfileScreen() {
         if (response.success) {
           Alert.alert("موفقیت", "عکس پروفایل با موفقیت به‌روزرسانی شد");
         }
-      } catch (error) {
+      } catch (err) {
         Alert.alert("خطا", "آپلود عکس با مشکل مواجه شد");
       }
     }
@@ -241,18 +243,16 @@ export default function ProfileScreen() {
       const response = await studentProfileApi.updateProfile(updateData);
 
       if (response.success) {
-        // Update auth context
         await updateAuthProfile(updateData);
-
         Alert.alert("موفقیت", "پروفایل با موفقیت به‌روزرسانی شد.");
         setIsEditing(false);
-        loadProfileData(); // Reload to get fresh data
+        loadProfileData();
       }
-    } catch (error: any) {
-      console.error("Profile update error:", error);
+    } catch (err) {
+      console.error("Profile update error:", err);
       Alert.alert(
         "خطا",
-        error?.message || "در به‌روزرسانی پروفایل خطایی رخ داد.",
+        "در به‌روزرسانی پروفایل خطایی رخ داد.",
       );
     } finally {
       setSaving(false);

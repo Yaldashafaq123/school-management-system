@@ -1,4 +1,4 @@
-// app/(student)/(tabs)/attendance.tsx
+// app/(student)/(tabs)/attendance.tsx - FIXED WITH CORRECT DATA SOURCE
 import { Header } from "@/components/Header";
 import { Colors } from "@/constants/Colors";
 import { useAuth } from "@/contexts/AuthContext";
@@ -6,6 +6,7 @@ import {
   getStatusColor,
   getStatusIcon,
   getStatusText,
+  MonthlySummary,
   studentAttendanceApi,
   StudentAttendanceData,
 } from "@/src/config/studentAttendanceApi";
@@ -32,19 +33,22 @@ moment.loadPersian({ dialect: "persian-modern" });
 
 // Afghan Solar Hijri month names (Hamal to Hoot)
 const AFGHAN_MONTHS = [
-  "حمل", // 0
-  "ثور", // 1
-  "جوزا", // 2
-  "سرطان", // 3
-  "اسد", // 4
-  "سنبله", // 5
-  "میزان", // 6
-  "عقرب", // 7
-  "قوس", // 8
-  "جدی", // 9
-  "دلو", // 10
-  "حوت", // 11
+  "حمل", // 1 - 31 days
+  "ثور", // 2 - 31 days
+  "جوزا", // 3 - 31 days
+  "سرطان", // 4 - 31 days
+  "اسد", // 5 - 31 days
+  "سنبله", // 6 - 31 days
+  "میزان", // 7 - 30 days
+  "عقرب", // 8 - 30 days
+  "قوس", // 9 - 30 days
+  "جدی", // 10 - 30 days
+  "دلو", // 11 - 30 days
+  "حوت", // 12 - 29/30 days
 ];
+
+// Days in each Afghan month
+const AFGHAN_MONTH_DAYS = [31, 31, 31, 31, 31, 31, 30, 30, 30, 30, 30, 29];
 
 // Afghan weekdays (Saturday-based week)
 const AFGHAN_WEEKDAYS = [
@@ -57,49 +61,124 @@ const AFGHAN_WEEKDAYS = [
   "جمعه", // Friday (6)
 ];
 
+// Extended MonthlySummary with days
+interface ExtendedMonthlySummary extends MonthlySummary {
+  days?: { date: string; status: string; isPresent: boolean }[];
+}
+
+// Extended StudentAttendanceData
+interface ExtendedStudentAttendanceData extends StudentAttendanceData {
+  // inherit currentAfghanDate from StudentAttendanceData to avoid incompatible optional/undefined types
+  monthlySummaries: ExtendedMonthlySummary[];
+}
+
 /**
  * Converts a Gregorian date string to Afghan Solar Hijri date string.
- * Uses moment-jalaali for accurate conversion (handles the ~20-day offset
- * between Gregorian and Solar Hijri months correctly).
- * Returns format: "DD MonthName YYYY" e.g. "5 حمل 1403"
  */
 function toSolarHijri(gregorianDate: string): string {
   if (!gregorianDate) return "";
   const m = moment(gregorianDate);
   if (!m.isValid()) return gregorianDate;
   const year = m.jYear();
-  const monthName = AFGHAN_MONTHS[m.jMonth()]; // jMonth() is 0-based
+  const monthName = AFGHAN_MONTHS[m.jMonth()];
   const day = m.jDate();
   return `${day} ${monthName} ${year}`;
 }
 
 /**
  * Returns the Afghan weekday name for a given Gregorian date string.
- * Gregorian: 0=Sunday, 1=Monday, ..., 6=Saturday
- * Afghan week starts on Saturday, so Saturday=0 in our array.
  */
 function getAfghanWeekday(gregorianDate: string): string {
   if (!gregorianDate) return "";
   const m = moment(gregorianDate);
   if (!m.isValid()) return "";
-  // m.day(): 0=Sunday, 1=Monday, 2=Tuesday, 3=Wednesday,
-  //           4=Thursday, 5=Friday, 6=Saturday
   const gregorianDay = m.day();
-  // Map to Afghan index (Saturday=0)
   const afghanIndex = gregorianDay === 6 ? 0 : gregorianDay + 1;
   return AFGHAN_WEEKDAYS[afghanIndex];
 }
 
 /**
- * Returns the Afghan month name for a given Gregorian date string.
- * Uses moment-jalaali for accurate Solar Hijri month calculation.
- * Do NOT use a simple Gregorian-month-name lookup — that is always ~20 days off.
+ * Check if a date is Friday (weekend)
  */
-function toAfghanMonthName(gregorianDate: string): string {
-  if (!gregorianDate) return gregorianDate;
-  const m = moment(gregorianDate);
-  if (!m.isValid()) return gregorianDate;
-  return AFGHAN_MONTHS[m.jMonth()];
+function isFriday(date: Date): boolean {
+  return date.getDay() === 5;
+}
+
+/**
+ * Get the Gregorian start date for an Afghan month
+ */
+function getAfghanMonthStartDate(monthName: string, year: number): Date | null {
+  const monthIndex = AFGHAN_MONTHS.indexOf(monthName);
+  if (monthIndex === -1) return null;
+
+  const startMonths = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 0, 1];
+  const startDays = [21, 21, 22, 22, 23, 23, 23, 23, 22, 22, 21, 20];
+
+  const gregorianYear = year + 621 + (monthIndex >= 9 ? 1 : 0);
+  const startMonth = startMonths[monthIndex];
+  const startDay = startDays[monthIndex];
+
+  return new Date(gregorianYear, startMonth, startDay);
+}
+
+/**
+ * Generate all days of an Afghan month with attendance status
+ * Uses the actual daily attendance records to determine presence
+ */
+function generateMonthDays(
+  monthName: string,
+  year: number,
+  presentDates: string[],
+): { date: string; status: string; isPresent: boolean }[] {
+  const monthIndex = AFGHAN_MONTHS.indexOf(monthName);
+  if (monthIndex === -1) return [];
+
+  const daysInMonth = AFGHAN_MONTH_DAYS[monthIndex];
+  const startDate = getAfghanMonthStartDate(monthName, year);
+  if (!startDate) return [];
+
+  const result: { date: string; status: string; isPresent: boolean }[] = [];
+
+  // Filter present dates for this specific month
+  const monthPresentDates = presentDates.filter((d) => d.includes(monthName));
+
+  console.log(`📅 Generating days for ${monthName} ${year}`);
+  console.log(`📋 Present dates for ${monthName}:`, monthPresentDates);
+
+  for (let day = 1; day <= daysInMonth; day++) {
+    const currentDate = new Date(startDate);
+    currentDate.setDate(currentDate.getDate() + day - 1);
+
+    // Skip Fridays (weekend)
+    if (isFriday(currentDate)) {
+      continue;
+    }
+
+    const dateStr = `${day} ${monthName} ${year}`;
+
+    // Check if this date exists in present dates
+    const isPresent = monthPresentDates.some((presentDate) => {
+      // Exact match
+      if (presentDate === dateStr) return true;
+      // Check if the present date contains this day and month
+      const presentDay = parseInt(presentDate.split(" ")[0]);
+      return presentDay === day;
+    });
+
+    result.push({
+      date: dateStr,
+      status: isPresent ? "present" : "absent",
+      isPresent: isPresent,
+    });
+  }
+
+  const presentCount = result.filter((d) => d.isPresent).length;
+  const totalWorkingDays = result.length;
+  console.log(
+    `📊 ${monthName}: ${presentCount} present out of ${totalWorkingDays} working days`,
+  );
+
+  return result;
 }
 
 export default function AttendanceScreen() {
@@ -112,57 +191,136 @@ export default function AttendanceScreen() {
   const [selectedMonth, setSelectedMonth] = useState<string>("");
   const [showDetails, setShowDetails] = useState<number | null>(null);
   const [attendanceData, setAttendanceData] =
-    useState<StudentAttendanceData | null>(null);
+    useState<ExtendedStudentAttendanceData | null>(null);
 
   const loadAttendanceData = useCallback(async () => {
     try {
+      console.log("📡 Fetching attendance data...");
       const response = await studentAttendanceApi.getAttendanceOverview();
+
       if (response.success && response.data) {
-        const transformedData = {
+        console.log("✅ Raw attendance data received:", response.data);
+
+        // ✅ Get present dates from daily attendance (THIS IS THE SOURCE OF TRUTH)
+        const presentDates = (response.data.dailyAttendance || []).map(
+          (day) => day.date,
+        );
+
+        console.log("📋 All present dates from daily records:", presentDates);
+
+        // ✅ Get all unique months from daily attendance
+        const monthsWithData = new Set<string>();
+        presentDates.forEach((date) => {
+          const parts = date.split(" ");
+          if (parts.length >= 2) {
+            monthsWithData.add(parts[1]); // month name
+          }
+        });
+        console.log(
+          "📋 Months with actual attendance data:",
+          Array.from(monthsWithData),
+        );
+
+        // ✅ Generate monthly summaries based on ACTUAL daily data
+        // Use the monthly summaries from backend only for the list of months
+        const backendMonths = response.data.monthlySummaries || [];
+
+        const generatedMonthlySummaries: ExtendedMonthlySummary[] =
+          backendMonths.map((summary) => {
+            const year = summary.year || 1404;
+            const monthName = summary.month;
+
+            // Generate days for this month using the ACTUAL present dates
+            const monthDays = generateMonthDays(monthName, year, presentDates);
+
+            const presentDays = monthDays.filter((d) => d.isPresent).length;
+            const totalDays = monthDays.length;
+
+            return {
+              ...summary,
+              year: year,
+              presentDays: presentDays,
+              totalDays: totalDays,
+              absentDays: totalDays - presentDays,
+              attendanceRate:
+                totalDays > 0 ? Math.round((presentDays / totalDays) * 100) : 0,
+              days: monthDays,
+            };
+          });
+
+        // ✅ FILTER: Only keep the last 9 months (most recent)
+        const recentMonths = generatedMonthlySummaries.slice(-9);
+
+        // Calculate overall stats from recent months
+        const totalPresent = recentMonths.reduce(
+          (sum, m) => sum + m.presentDays,
+          0,
+        );
+        const totalDays = recentMonths.reduce((sum, m) => sum + m.totalDays, 0);
+
+        // Create analytics from recent data
+        const analytics = {
+          monthlyTrend: {
+            labels: recentMonths.map((m) => m.month),
+            data: recentMonths.map((m) => m.attendanceRate || 0),
+          },
+          comparison: {
+            studentAverage:
+              totalDays > 0 ? Math.round((totalPresent / totalDays) * 100) : 0,
+            classAverage: 0,
+          },
+          insights: [],
+          subjectBreakdown: [],
+        };
+
+        const processedData: ExtendedStudentAttendanceData = {
           ...response.data,
-
-          // Convert each day's Gregorian date to Afghan Solar Hijri
-          dailyAttendance: response.data.dailyAttendance.map((day) => ({
+          currentAfghanDate: response.data.currentAfghanDate || {
+            date: toSolarHijri(new Date().toISOString()),
+            month: AFGHAN_MONTHS[moment().jMonth()],
+            year: moment().jYear(),
+            weekday: getAfghanWeekday(new Date().toISOString()),
+          },
+          dailyAttendance: (response.data.dailyAttendance || []).map((day) => ({
             ...day,
-            // Store the original ISO date for weekday calculation before overwriting
-            date: toSolarHijri(day.date),
-            dayOfWeek: getAfghanWeekday(day.date),
+            date: toSolarHijri(day.date || new Date().toISOString()),
+            dayOfWeek: getAfghanWeekday(day.date || new Date().toISOString()),
           })),
-
-          // Convert monthly summary month labels.
-          // The backend sends the first day of the Gregorian month as an ISO
-          // date string (e.g. "2024-04-01"). Convert that to Afghan month name.
-          // If the backend already sends Afghan month names (e.g. "حمل"),
-          // moment will not parse them as valid dates so toAfghanMonthName
-          // returns the string unchanged — safe either way.
-          monthlySummaries: response.data.monthlySummaries.map((summary) => ({
-            ...summary,
-            month: moment(summary.month).isValid()
-              ? toAfghanMonthName(summary.month)
-              : summary.month, // already an Afghan month name — leave it
-          })),
-
-          analytics: {
-            ...response.data.analytics,
-            monthlyTrend: {
-              // Same logic: convert only if the label is a parseable date;
-              // otherwise the backend already sent Afghan month names — keep them.
-              labels: response.data.analytics.monthlyTrend.labels.map(
-                (label) =>
-                  moment(label).isValid() ? toAfghanMonthName(label) : label,
-              ),
-              data: response.data.analytics.monthlyTrend.data,
-            },
+          monthlySummaries: recentMonths,
+          analytics: analytics,
+          stats: {
+            totalDays: totalDays,
+            totalPresent: totalPresent,
+            totalAbsent: totalDays - totalPresent,
+            totalLate: 0,
+            totalExcused: 0,
+            averageRate:
+              totalDays > 0 ? Math.round((totalPresent / totalDays) * 100) : 0,
           },
         };
 
-        setAttendanceData(transformedData);
-        if (transformedData.monthlySummaries.length > 0) {
-          setSelectedMonth(transformedData.monthlySummaries[0].month);
-        }
+        console.log("📊 Processed data (9 months):", {
+          months: processedData.monthlySummaries.map((m) => ({
+            month: m.month,
+            presentDays: m.presentDays,
+            totalDays: m.totalDays,
+            rate: m.attendanceRate,
+          })),
+          count: processedData.monthlySummaries.length,
+        });
+
+        setAttendanceData(processedData);
+
+        // Set initial selected month (first month with data or current month)
+        const currentMonthName =
+          processedData.currentAfghanDate?.month || "سرطان";
+        const firstMonthWithData = processedData.monthlySummaries.find(
+          (m) => m.totalDays > 0,
+        );
+        setSelectedMonth(firstMonthWithData?.month || currentMonthName);
       }
     } catch (error) {
-      console.error("Error loading attendance data:", error);
+      console.error("❌ Error loading attendance data:", error);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -178,7 +336,7 @@ export default function AttendanceScreen() {
     await loadAttendanceData();
   };
 
-  const currentMonth =
+  const currentMonth: ExtendedMonthlySummary | undefined =
     attendanceData?.monthlySummaries.find((m) => m.month === selectedMonth) ||
     attendanceData?.monthlySummaries[0];
 
@@ -186,29 +344,15 @@ export default function AttendanceScreen() {
     ? [
         {
           name: "حاضر",
-          population: currentMonth.presentDays,
+          population: currentMonth.presentDays || 0,
           color: Colors.success,
           legendFontColor: Colors.text,
           legendFontSize: 12,
         },
         {
           name: "غایب",
-          population: currentMonth.absentDays,
+          population: currentMonth.absentDays || 0,
           color: Colors.danger,
-          legendFontColor: Colors.text,
-          legendFontSize: 12,
-        },
-        {
-          name: "تأخیر",
-          population: currentMonth.lateDays,
-          color: Colors.warning,
-          legendFontColor: Colors.text,
-          legendFontSize: 12,
-        },
-        {
-          name: "موجه",
-          population: currentMonth.excusedDays,
-          color: Colors.info,
           legendFontColor: Colors.text,
           legendFontSize: 12,
         },
@@ -298,7 +442,7 @@ export default function AttendanceScreen() {
               day.subjects &&
               day.subjects.length > 0 && (
                 <View style={styles.detailsContainer}>
-                  <Text style={styles.detailsTitle}>جزییات کلاس‌ها:</Text>
+                  <Text style={styles.detailsTitle}>جزییات صنف ها:</Text>
                   {day.subjects.map((subject, subIndex) => (
                     <View key={subIndex} style={styles.subjectRow}>
                       <View style={styles.subjectInfo}>
@@ -399,12 +543,6 @@ export default function AttendanceScreen() {
                   </Text>
                   <Text style={styles.statLabel}>غایب</Text>
                 </View>
-                <View style={styles.monthStatCard}>
-                  <Text style={[styles.statValue, { color: Colors.warning }]}>
-                    {currentMonth.lateDays}
-                  </Text>
-                  <Text style={styles.statLabel}>تأخیر</Text>
-                </View>
               </View>
 
               <View style={styles.attendanceRateCard}>
@@ -424,6 +562,45 @@ export default function AttendanceScreen() {
                   {currentMonth.presentDays} از {currentMonth.totalDays} روز
                 </Text>
               </View>
+
+              {currentMonth.days && currentMonth.days.length > 0 && (
+                <View style={styles.daysGrid}>
+                  <Text style={styles.daysGridTitle}>روزهای ماه</Text>
+                  <View style={styles.daysGridContainer}>
+                    {currentMonth.days.map(
+                      (
+                        day: {
+                          date: string;
+                          status: string;
+                          isPresent: boolean;
+                        },
+                        index: number,
+                      ) => (
+                        <View
+                          key={index}
+                          style={[
+                            styles.dayChip,
+                            day.isPresent
+                              ? styles.dayChipPresent
+                              : styles.dayChipAbsent,
+                          ]}
+                        >
+                          <Text
+                            style={[
+                              styles.dayChipText,
+                              day.isPresent
+                                ? styles.dayChipTextPresent
+                                : styles.dayChipTextAbsent,
+                            ]}
+                          >
+                            {day.date.split(" ")[0]}
+                          </Text>
+                        </View>
+                      ),
+                    )}
+                  </View>
+                </View>
+              )}
 
               <View style={styles.pieChartContainer}>
                 <Text style={styles.chartTitle}>توزیع حضور و غیاب</Text>
@@ -461,10 +638,10 @@ export default function AttendanceScreen() {
       <Text style={styles.sectionTitle}>تحلیل آماری</Text>
 
       {attendanceData?.analytics &&
-      attendanceData.analytics.monthlyTrend.data.length > 0 ? (
+      attendanceData.analytics.monthlyTrend?.data?.length > 0 ? (
         <>
           <View style={styles.trendCard}>
-            <Text style={styles.trendTitle}>روند حضور در ۶ ماه اخیر</Text>
+            <Text style={styles.trendTitle}>روند حضور در ۹ ماه اخیر</Text>
             <LineChart
               data={lineChartData}
               width={SCREEN_WIDTH - 32}
@@ -476,76 +653,45 @@ export default function AttendanceScreen() {
           </View>
 
           <View style={styles.comparisonCard}>
-            <Text style={styles.comparisonTitle}>مقایسه با کلاس</Text>
+            <Text style={styles.comparisonTitle}>مقایسه با صنف</Text>
             <View style={styles.comparisonRow}>
               <View style={styles.comparisonItem}>
                 <Text style={styles.comparisonLabel}>میانگین شما</Text>
                 <Text style={styles.comparisonValue}>
-                  {attendanceData.analytics.comparison.studentAverage}%
+                  {attendanceData.analytics.comparison?.studentAverage || 0}%
                 </Text>
               </View>
               <View style={styles.comparisonItem}>
-                <Text style={styles.comparisonLabel}>میانگین کلاس</Text>
+                <Text style={styles.comparisonLabel}>میانگین صنف</Text>
                 <Text style={styles.comparisonValue}>
-                  {attendanceData.analytics.comparison.classAverage}%
+                  {attendanceData.analytics.comparison?.classAverage || 0}%
                 </Text>
               </View>
             </View>
           </View>
 
-          <View style={styles.insightsContainer}>
-            <Text style={styles.insightsTitle}>نکات کلیدی</Text>
-            {attendanceData.analytics.insights.map((insight, index) => (
-              <View key={index} style={styles.insightItem}>
-                <Ionicons
-                  name={insight.icon as any}
-                  size={20}
-                  color={
-                    insight.type === "positive"
-                      ? Colors.success
-                      : insight.type === "warning"
-                        ? Colors.warning
-                        : Colors.primary
-                  }
-                />
-                <Text style={styles.insightText}>{insight.text}</Text>
-              </View>
-            ))}
-          </View>
-
-          {attendanceData.analytics.subjectBreakdown.length > 0 && (
-            <View style={styles.subjectBreakdown}>
-              <Text style={styles.breakdownTitle}>تحلیل دروس</Text>
-              {attendanceData.analytics.subjectBreakdown.map(
-                (subject, index) => (
-                  <View key={index} style={styles.subjectBreakdownItem}>
-                    <Text style={styles.subjectBreakdownName}>
-                      {subject.subject}
-                    </Text>
-                    <View style={styles.subjectBreakdownBar}>
-                      <View
-                        style={[
-                          styles.subjectBreakdownFill,
-                          {
-                            width: `${subject.rate}%`,
-                            backgroundColor:
-                              subject.rate >= 80
-                                ? Colors.success
-                                : subject.rate >= 60
-                                  ? Colors.warning
-                                  : Colors.danger,
-                          },
-                        ]}
-                      />
-                    </View>
-                    <Text style={styles.subjectBreakdownRate}>
-                      {subject.rate}%
-                    </Text>
+          {attendanceData.analytics.insights &&
+            attendanceData.analytics.insights.length > 0 && (
+              <View style={styles.insightsContainer}>
+                <Text style={styles.insightsTitle}>نکات کلیدی</Text>
+                {attendanceData.analytics.insights.map((insight, index) => (
+                  <View key={index} style={styles.insightItem}>
+                    <Ionicons
+                      name={insight.icon as any}
+                      size={20}
+                      color={
+                        insight.type === "positive"
+                          ? Colors.success
+                          : insight.type === "warning"
+                            ? Colors.warning
+                            : Colors.primary
+                      }
+                    />
+                    <Text style={styles.insightText}>{insight.text}</Text>
                   </View>
-                ),
-              )}
-            </View>
-          )}
+                ))}
+              </View>
+            )}
         </>
       ) : (
         <View style={styles.emptyState}>
@@ -588,8 +734,8 @@ export default function AttendanceScreen() {
       <Header
         title="حضور و غیاب"
         rightComponent={
-          <TouchableOpacity>
-            <Ionicons name="download-outline" size={24} color={Colors.text} />
+          <TouchableOpacity onPress={handleRefresh}>
+            <Ionicons name="refresh-outline" size={24} color={Colors.text} />
           </TouchableOpacity>
         }
       />
@@ -1033,6 +1179,52 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: Colors.textSecondary,
   },
+  daysGrid: {
+    backgroundColor: Colors.card,
+    padding: 16,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    marginBottom: 20,
+  },
+  daysGridTitle: {
+    fontSize: 14,
+    fontWeight: "bold",
+    color: Colors.text,
+    marginBottom: 12,
+  },
+  daysGridContainer: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  dayChip: {
+    width: 36,
+    height: 36,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  dayChipPresent: {
+    backgroundColor: "rgba(16, 185, 129, 0.2)",
+    borderWidth: 1,
+    borderColor: Colors.success,
+  },
+  dayChipAbsent: {
+    backgroundColor: "rgba(239, 68, 68, 0.1)",
+    borderWidth: 1,
+    borderColor: Colors.danger,
+  },
+  dayChipText: {
+    fontSize: 12,
+    fontWeight: "500",
+  },
+  dayChipTextPresent: {
+    color: Colors.success,
+  },
+  dayChipTextAbsent: {
+    color: Colors.danger,
+  },
   pieChartContainer: {
     backgroundColor: Colors.card,
     padding: 20,
@@ -1122,48 +1314,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: Colors.text,
     flex: 1,
-  },
-  subjectBreakdown: {
-    backgroundColor: Colors.card,
-    padding: 20,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  breakdownTitle: {
-    fontSize: 16,
-    fontWeight: "bold",
-    color: Colors.text,
-    marginBottom: 16,
-  },
-  subjectBreakdownItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 12,
-  },
-  subjectBreakdownName: {
-    width: 80,
-    fontSize: 14,
-    color: Colors.text,
-  },
-  subjectBreakdownBar: {
-    flex: 1,
-    height: 8,
-    backgroundColor: Colors.border,
-    borderRadius: 4,
-    marginHorizontal: 12,
-    overflow: "hidden",
-  },
-  subjectBreakdownFill: {
-    height: "100%",
-    borderRadius: 4,
-  },
-  subjectBreakdownRate: {
-    width: 40,
-    fontSize: 14,
-    fontWeight: "bold",
-    color: Colors.text,
-    textAlign: "right",
   },
   legendContainer: {
     backgroundColor: Colors.card,

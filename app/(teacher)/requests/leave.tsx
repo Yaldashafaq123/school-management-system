@@ -21,8 +21,8 @@ const LEAVE_TYPES = [
   { key: "ANNUAL", label: "مرخصی سالانه" },
   { key: "SICK", label: "مرخصی استعلاجی" },
   { key: "EMERGENCY", label: "مرخصی اضطرار" },
-  { key: "MATERNITY", label: "مرخصی زایمان" },
-  { key: "UNPAID", label: "مرخصی بدون حقوق" },
+  { key: "MATERNITY", label: "مرخصی مادران" },
+  { key: "UNPAID", label: "مرخصی بدون معاش" },
 ];
 
 export default function RequestLeaveScreen() {
@@ -250,7 +250,7 @@ export default function RequestLeaveScreen() {
                 </Text>
               </View>
               <View style={styles.balanceItem}>
-                <Text style={styles.balanceLabel}>استعلاجی</Text>
+                <Text style={styles.balanceLabel}>مرخصی بیماری</Text>
                 <Text style={styles.balanceValue}>
                   {leaveBalance.remainingSick} روز
                 </Text>

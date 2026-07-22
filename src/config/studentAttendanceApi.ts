@@ -17,6 +17,7 @@ export interface AttendanceDay {
 }
 
 export interface MonthlySummary {
+  year: number;
   month: string;
   totalDays: number;
   presentDays: number;
@@ -62,6 +63,7 @@ export interface AttendanceAnalytics {
 }
 
 export interface StudentAttendanceData {
+  currentAfghanDate: { date: string; month: string; year: number; weekday: string; };
   stats: AttendanceStats;
   monthlySummaries: MonthlySummary[];
   dailyAttendance: AttendanceDay[];

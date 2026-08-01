@@ -175,50 +175,128 @@ export default function ChildProgress() {
   const [children, setChildren] = useState<Child[]>([]);
   const [showChildSelector, setShowChildSelector] = useState(false);
 
-  // Load children list
+  // ============================================================
+  // DEBUG: Load children list with full logging
+  // ============================================================
   const loadChildren = useCallback(async () => {
     try {
+      console.log("🔍 [DEBUG] ===== loadChildren START =====");
+
       const response = await parentAnalyticsApi.getChildren();
+
+      console.log("🔍 [DEBUG] Response success:", response.success);
+      console.log(
+        "🔍 [DEBUG] Response data:",
+        JSON.stringify(response.data, null, 2),
+      );
+
       if (response.success && response.data) {
+        console.log(
+          "🔍 [DEBUG] Children count:",
+          response.data.children.length,
+        );
+        console.log(
+          "🔍 [DEBUG] Children raw:",
+          JSON.stringify(response.data.children, null, 2),
+        );
+
+        // Log each child's details
+        response.data.children.forEach((child, index) => {
+          console.log(`🔍 [DEBUG] Child ${index + 1}:`, {
+            id: child.id,
+            name: child.name,
+            class: child.class,
+            classId: child.classId,
+            profileImage: child.profileImage,
+          });
+        });
+
+        // ✅ Set children state
         setChildren(response.data.children);
 
+        // ✅ Handle active child selection
         const storedId = await parentAnalyticsApi.getStoredActiveChildId();
+        console.log("🔍 [DEBUG] Stored active child ID:", storedId);
+
         if (storedId && response.data.children.some((c) => c.id === storedId)) {
+          console.log("🔍 [DEBUG] ✅ Using stored ID:", storedId);
           setSelectedChildId(storedId);
         } else if (response.data.children.length > 0) {
+          console.log(
+            "🔍 [DEBUG] ✅ Using first child ID:",
+            response.data.children[0].id,
+          );
+          console.log(
+            "🔍 [DEBUG] ✅ First child name:",
+            response.data.children[0].name,
+          );
           setSelectedChildId(response.data.children[0].id);
           await parentAnalyticsApi.setActiveChild(response.data.children[0].id);
+        } else {
+          console.log("🔍 [DEBUG] ⚠️ No children in response");
         }
+      } else {
+        console.log("🔍 [DEBUG] ❌ No children found or response failed");
+        console.log("🔍 [DEBUG] Response:", JSON.stringify(response, null, 2));
       }
+      console.log("🔍 [DEBUG] ===== loadChildren END =====");
     } catch (error) {
-      console.error("Error loading children:", error);
+      console.error("❌ Error loading children:", error);
     }
   }, []);
 
+  // ============================================================
+  // DEBUG: Load analytics with full logging
+  // ============================================================
   const loadAnalytics = useCallback(async () => {
     if (!selectedChildId) {
+      console.log("🔍 [DEBUG] No selectedChildId, skipping analytics load");
       setLoading(false);
       return;
     }
+
+    console.log(
+      `🔍 [DEBUG] ===== loadAnalytics START for child ${selectedChildId} =====`,
+    );
 
     try {
       setLoading(true);
       const response =
         await parentAnalyticsApi.getStudentAnalytics(selectedChildId);
 
+      console.log("🔍 [DEBUG] Analytics response success:", response.success);
+      console.log(
+        "🔍 [DEBUG] Analytics response data:",
+        JSON.stringify(response.data, null, 2),
+      );
+
       if (response.success && response.data) {
+        console.log(
+          `🔍 [DEBUG] ✅ Student name from analytics: "${response.data.studentName}"`,
+        );
+        console.log(
+          `🔍 [DEBUG] ✅ Student class: "${response.data.className}"`,
+        );
+        console.log(
+          `🔍 [DEBUG] ✅ Has analytics: ${response.data.hasAnalytics}`,
+        );
         setAnalyticsData(response.data);
       } else {
+        console.log("🔍 [DEBUG] ❌ No analytics data received");
         setAnalyticsData(null);
       }
     } catch (error) {
-      console.error("Error loading analytics:", error);
+      console.error("❌ Error loading analytics:", error);
       setAnalyticsData(null);
     } finally {
       setLoading(false);
     }
+    console.log("🔍 [DEBUG] ===== loadAnalytics END =====");
   }, [selectedChildId]);
 
+  // ============================================================
+  // Effects
+  // ============================================================
   useEffect(() => {
     loadChildren();
   }, [loadChildren]);
@@ -229,6 +307,9 @@ export default function ChildProgress() {
     }
   }, [selectedChildId, loadAnalytics]);
 
+  // ============================================================
+  // Handlers
+  // ============================================================
   const handleRefresh = async () => {
     setRefreshing(true);
     await loadAnalytics();
@@ -236,13 +317,28 @@ export default function ChildProgress() {
   };
 
   const handleChildSelect = async (childId: number) => {
+    console.log(`🔍 [DEBUG] Child selected: ${childId}`);
     setSelectedChildId(childId);
     await parentAnalyticsApi.setActiveChild(childId);
     setShowChildSelector(false);
   };
 
+  // ============================================================
+  // DEBUG: Log selected child
+  // ============================================================
   const selectedChild = children.find((c) => c.id === selectedChildId);
 
+  console.log("🔍 [DEBUG] Selected child:", selectedChild);
+  console.log("🔍 [DEBUG] Selected child name:", selectedChild?.name);
+  console.log(
+    "🔍 [DEBUG] All children names:",
+    children.map((c) => ({ id: c.id, name: c.name })),
+  );
+  console.log("🔍 [DEBUG] children.length:", children.length);
+
+  // ============================================================
+  // Loading State
+  // ============================================================
   if (loading) {
     return (
       <SafeAreaView style={styles.loadingContainer}>
@@ -252,6 +348,9 @@ export default function ChildProgress() {
     );
   }
 
+  // ============================================================
+  // Empty State
+  // ============================================================
   if (children.length === 0) {
     return (
       <SafeAreaView style={styles.container}>
@@ -279,7 +378,9 @@ export default function ChildProgress() {
   const data = analyticsData;
   const hasData = data?.hasAnalytics || false;
 
-  // Calculate strengths and weaknesses from subject data
+  // ============================================================
+  // Calculate derived data
+  // ============================================================
   const calculateStrengthsAndWeaknesses = (subjects: SubjectAnalytics[]) => {
     const strengths: string[] = [];
     const weaknesses: string[] = [];
@@ -297,11 +398,9 @@ export default function ChildProgress() {
     return { strengths, weaknesses };
   };
 
-  // Generate teacher insight
   const generateTeacherInsight = (data: StudentAnalyticsResponse): string => {
     const insights: string[] = [];
 
-    // Trend insight
     if (data.trend.hasData) {
       if (data.trend.direction === "IMPROVING") {
         insights.push("دانش‌آموز در چند هفته اخیر روند مثبتی داشته است.");
@@ -312,7 +411,6 @@ export default function ChildProgress() {
       }
     }
 
-    // Attendance insight
     if (data.attendance.score !== null) {
       if (data.attendance.score >= 90) {
         insights.push("حضور منظم دانش‌آموز در کلاس قابل تقدیر است.");
@@ -321,7 +419,6 @@ export default function ChildProgress() {
       }
     }
 
-    // Subject insights
     const { strengths, weaknesses } = calculateStrengthsAndWeaknesses(
       data.subjects,
     );
@@ -336,14 +433,12 @@ export default function ChildProgress() {
       );
     }
 
-    // Growth insight
     if (data.growth.score !== null && data.growth.score > 0) {
       insights.push(
         `دانش‌آموز ${Math.abs(data.growth.score)} نمره رشد داشته است.`,
       );
     }
 
-    // If no insights, add a default positive message
     if (insights.length === 0) {
       insights.push(
         "دانش‌آموز در مسیر درست قرار دارد. ادامه تلاش‌ها توصیه می‌شود.",
@@ -353,7 +448,6 @@ export default function ChildProgress() {
     return insights.join(" ");
   };
 
-  // Calculate comparison
   const getComparison = (data: StudentAnalyticsResponse) => {
     const studentScore = data.readiness.score || 0;
     const classAvg = data.behaviorMetrics.classAverage || 0;
@@ -375,10 +469,9 @@ export default function ChildProgress() {
     };
   };
 
-  // Get exam readiness data
   const getExamReadiness = (data: StudentAnalyticsResponse) => {
     const halfYearScore = data.readiness.components.halfYearExams;
-    const finalScore = data.readiness.components.halfYearExams; // Use half year as proxy for final
+    const finalScore = data.readiness.components.halfYearExams;
 
     return {
       halfYear: {
@@ -398,7 +491,6 @@ export default function ChildProgress() {
     };
   };
 
-  // Get overall status
   const getOverallStatus = (data: StudentAnalyticsResponse) => {
     const score = data.readiness.score;
     if (score === null) {
@@ -422,10 +514,8 @@ export default function ChildProgress() {
     }
   };
 
-  // Get growth summary
   const getGrowthSummary = (data: StudentAnalyticsResponse) => {
     const current = data.readiness.score || 0;
-    // Use previous average from subject data or estimate
     const subjectsWithData = data.subjects.filter(
       (s) => s.hasData && s.previousAverage !== null,
     );
@@ -435,7 +525,7 @@ export default function ChildProgress() {
             (sum, s) => sum + (s.previousAverage || 0),
             0,
           ) / subjectsWithData.length
-        : current - 10; // Estimate if no data
+        : current - 10;
 
     const change = current - previousAvg;
     const percentage = previousAvg > 0 ? (change / previousAvg) * 100 : 0;
@@ -448,7 +538,16 @@ export default function ChildProgress() {
     };
   };
 
+  // ============================================================
+  // No Data State
+  // ============================================================
   if (!hasData || !data) {
+    // ✅ FIXED: Prioritize analytics name
+    const displayName =
+      data?.studentName || selectedChild?.name || "انتخاب فرزند";
+    console.log(`🔍 [DEBUG] No data state - Display name: "${displayName}"`);
+    console.log(`🔍 [DEBUG] selectedChild:`, selectedChild);
+
     return (
       <SafeAreaView style={styles.container} edges={["top"]}>
         <View style={styles.header}>
@@ -456,9 +555,7 @@ export default function ChildProgress() {
             style={styles.childSelectorButton}
             onPress={() => setShowChildSelector(true)}
           >
-            <Text style={styles.childSelectorText}>
-              {selectedChild?.name || "انتخاب فرزند"}
-            </Text>
+            <Text style={styles.childSelectorText}>{displayName}</Text>
             <Ionicons name="chevron-down" size={20} color={Colors.text} />
           </TouchableOpacity>
           <Text style={styles.subtitle}>{selectedChild?.class || ""}</Text>
@@ -479,7 +576,9 @@ export default function ChildProgress() {
     );
   }
 
+  // ============================================================
   // Calculate all derived data
+  // ============================================================
   const overallStatus = getOverallStatus(data);
   const growthSummary = getGrowthSummary(data);
   const { strengths, weaknesses } = calculateStrengthsAndWeaknesses(
@@ -489,6 +588,18 @@ export default function ChildProgress() {
   const examReadiness = getExamReadiness(data);
   const comparison = getComparison(data);
 
+  // ✅ FIXED: Prioritize analytics name (THIS IS THE KEY CHANGE!)
+  const displayName =
+    data?.studentName || selectedChild?.name || "انتخاب فرزند";
+  const displayClass = data?.className || selectedChild?.class || "";
+
+  console.log(`🔍 [DEBUG] Main render - Display name: "${displayName}"`);
+  console.log(`🔍 [DEBUG] selectedChild.name: "${selectedChild?.name}"`);
+  console.log(`🔍 [DEBUG] data.studentName: "${data?.studentName}"`);
+
+  // ============================================================
+  // Main Render
+  // ============================================================
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
       <ScrollView
@@ -501,18 +612,16 @@ export default function ChildProgress() {
           />
         }
       >
-        {/* Header with Child Selector */}
+        {/* Header with Child Selector - USING FIXED DISPLAY NAME */}
         <View style={styles.header}>
           <TouchableOpacity
             style={styles.childSelectorButton}
             onPress={() => setShowChildSelector(true)}
           >
-            <Text style={styles.childSelectorText}>
-              {selectedChild?.name || "انتخاب فرزند"}
-            </Text>
+            <Text style={styles.childSelectorText}>{displayName}</Text>
             <Ionicons name="chevron-down" size={20} color={Colors.text} />
           </TouchableOpacity>
-          <Text style={styles.subtitle}>{selectedChild?.class || ""}</Text>
+          <Text style={styles.subtitle}>{displayClass}</Text>
         </View>
 
         {/* 1. Overall Student Status Card */}
@@ -645,7 +754,7 @@ export default function ChildProgress() {
           </View>
         </View>
 
-        {/* 3. Readiness Score Card (Enhanced) */}
+        {/* 3. Readiness Score Card */}
         <View style={styles.readinessCard}>
           <View style={styles.readinessHeader}>
             <Text style={styles.readinessTitle}>نمره آمادگی</Text>
@@ -1405,6 +1514,9 @@ export default function ChildProgress() {
   );
 }
 
+// ============================================================
+// STYLES (unchanged)
+// ============================================================
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -1499,7 +1611,6 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
     marginTop: 4,
   },
-  // 1. Overall Status Card
   overallStatusCard: {
     backgroundColor: Colors.card,
     margin: 16,
@@ -1564,7 +1675,6 @@ const styles = StyleSheet.create({
     width: 1,
     backgroundColor: Colors.border,
   },
-  // 2. Growth Card
   growthCard: {
     backgroundColor: Colors.card,
     marginHorizontal: 16,
@@ -1623,7 +1733,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "600",
   },
-  // 3. Readiness Card
   readinessCard: {
     backgroundColor: Colors.card,
     marginHorizontal: 16,
@@ -1737,7 +1846,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "500",
   },
-  // 4. Rankings Card
   rankingsCard: {
     flexDirection: "row",
     backgroundColor: Colors.card,
@@ -1767,7 +1875,6 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.border,
     marginHorizontal: 8,
   },
-  // 5. Comparison Card
   comparisonCard: {
     backgroundColor: Colors.card,
     marginHorizontal: 16,
@@ -1828,7 +1935,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "500",
   },
-  // 6. Risk Card
   riskCard: {
     backgroundColor: Colors.card,
     marginHorizontal: 16,
@@ -1870,7 +1976,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: Colors.textSecondary,
   },
-  // 7. Readiness Components
   section: {
     paddingHorizontal: 16,
     marginBottom: 16,
@@ -1915,7 +2020,6 @@ const styles = StyleSheet.create({
     height: "100%",
     borderRadius: 3,
   },
-  // 8. Subject Performance
   subjectCard: {
     backgroundColor: Colors.card,
     padding: 16,
@@ -1999,7 +2103,6 @@ const styles = StyleSheet.create({
     minWidth: 40,
     textAlign: "right",
   },
-  // 9. Strengths & Weaknesses
   strengthWeaknessContainer: {
     backgroundColor: Colors.card,
     padding: 16,
@@ -2055,7 +2158,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: Colors.text,
   },
-  // 10. AI Teacher Insight
   insightCard: {
     backgroundColor: Colors.card,
     padding: 16,
@@ -2088,7 +2190,6 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     textAlign: "right",
   },
-  // 11. Exam Readiness
   examReadinessContainer: {
     flexDirection: "row",
     backgroundColor: Colors.card,
@@ -2126,7 +2227,6 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.border,
     marginHorizontal: 16,
   },
-  // 12. Prediction
   predictionCard: {
     backgroundColor: Colors.card,
     padding: 20,
@@ -2157,7 +2257,6 @@ const styles = StyleSheet.create({
     height: "100%",
     borderRadius: 3,
   },
-  // 13. Recommendations
   recommendationCard: {
     backgroundColor: Colors.card,
     padding: 16,
@@ -2190,7 +2289,6 @@ const styles = StyleSheet.create({
     color: Colors.text,
     lineHeight: 20,
   },
-  // 14. Attendance
   attendanceCard: {
     backgroundColor: Colors.card,
     padding: 16,

@@ -75,7 +75,7 @@ export default function PrincipalTeachersScreen() {
   const renderTeacher = ({ item }: { item: Teacher }) => (
     <TouchableOpacity
       style={styles.card}
-      onPress={() => router.push(`./teachers/${item.id}`)}
+      onPress={() => router.push(`../teachers/${item.id}`)}
     >
       <View style={styles.cardHeader}>
         <View style={styles.avatar}>

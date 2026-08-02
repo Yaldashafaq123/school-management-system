@@ -4,13 +4,13 @@ import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import {
-    ActivityIndicator,
-    RefreshControl,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
 
 type TeacherDetail = {
@@ -40,7 +40,7 @@ type TeacherDetail = {
     id: number;
     name: string;
     section: string;
-    _count: {
+    _count?: {
       Student: number;
     };
   } | null;
@@ -102,6 +102,9 @@ export default function TeacherDetailScreen() {
 
   const subjects = teacher.TeacherSubject?.map((ts) => ts.Subject.name) || [];
 
+  // ✅ SAFE: Get student count with fallback
+  const studentCount = teacher.Class?._count?.Student ?? 0;
+
   return (
     <ScrollView
       style={styles.container}
@@ -119,10 +122,12 @@ export default function TeacherDetailScreen() {
       <View style={styles.profileCard}>
         <View style={styles.avatarContainer}>
           <Text style={styles.avatarText}>
-            {teacher.User.fullName.charAt(0)}
+            {teacher.User?.fullName?.charAt(0) || "?"}
           </Text>
         </View>
-        <Text style={styles.teacherName}>{teacher.User.fullName}</Text>
+        <Text style={styles.teacherName}>
+          {teacher.User?.fullName || "نامشخص"}
+        </Text>
         <Text style={styles.specializationText}>
           {teacher.specialization || "متخصص"}
         </Text>
@@ -163,17 +168,21 @@ export default function TeacherDetailScreen() {
         <Text style={styles.sectionTitle}>اطلاعات تماس</Text>
         <View style={styles.infoRow}>
           <Ionicons name="mail-outline" size={20} color="#64748b" />
-          <Text style={styles.infoText}>{teacher.User.email}</Text>
+          <Text style={styles.infoText}>
+            {teacher.User?.email || "ثبت نشده"}
+          </Text>
         </View>
         <View style={styles.infoRow}>
           <Ionicons name="call-outline" size={20} color="#64748b" />
           <Text style={styles.infoText}>
-            {teacher.User.phone || "ثبت نشده"}
+            {teacher.User?.phone || "ثبت نشده"}
           </Text>
         </View>
         <View style={styles.infoRow}>
           <Ionicons name="card-outline" size={20} color="#64748b" />
-          <Text style={styles.infoText}>کد: {teacher.teacherCode}</Text>
+          <Text style={styles.infoText}>
+            کد: {teacher.teacherCode || "ندارد"}
+          </Text>
         </View>
       </View>
 
@@ -184,7 +193,9 @@ export default function TeacherDetailScreen() {
           <Ionicons name="calendar-outline" size={20} color="#64748b" />
           <Text style={styles.infoText}>
             تاریخ پیوستن:{" "}
-            {new Date(teacher.joiningDate).toLocaleDateString("fa-IR")}
+            {teacher.joiningDate
+              ? new Date(teacher.joiningDate).toLocaleDateString("fa-IR")
+              : "ثبت نشده"}
           </Text>
         </View>
         {teacher.experience && (
@@ -223,16 +234,16 @@ export default function TeacherDetailScreen() {
         </View>
       )}
 
-      {/* Class Info */}
+      {/* Class Info - FIXED with safe access */}
       {teacher.Class && (
         <View style={styles.infoCard}>
           <Text style={styles.sectionTitle}>صنف</Text>
           <View style={styles.classInfoCard}>
             <Text style={styles.className}>
-              {teacher.Class.name} {teacher.Class.section}
+              {teacher.Class.name} {teacher.Class.section || ""}
             </Text>
             <Text style={styles.classStudents}>
-              تعداد شاگردان: {teacher.Class._count.Student}
+              تعداد شاگردان: {studentCount}
             </Text>
           </View>
         </View>

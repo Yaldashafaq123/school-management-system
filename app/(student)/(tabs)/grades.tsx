@@ -2,6 +2,13 @@
 import { Header } from "@/components/Header";
 import { Colors } from "@/constants/Colors";
 import { useAuth } from "@/contexts/AuthContext";
+import {
+  SubjectGrade as ApiSubjectGrade,
+  GradesData,
+  studentGradesApi,
+  Term,
+  TermGrades,
+} from "@/src/config/studentGradesApi";
 import { Ionicons } from "@expo/vector-icons";
 import { useCallback, useEffect, useState } from "react";
 import {
@@ -15,35 +22,26 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-// ===================== TYPES =====================
+// ===================== EXTENDED TYPE =====================
+
+// Extend the API SubjectGrade with our custom fields
+interface ExtendedSubjectGrade extends ApiSubjectGrade {
+  halfYearlyExamDetails?: any;
+  finalExamDetails?: any;
+}
+
+// ===================== LOCAL TYPES (Extended for UI) =====================
 
 interface ExamGrade {
   id: number;
   examId: number;
   studentId: number;
   subject: string;
-  marks: number; // Raw score
+  marks: number;
   percentage?: number;
   feedback?: string;
   createdAt: string;
   updatedAt: string;
-}
-
-interface Exam {
-  id: number;
-  name: string;
-  type: "MONTHLY" | "HALF_YEARLY" | "FINAL";
-  subjectId: number;
-  subjectName: string;
-  classId: number;
-  className?: string;
-  maxScore: number;
-  date: string;
-  isPublished: boolean;
-  month?: number;
-  year?: number;
-  teacherName?: string;
-  grades?: ExamGrade[];
 }
 
 interface WeeklyAssessmentResult {
@@ -56,65 +54,48 @@ interface WeeklyAssessmentResult {
   weekNumber?: number;
 }
 
-interface SubjectGrade {
+// Extended subject grade for UI with additional fields
+interface UISubjectGrade {
   subjectId: number;
   subjectName: string;
   teacherName?: string;
 
-  // Progress tracking (self-awareness only)
+  // Monthly exams (self-awareness)
   monthlyExams: ExamGrade[];
   monthlyAverage: number;
   weeklyAssessments: WeeklyAssessmentResult[];
   weeklyAverage: number;
 
-  // REAL EXAM GRADES (these count toward final)
-  halfYearlyExam?: ExamGrade; // 40 points
-  halfYearlyExamDetails?: Exam;
-  halfYearlyGradeLetter?: string; // الف, ب, ج, د, ه
+  // REAL grades
+  halfYearlyExam?: ExamGrade;
+  halfYearlyExamDetails?: any;
+  halfYearlyGradeLetter?: string;
 
-  finalExam?: ExamGrade; // 60 points
-  finalExamDetails?: Exam;
-  finalGradeLetter?: string; // الف, ب, ج, د, ه
+  finalExam?: ExamGrade;
+  finalExamDetails?: any;
+  finalGradeLetter?: string;
 
-  // Total combined score (40 + 60 = 100)
-  totalScore: number; // Out of 100
-  totalGradeLetter: string; // الف, ب, ج, د, ه
+  totalScore: number;
+  totalGradeLetter: string;
   status: "PASSED" | "FAILED";
 
   rank?: number;
   totalStudents?: number;
 }
 
-interface Term {
-  id: number;
-  name: string;
-  isCurrent?: boolean;
-  startDate?: string;
-  endDate?: string;
-  academicYear?: string;
-}
-
-interface TermGrades {
+interface UITermGrades {
   term: Term;
-  subjects: SubjectGrade[];
-  overallAverage: number; // Out of 100
+  subjects: UISubjectGrade[];
+  overallAverage: number;
   classRank?: string;
   totalStudents?: number;
   attendanceRate?: number;
-  passedCount?: number;
-  failedCount?: number;
+  passedCount: number;
+  failedCount: number;
 }
 
 // ===================== GRADING HELPERS =====================
 
-/**
- * Convert score to Afghan grade letter
- * الف = Excellent (90-100)
- * ب = Very Good (80-89)
- * ج = Good (70-79)
- * د = Pass (60-69)
- * ه = Fail (0-59)
- */
 function getGradeLetter(score: number, maxScore: number): string {
   const percentage = (score / maxScore) * 100;
 
@@ -125,9 +106,6 @@ function getGradeLetter(score: number, maxScore: number): string {
   return "ه";
 }
 
-/**
- * Get grade letter with color
- */
 function getGradeInfo(
   score: number,
   maxScore: number,
@@ -149,15 +127,12 @@ function getGradeInfo(
   return { letter: "ه", color: "#dc2626", label: "نیاز به تلاش" };
 }
 
-function getGradeColor(score: number, maxScore: number): string {
+function getGradeColorUI(score: number, maxScore: number): string {
   return getGradeInfo(score, maxScore).color;
 }
 
-function getGradeLabel(score: number, maxScore: number): string {
-  return getGradeInfo(score, maxScore).label;
-}
-
 function formatScore(value: number, max: number): string {
+  if (value === null || value === undefined) return "—";
   return `${Math.round(value)}/${max}`;
 }
 
@@ -171,82 +146,189 @@ function formatDate(dateString: string): string {
   });
 }
 
-/**
- * Check if student passed
- * Pass: >= 60% overall
- */
 function isPassed(totalScore: number): boolean {
   return totalScore >= 60;
 }
 
-// ===================== API HELPERS =====================
-
-const fetchStudentGrades = async (studentId: number, termId?: number) => {
-  try {
-    const examsResponse = await fetch(
-      `/api/student/${studentId}/exams${termId ? `?termId=${termId}` : ""}`,
-    );
-    const examsData = await examsResponse.json();
-
-    const assessmentsResponse = await fetch(
-      `/api/student/${studentId}/weekly-assessments${termId ? `?termId=${termId}` : ""}`,
-    );
-    const assessmentsData = await assessmentsResponse.json();
-
-    const yearResponse = await fetch(`/api/student/${studentId}/academic-year`);
-    const yearData = await yearResponse.json();
-
-    return {
-      success: true,
-      data: {
-        exams: examsData.data || [],
-        assessments: assessmentsData.data || [],
-        academicYear: yearData.data || null,
-      },
-    };
-  } catch (error) {
-    console.error("Error fetching grades:", error);
-    return { success: false, data: null };
-  }
-};
-
 // ===================== MAIN COMPONENT =====================
 
 export default function GradesScreen() {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [selectedTerm, setSelectedTerm] = useState<number | null>(null);
   const [showDetails, setShowDetails] = useState<number | null>(null);
-  const [termGrades, setTermGrades] = useState<Record<number, TermGrades>>({});
-  const [currentGrades, setCurrentGrades] = useState<TermGrades | null>(null);
+  const [termGrades, setTermGrades] = useState<Record<number, UITermGrades>>(
+    {},
+  );
+  const [currentGrades, setCurrentGrades] = useState<UITermGrades | null>(null);
   const [terms, setTerms] = useState<Term[]>([]);
+
+  /**
+   * Transform API TermGrades to UI TermGrades
+   */
+  const transformTermGradesData = useCallback(
+    (apiData: TermGrades): UITermGrades => {
+      const subjects: UISubjectGrade[] = [];
+      let passedCount = 0;
+      let failedCount = 0;
+
+      // Transform each subject - cast to ExtendedSubjectGrade to access custom fields
+      for (const apiSubject of (apiData.subjects ||
+        []) as ExtendedSubjectGrade[]) {
+        const halfYearlyScore = apiSubject.halfYearly || 0;
+        const finalScore = apiSubject.final || 0;
+        const totalScore = halfYearlyScore + finalScore;
+
+        const halfYearlyLetter =
+          halfYearlyScore > 0 ? getGradeLetter(halfYearlyScore, 40) : "-";
+        const finalLetter =
+          finalScore > 0 ? getGradeLetter(finalScore, 60) : "-";
+        const totalLetter = getGradeLetter(totalScore, 100);
+        const passed = isPassed(totalScore);
+
+        if (passed) {
+          passedCount++;
+        } else {
+          failedCount++;
+        }
+
+        // Create UI subject grade
+        const uiSubject: UISubjectGrade = {
+          subjectId: apiSubject.id || 0,
+          subjectName: apiSubject.subject || "نامشخص",
+          teacherName: apiSubject.teacher || "",
+
+          // Monthly exams (from API)
+          monthlyExams: [],
+          monthlyAverage: apiSubject.monthly || 0,
+          weeklyAssessments: [],
+          weeklyAverage: 0,
+
+          // Half-yearly exam
+          halfYearlyExam:
+            apiSubject.halfYearly !== undefined &&
+            apiSubject.halfYearly !== null
+              ? {
+                  id: 0,
+                  examId: 0,
+                  studentId: 0,
+                  subject: apiSubject.subject || "",
+                  marks: apiSubject.halfYearly,
+                  percentage: (apiSubject.halfYearly / 40) * 100,
+                  createdAt: "",
+                  updatedAt: "",
+                }
+              : undefined,
+          // Use the custom field from the extended type
+          halfYearlyExamDetails:
+            (apiSubject as ExtendedSubjectGrade).halfYearlyExamDetails || null,
+          halfYearlyGradeLetter: halfYearlyLetter,
+
+          // Final exam
+          finalExam:
+            apiSubject.final !== undefined && apiSubject.final !== null
+              ? {
+                  id: 0,
+                  examId: 0,
+                  studentId: 0,
+                  subject: apiSubject.subject || "",
+                  marks: apiSubject.final,
+                  percentage: (apiSubject.final / 60) * 100,
+                  createdAt: "",
+                  updatedAt: "",
+                }
+              : undefined,
+          // Use the custom field from the extended type
+          finalExamDetails:
+            (apiSubject as ExtendedSubjectGrade).finalExamDetails || null,
+          finalGradeLetter: finalLetter,
+
+          totalScore: totalScore,
+          totalGradeLetter: totalLetter,
+          status: passed ? "PASSED" : "FAILED",
+          rank: apiSubject.rank || 0,
+          totalStudents: apiData.totalStudents || 0,
+        };
+
+        subjects.push(uiSubject);
+      }
+
+      // Sort by total score (highest first)
+      subjects.sort((a, b) => b.totalScore - a.totalScore);
+      subjects.forEach((subject, index) => {
+        subject.rank = index + 1;
+      });
+
+      return {
+        term: apiData.term,
+        subjects: subjects,
+        overallAverage: apiData.overallAverage || 0,
+        classRank: apiData.classRank ? String(apiData.classRank) : "-",
+        totalStudents: apiData.totalStudents || 0,
+        attendanceRate: apiData.attendanceRate || 0,
+        passedCount: passedCount,
+        failedCount: failedCount,
+      };
+    },
+    [],
+  );
+
+  /**
+   * Transform API GradesData to UI format
+   */
+  const transformGradesData = useCallback(
+    (
+      data: GradesData,
+    ): {
+      terms: Term[];
+      termGrades: Record<number, UITermGrades>;
+      currentTermGrades: UITermGrades | null;
+    } => {
+      const termGradesMap: Record<number, UITermGrades> = {};
+
+      // Transform each term's grades
+      for (const [termId, termData] of Object.entries(
+        data.allTermsGrades || {},
+      )) {
+        termGradesMap[Number(termId)] = transformTermGradesData(termData);
+      }
+
+      const currentTermGrades = data.currentTermGrades
+        ? transformTermGradesData(data.currentTermGrades)
+        : null;
+
+      return {
+        terms: data.terms || [],
+        termGrades: termGradesMap,
+        currentTermGrades: currentTermGrades,
+      };
+    },
+    [transformTermGradesData],
+  );
 
   const loadGradesData = useCallback(async () => {
     try {
       setLoading(true);
 
-      const studentId = user?.studentId || user?.id;
-
-      if (!studentId) {
-        console.error("No student ID found");
-        setLoading(false);
-        return;
-      }
-
-      const response = await fetchStudentGrades(studentId);
+      // Use the API from studentGradesApi
+      const response = await studentGradesApi.getAllGrades();
 
       if (response.success && response.data) {
-        const { exams, assessments, academicYear } = response.data;
-        const groupedData = processGradesData(exams, assessments, academicYear);
+        const data = response.data as GradesData;
 
-        setTerms(groupedData.terms);
-        setTermGrades(groupedData.termGrades);
-        setCurrentGrades(groupedData.currentTermGrades);
+        // Transform API data to UI format
+        const transformedData = transformGradesData(data);
 
-        if (groupedData.terms.length > 0) {
+        setTerms(transformedData.terms);
+        setTermGrades(transformedData.termGrades);
+        setCurrentGrades(transformedData.currentTermGrades);
+
+        if (transformedData.terms.length > 0) {
           setSelectedTerm(
-            groupedData.currentTermGrades?.term?.id || groupedData.terms[0].id,
+            transformedData.currentTermGrades?.term?.id ||
+              transformedData.terms[0].id,
           );
         }
       }
@@ -256,7 +338,7 @@ export default function GradesScreen() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [user]);
+  }, [transformGradesData]);
 
   useEffect(() => {
     loadGradesData();
@@ -269,211 +351,24 @@ export default function GradesScreen() {
 
   const handleTermChange = async (termId: number) => {
     setSelectedTerm(termId);
-  };
 
-  const processGradesData = (
-    exams: any[],
-    assessments: any[],
-    academicYear: any,
-  ) => {
-    const terms: Term[] = [];
-    const termGradesMap: Record<number, TermGrades> = {};
+    // If we don't have grades for this term yet, fetch them
+    if (!termGrades[termId]) {
+      try {
+        const response = await studentGradesApi.getTermGrades(termId);
+        if (response.success && response.data) {
+          const termData = response.data as TermGrades;
+          const uiTermData = transformTermGradesData(termData);
 
-    const subjectMap: Record<
-      number,
-      {
-        subjectId: number;
-        subjectName: string;
-        teacherName?: string;
-        monthlyExams: any[];
-        halfYearlyExam: any | null;
-        halfYearlyExamDetails: any | null;
-        finalExam: any | null;
-        finalExamDetails: any | null;
+          setTermGrades((prev) => ({
+            ...prev,
+            [termId]: uiTermData,
+          }));
+        }
+      } catch (error) {
+        console.error("Error fetching term grades:", error);
       }
-    > = {};
-
-    exams.forEach((exam) => {
-      if (!subjectMap[exam.subjectId]) {
-        subjectMap[exam.subjectId] = {
-          subjectId: exam.subjectId,
-          subjectName: exam.subject || `درس ${exam.subjectId}`,
-          teacherName: exam.teacherName,
-          monthlyExams: [],
-          halfYearlyExam: null,
-          halfYearlyExamDetails: null,
-          finalExam: null,
-          finalExamDetails: null,
-        };
-      }
-
-      if (exam.type === "MONTHLY") {
-        subjectMap[exam.subjectId].monthlyExams.push(exam);
-      } else if (exam.type === "HALF_YEARLY") {
-        subjectMap[exam.subjectId].halfYearlyExam = exam.grades?.[0] || null;
-        subjectMap[exam.subjectId].halfYearlyExamDetails = exam;
-      } else if (exam.type === "FINAL") {
-        subjectMap[exam.subjectId].finalExam = exam.grades?.[0] || null;
-        subjectMap[exam.subjectId].finalExamDetails = exam;
-      }
-    });
-
-    const assessmentMap: Record<number, any[]> = {};
-    assessments.forEach((assessment) => {
-      if (!assessmentMap[assessment.subjectId]) {
-        assessmentMap[assessment.subjectId] = [];
-      }
-      assessmentMap[assessment.subjectId].push(assessment);
-    });
-
-    const subjectGrades: SubjectGrade[] = [];
-    let overallSum = 0;
-    let overallCount = 0;
-    let passedCount = 0;
-    let failedCount = 0;
-
-    Object.values(subjectMap).forEach((subject) => {
-      const monthlyExams = subject.monthlyExams || [];
-      const monthlyScores = monthlyExams.map((e) => e.marks || 0);
-      const monthlyAverage =
-        monthlyScores.length > 0
-          ? monthlyScores.reduce((a, b) => a + b, 0) / monthlyScores.length
-          : 0;
-
-      const weeklyAssessments = assessmentMap[subject.subjectId] || [];
-      const weeklyScores = weeklyAssessments.map((a) => a.marks || 0);
-      const weeklyAverage =
-        weeklyScores.length > 0
-          ? weeklyScores.reduce((a, b) => a + b, 0) / weeklyScores.length
-          : 0;
-
-      const halfYearlyGrade = subject.halfYearlyExam;
-      const finalGrade = subject.finalExam;
-
-      const halfYearlyScore = halfYearlyGrade?.marks || 0;
-      const finalScore = finalGrade?.marks || 0;
-
-      // Total = Half-Yearly (40) + Final (60) = 100
-      const totalScore = halfYearlyScore + finalScore;
-
-      // Get grade letters
-      const halfYearlyLetter = halfYearlyGrade
-        ? getGradeLetter(halfYearlyScore, 40)
-        : "-";
-      const finalLetter = finalGrade ? getGradeLetter(finalScore, 60) : "-";
-      const totalLetter = getGradeLetter(totalScore, 100);
-
-      const passed = isPassed(totalScore);
-
-      overallSum += totalScore;
-      overallCount++;
-
-      if (passed) {
-        passedCount++;
-      } else {
-        failedCount++;
-      }
-
-      subjectGrades.push({
-        subjectId: subject.subjectId,
-        subjectName: subject.subjectName,
-        teacherName: subject.teacherName,
-        monthlyExams: monthlyExams.map((e) => ({
-          id: e.id,
-          examId: e.id,
-          studentId: e.studentId,
-          subject: e.subject,
-          marks: e.marks,
-          percentage: e.percentage,
-          feedback: e.feedback,
-          createdAt: e.createdAt,
-          updatedAt: e.updatedAt,
-        })),
-        monthlyAverage: Math.round(monthlyAverage * 10) / 10,
-        weeklyAssessments: weeklyAssessments.map((a) => ({
-          id: a.id,
-          marks: a.marks,
-          percentage: a.percentage,
-          feedback: a.feedback,
-          createdAt: a.createdAt,
-          assessmentTitle: a.title,
-          weekNumber: a.weekNumber,
-        })),
-        weeklyAverage: Math.round(weeklyAverage * 10) / 10,
-        halfYearlyExam: halfYearlyGrade
-          ? {
-              id: halfYearlyGrade.id,
-              examId: subject.halfYearlyExamDetails?.id || 0,
-              studentId: halfYearlyGrade.studentId,
-              subject: halfYearlyGrade.subject,
-              marks: halfYearlyGrade.marks,
-              percentage: halfYearlyGrade.percentage,
-              feedback: halfYearlyGrade.feedback,
-              createdAt: halfYearlyGrade.createdAt,
-              updatedAt: halfYearlyGrade.updatedAt,
-            }
-          : undefined,
-        halfYearlyExamDetails: subject.halfYearlyExamDetails,
-        halfYearlyGradeLetter: halfYearlyLetter,
-        finalExam: finalGrade
-          ? {
-              id: finalGrade.id,
-              examId: subject.finalExamDetails?.id || 0,
-              studentId: finalGrade.studentId,
-              subject: finalGrade.subject,
-              marks: finalGrade.marks,
-              percentage: finalGrade.percentage,
-              feedback: finalGrade.feedback,
-              createdAt: finalGrade.createdAt,
-              updatedAt: finalGrade.updatedAt,
-            }
-          : undefined,
-        finalExamDetails: subject.finalExamDetails,
-        finalGradeLetter: finalLetter,
-        totalScore: totalScore,
-        totalGradeLetter: totalLetter,
-        status: passed ? "PASSED" : "FAILED",
-      });
-    });
-
-    // Sort by total score (highest first)
-    subjectGrades.sort((a, b) => b.totalScore - a.totalScore);
-    subjectGrades.forEach((subject, index) => {
-      subject.rank = index + 1;
-      subject.totalStudents = subjectGrades.length;
-    });
-
-    const overallAverage =
-      overallCount > 0 ? Math.round(overallSum / overallCount) : 0;
-
-    const term: Term = {
-      id: academicYear?.id || 1,
-      name: academicYear?.name || "سال تحصیلی ۱۴۰۴",
-      isCurrent: academicYear?.isActive || true,
-      startDate: academicYear?.startDate,
-      endDate: academicYear?.endDate,
-      academicYear: academicYear?.name,
-    };
-
-    const termGradesData: TermGrades = {
-      term,
-      subjects: subjectGrades,
-      overallAverage,
-      classRank: "۳",
-      totalStudents: 30,
-      attendanceRate: 92,
-      passedCount,
-      failedCount,
-    };
-
-    terms.push(term);
-    termGradesMap[term.id] = termGradesData;
-
-    return {
-      terms,
-      termGrades: termGradesMap,
-      currentTermGrades: termGradesData,
-    };
+    }
   };
 
   const currentTermGrades =
@@ -481,7 +376,7 @@ export default function GradesScreen() {
       ? termGrades[selectedTerm]
       : currentGrades;
 
-  const calculateTermStats = (grades: SubjectGrade[]) => {
+  const calculateTermStats = (grades: UISubjectGrade[]) => {
     if (!grades || grades.length === 0) {
       return { passed: 0, failed: 0 };
     }
@@ -503,6 +398,11 @@ export default function GradesScreen() {
       </SafeAreaView>
     );
   }
+
+  // Safe access with fallback values
+  const safePassedCount = currentTermGrades?.passedCount ?? 0;
+  const safeFailedCount = currentTermGrades?.failedCount ?? 0;
+  const safeSubjects = currentTermGrades?.subjects ?? [];
 
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
@@ -600,7 +500,7 @@ export default function GradesScreen() {
                   style={[
                     styles.overallAverage,
                     {
-                      color: getGradeColor(
+                      color: getGradeColorUI(
                         currentTermGrades.overallAverage,
                         100,
                       ),
@@ -615,7 +515,7 @@ export default function GradesScreen() {
               <View style={styles.overallStatCard}>
                 <View style={styles.statHeader}>
                   <Ionicons name="trending-up" size={24} color="#3b82f6" />
-                  <Text style={styles.statTitle}>رتبه کلاسی</Text>
+                  <Text style={styles.statTitle}>درجه در صنف </Text>
                 </View>
                 <Text style={styles.classRank}>
                   {currentTermGrades.classRank || "-"}
@@ -633,18 +533,14 @@ export default function GradesScreen() {
                   style={[styles.passFailDot, { backgroundColor: "#22c55e" }]}
                 />
                 <Text style={styles.passFailLabel}>قبول</Text>
-                <Text style={styles.passFailValue}>
-                  {currentTermGrades.passedCount || 0}
-                </Text>
+                <Text style={styles.passFailValue}>{safePassedCount}</Text>
               </View>
               <View style={styles.passFailItem}>
                 <View
                   style={[styles.passFailDot, { backgroundColor: "#dc2626" }]}
                 />
                 <Text style={styles.passFailLabel}>رد</Text>
-                <Text style={styles.passFailValue}>
-                  {currentTermGrades.failedCount || 0}
-                </Text>
+                <Text style={styles.passFailValue}>{safeFailedCount}</Text>
               </View>
               <View style={styles.passFailItem}>
                 <Ionicons name="time" size={16} color="#3b82f6" />
@@ -688,9 +584,8 @@ export default function GradesScreen() {
               </View>
 
               {/* Table Rows */}
-              {currentTermGrades.subjects &&
-              currentTermGrades.subjects.length > 0 ? (
-                currentTermGrades.subjects.map((subject: SubjectGrade) => (
+              {safeSubjects.length > 0 ? (
+                safeSubjects.map((subject: UISubjectGrade) => (
                   <TouchableOpacity
                     key={subject.subjectId}
                     style={styles.tableRow}
@@ -713,7 +608,7 @@ export default function GradesScreen() {
                     </Text>
 
                     {/* 4.5 Month Exam - 40 points */}
-                    <View style={[styles.tableCell, styles.examCol]}>
+                    <View style={[styles.tableCellWrapper, styles.examCol]}>
                       <Text style={styles.examScore}>
                         {subject.halfYearlyExam
                           ? formatScore(subject.halfYearlyExam.marks, 40)
@@ -725,7 +620,7 @@ export default function GradesScreen() {
                             style={[
                               styles.examGrade,
                               {
-                                color: getGradeColor(
+                                color: getGradeColorUI(
                                   subject.halfYearlyExam?.marks || 0,
                                   40,
                                 ),
@@ -738,7 +633,7 @@ export default function GradesScreen() {
                     </View>
 
                     {/* Final Exam - 60 points */}
-                    <View style={[styles.tableCell, styles.examCol]}>
+                    <View style={[styles.tableCellWrapper, styles.examCol]}>
                       <Text style={styles.examScore}>
                         {subject.finalExam
                           ? formatScore(subject.finalExam.marks, 60)
@@ -750,7 +645,7 @@ export default function GradesScreen() {
                             style={[
                               styles.examGrade,
                               {
-                                color: getGradeColor(
+                                color: getGradeColorUI(
                                   subject.finalExam?.marks || 0,
                                   60,
                                 ),
@@ -763,11 +658,11 @@ export default function GradesScreen() {
                     </View>
 
                     {/* Total - 100 points */}
-                    <View style={[styles.tableCell, styles.totalCol]}>
+                    <View style={[styles.tableCellWrapper, styles.totalCol]}>
                       <Text
                         style={[
                           styles.totalScore,
-                          { color: getGradeColor(subject.totalScore, 100) },
+                          { color: getGradeColorUI(subject.totalScore, 100) },
                         ]}
                       >
                         {subject.totalScore}/۱۰۰
@@ -775,7 +670,7 @@ export default function GradesScreen() {
                     </View>
 
                     {/* Grade */}
-                    <View style={[styles.tableCell, styles.gradeCol]}>
+                    <View style={[styles.tableCellWrapper, styles.gradeCol]}>
                       <View
                         style={[
                           styles.gradeBadge,
@@ -817,398 +712,219 @@ export default function GradesScreen() {
               )}
 
               {/* Overall Result Row */}
-              {currentTermGrades.subjects &&
-                currentTermGrades.subjects.length > 0 && (
-                  <View style={styles.overallRow}>
-                    <Text style={styles.overallLabel}>نتیجه کلی:</Text>
-                    <View style={styles.overallBadge}>
-                      <Text style={styles.overallBadgeText}>
-                        {currentTermGrades.passedCount ===
-                        currentTermGrades.subjects.length
-                          ? "✅ قبول"
-                          : currentTermGrades.passedCount > 0
-                            ? `⚠️ ${currentTermGrades.passedCount} قبول، ${currentTermGrades.failedCount} رد`
-                            : "❌ رد"}
-                      </Text>
-                    </View>
+              {safeSubjects.length > 0 && (
+                <View style={styles.overallRow}>
+                  <Text style={styles.overallLabel}>نتیجه کلی:</Text>
+                  <View style={styles.overallBadge}>
+                    <Text style={styles.overallBadgeText}>
+                      {safePassedCount === safeSubjects.length
+                        ? "✅ قبول"
+                        : safePassedCount > 0
+                          ? `⚠️ ${safePassedCount} قبول، ${safeFailedCount} رد`
+                          : "❌ رد"}
+                    </Text>
                   </View>
-                )}
+                </View>
+              )}
             </View>
 
-            {/* ===== DETAILED VIEW (When subject is expanded) ===== */}
-            {currentTermGrades.subjects &&
-              currentTermGrades.subjects.map(
-                (subject) =>
-                  showDetails === subject.subjectId && (
-                    <View
-                      key={`detail-${subject.subjectId}`}
-                      style={styles.detailsContainer}
-                    >
-                      {/* 4.5 Month Exam Details */}
-                      <View style={styles.examDetailsCard}>
-                        <Text style={styles.examDetailsTitle}>
-                          <Ionicons
-                            name="book-outline"
-                            size={16}
-                            color="#3b82f6"
-                          />{" "}
-                          امتحان ۴.۵ ماهه (۴۰ نمره)
-                        </Text>
+            {/* Detailed View (expanded subject) */}
+            {safeSubjects.map(
+              (subject) =>
+                showDetails === subject.subjectId && (
+                  <View
+                    key={`detail-${subject.subjectId}`}
+                    style={styles.detailsContainer}
+                  >
+                    {/* Half-Yearly Exam Details */}
+                    <View style={styles.examDetailsCard}>
+                      <Text style={styles.examDetailsTitle}>
+                        <Ionicons
+                          name="book-outline"
+                          size={16}
+                          color="#3b82f6"
+                        />{" "}
+                        امتحان ۴.۵ ماهه (۴۰ نمره)
+                      </Text>
 
-                        {subject.halfYearlyExamDetails ? (
-                          <View style={styles.examDetailsContent}>
-                            <View style={styles.examDetailRow}>
-                              <Text style={styles.examDetailLabel}>
-                                نام درس
-                              </Text>
-                              <Text style={styles.examDetailValue}>
-                                {subject.subjectName}
-                              </Text>
-                            </View>
-                            <View style={styles.examDetailRow}>
-                              <Text style={styles.examDetailLabel}>تاریخ</Text>
-                              <Text style={styles.examDetailValue}>
-                                {formatDate(subject.halfYearlyExamDetails.date)}
-                              </Text>
-                            </View>
-                            <View style={styles.examDetailRow}>
-                              <Text style={styles.examDetailLabel}>نمره</Text>
-                              <Text
-                                style={[
-                                  styles.examDetailValue,
-                                  {
-                                    fontWeight: "bold",
-                                    color: subject.halfYearlyExam
-                                      ? getGradeColor(
-                                          subject.halfYearlyExam.marks,
-                                          40,
-                                        )
-                                      : "#6b7280",
-                                  },
-                                ]}
-                              >
-                                {subject.halfYearlyExam
-                                  ? `${Math.round(subject.halfYearlyExam.marks)} / ۴۰`
-                                  : "ثبت نشده"}
-                              </Text>
-                            </View>
-                            <View style={styles.examDetailRow}>
-                              <Text style={styles.examDetailLabel}>درجه</Text>
-                              <Text
-                                style={[
-                                  styles.examDetailValue,
-                                  {
-                                    fontWeight: "bold",
-                                    color: subject.halfYearlyExam
-                                      ? getGradeColor(
-                                          subject.halfYearlyExam.marks,
-                                          40,
-                                        )
-                                      : "#6b7280",
-                                  },
-                                ]}
-                              >
-                                {subject.halfYearlyGradeLetter || "-"}
-                              </Text>
-                            </View>
-                            {subject.halfYearlyExam?.feedback && (
-                              <View style={styles.examDetailRow}>
-                                <Text style={styles.examDetailLabel}>
-                                  نظر معلم
-                                </Text>
-                                <Text style={styles.examDetailValue}>
-                                  {subject.halfYearlyExam.feedback}
-                                </Text>
-                              </View>
-                            )}
-                          </View>
-                        ) : (
-                          <View style={styles.noExamData}>
-                            <Text style={styles.noExamDataText}>
-                              هنوز نمره امتحان ۴.۵ ماهه ثبت نشده است
-                            </Text>
-                          </View>
-                        )}
-                      </View>
-
-                      {/* Final Exam Details */}
-                      <View style={styles.examDetailsCard}>
-                        <Text style={styles.examDetailsTitle}>
-                          <Ionicons
-                            name="school-outline"
-                            size={16}
-                            color="#8b5cf6"
-                          />{" "}
-                          امتحان سالانه (۶۰ نمره)
-                        </Text>
-
-                        {subject.finalExamDetails ? (
-                          <View style={styles.examDetailsContent}>
-                            <View style={styles.examDetailRow}>
-                              <Text style={styles.examDetailLabel}>
-                                نام درس
-                              </Text>
-                              <Text style={styles.examDetailValue}>
-                                {subject.subjectName}
-                              </Text>
-                            </View>
-                            <View style={styles.examDetailRow}>
-                              <Text style={styles.examDetailLabel}>تاریخ</Text>
-                              <Text style={styles.examDetailValue}>
-                                {formatDate(subject.finalExamDetails.date)}
-                              </Text>
-                            </View>
-                            <View style={styles.examDetailRow}>
-                              <Text style={styles.examDetailLabel}>نمره</Text>
-                              <Text
-                                style={[
-                                  styles.examDetailValue,
-                                  {
-                                    fontWeight: "bold",
-                                    color: subject.finalExam
-                                      ? getGradeColor(
-                                          subject.finalExam.marks,
-                                          60,
-                                        )
-                                      : "#6b7280",
-                                  },
-                                ]}
-                              >
-                                {subject.finalExam
-                                  ? `${Math.round(subject.finalExam.marks)} / ۶۰`
-                                  : "ثبت نشده"}
-                              </Text>
-                            </View>
-                            <View style={styles.examDetailRow}>
-                              <Text style={styles.examDetailLabel}>درجه</Text>
-                              <Text
-                                style={[
-                                  styles.examDetailValue,
-                                  {
-                                    fontWeight: "bold",
-                                    color: subject.finalExam
-                                      ? getGradeColor(
-                                          subject.finalExam.marks,
-                                          60,
-                                        )
-                                      : "#6b7280",
-                                  },
-                                ]}
-                              >
-                                {subject.finalGradeLetter || "-"}
-                              </Text>
-                            </View>
-                            {subject.finalExam?.feedback && (
-                              <View style={styles.examDetailRow}>
-                                <Text style={styles.examDetailLabel}>
-                                  نظر معلم
-                                </Text>
-                                <Text style={styles.examDetailValue}>
-                                  {subject.finalExam.feedback}
-                                </Text>
-                              </View>
-                            )}
-                          </View>
-                        ) : (
-                          <View style={styles.noExamData}>
-                            <Text style={styles.noExamDataText}>
-                              هنوز نمره امتحان سالانه ثبت نشده است
-                            </Text>
-                          </View>
-                        )}
-                      </View>
-
-                      {/* Final Calculation */}
-                      <View style={styles.finalGradeContainer}>
-                        <Text style={styles.finalGradeTitle}>
-                          <Ionicons
-                            name="calculator-outline"
-                            size={16}
-                            color="#f59e0b"
-                          />{" "}
-                          محاسبه نمره نهایی
-                        </Text>
-
-                        <View style={styles.calculationRow}>
-                          <Text style={styles.calculationLabel}>
-                            ۴.۵ ماهه (۴۰ نمره)
-                          </Text>
-                          <Text style={styles.calculationValue}>
-                            {subject.halfYearlyExam
-                              ? `${Math.round(subject.halfYearlyExam.marks)} / ۴۰`
-                              : "۰ / ۴۰"}
-                          </Text>
-                        </View>
-                        <View style={styles.calculationRow}>
-                          <Text style={styles.calculationLabel}>
-                            سالانه (۶۰ نمره)
-                          </Text>
-                          <Text style={styles.calculationValue}>
-                            {subject.finalExam
-                              ? `${Math.round(subject.finalExam.marks)} / ۶۰`
-                              : "۰ / ۶۰"}
-                          </Text>
-                        </View>
-                        <View
-                          style={[
-                            styles.calculationRow,
-                            styles.calculationTotal,
-                          ]}
-                        >
-                          <Text style={styles.calculationLabel}>
-                            مجموع (۱۰۰ نمره)
-                          </Text>
-                          <Text
-                            style={[
-                              styles.calculationValue,
-                              styles.calculationTotalValue,
-                              { color: getGradeColor(subject.totalScore, 100) },
-                            ]}
-                          >
-                            {subject.totalScore} / ۱۰۰
-                            {"  "}
-                            <Text style={styles.calculationLetter}>
-                              ({subject.totalGradeLetter})
-                            </Text>
-                          </Text>
-                        </View>
-
-                        {/* Progress Bar */}
-                        <View style={styles.progressContainer}>
-                          <View style={styles.progressBar}>
-                            <View
+                      {subject.halfYearlyExam ? (
+                        <View style={styles.examDetailsContent}>
+                          <View style={styles.examDetailRow}>
+                            <Text style={styles.examDetailLabel}>نمره</Text>
+                            <Text
                               style={[
-                                styles.progressFill,
-                                {
-                                  width: `${subject.totalScore}%`,
-                                  backgroundColor: getGradeColor(
-                                    subject.totalScore,
-                                    100,
-                                  ),
-                                },
+                                styles.examDetailValue,
+                                { fontWeight: "bold" },
                               ]}
-                            />
+                            >
+                              {formatScore(subject.halfYearlyExam.marks, 40)}
+                            </Text>
                           </View>
-                          <Text style={styles.progressLabel}>
-                            {subject.status === "PASSED" ? "✅ قبول" : "❌ رد"}{" "}
-                            - {getGradeLabel(subject.totalScore, 100)}
-                          </Text>
+                          <View style={styles.examDetailRow}>
+                            <Text style={styles.examDetailLabel}>درجه</Text>
+                            <Text
+                              style={[
+                                styles.examDetailValue,
+                                { fontWeight: "bold" },
+                              ]}
+                            >
+                              {subject.halfYearlyGradeLetter || "-"}
+                            </Text>
+                          </View>
+                          {subject.halfYearlyExam.feedback && (
+                            <View style={styles.examDetailRow}>
+                              <Text style={styles.examDetailLabel}>
+                                نظر معلم
+                              </Text>
+                              <Text style={styles.examDetailValue}>
+                                {subject.halfYearlyExam.feedback}
+                              </Text>
+                            </View>
+                          )}
                         </View>
-                      </View>
-
-                      {/* Progress Tracking (Monthly & Weekly) */}
-                      {(subject.monthlyExams.length > 0 ||
-                        subject.weeklyAssessments.length > 0) && (
-                        <View style={styles.progressTrackingContainer}>
-                          <Text style={styles.progressTrackingTitle}>
-                            <Ionicons
-                              name="trending-up-outline"
-                              size={14}
-                              color="#6b7280"
-                            />{" "}
-                            پیگیری پیشرفت (جهت آگاهی)
+                      ) : (
+                        <View style={styles.noExamData}>
+                          <Text style={styles.noExamDataText}>
+                            نمره امتحان ۴.۵ ماهه ثبت نشده است
                           </Text>
-                          <Text style={styles.progressTrackingNote}>
-                            این نمرات فقط برای پیگیری پیشرفت شما هستند و در نمره
-                            نهایی تأثیری ندارند.
-                          </Text>
-
-                          <View style={styles.progressTrackingGrid}>
-                            {/* Monthly Exams */}
-                            {subject.monthlyExams.length > 0 && (
-                              <View style={styles.progressTrackingCard}>
-                                <Text style={styles.progressTrackingCardTitle}>
-                                  امتحانات ماهانه
-                                </Text>
-                                {subject.monthlyExams.map((exam, index) => (
-                                  <View
-                                    key={exam.id}
-                                    style={styles.progressTrackingRow}
-                                  >
-                                    <Text style={styles.progressTrackingLabel}>
-                                      ماه {index + 1}
-                                    </Text>
-                                    <Text
-                                      style={[
-                                        styles.progressTrackingValue,
-                                        {
-                                          color: getGradeColor(exam.marks, 20),
-                                        },
-                                      ]}
-                                    >
-                                      {formatScore(exam.marks, 20)}
-                                    </Text>
-                                  </View>
-                                ))}
-                                <View style={styles.progressTrackingAverage}>
-                                  <Text style={styles.progressTrackingAvgLabel}>
-                                    میانگین
-                                  </Text>
-                                  <Text style={styles.progressTrackingAvgValue}>
-                                    {subject.monthlyAverage.toFixed(1)} / ۲۰
-                                  </Text>
-                                </View>
-                              </View>
-                            )}
-
-                            {/* Weekly Assessments */}
-                            {subject.weeklyAssessments.length > 0 && (
-                              <View style={styles.progressTrackingCard}>
-                                <Text style={styles.progressTrackingCardTitle}>
-                                  ارزیابی هفتگی
-                                </Text>
-                                {subject.weeklyAssessments
-                                  .slice(0, 4)
-                                  .map((assessment) => (
-                                    <View
-                                      key={assessment.id}
-                                      style={styles.progressTrackingRow}
-                                    >
-                                      <Text
-                                        style={styles.progressTrackingLabel}
-                                      >
-                                        هفته {assessment.weekNumber || "?"}
-                                      </Text>
-                                      <Text
-                                        style={[
-                                          styles.progressTrackingValue,
-                                          {
-                                            color: getGradeColor(
-                                              assessment.marks,
-                                              100,
-                                            ),
-                                          },
-                                        ]}
-                                      >
-                                        {formatScore(assessment.marks, 100)}
-                                      </Text>
-                                    </View>
-                                  ))}
-                                {subject.weeklyAssessments.length > 4 && (
-                                  <Text style={styles.progressTrackingMore}>
-                                    + {subject.weeklyAssessments.length - 4}{" "}
-                                    مورد دیگر
-                                  </Text>
-                                )}
-                                <View style={styles.progressTrackingAverage}>
-                                  <Text style={styles.progressTrackingAvgLabel}>
-                                    میانگین
-                                  </Text>
-                                  <Text style={styles.progressTrackingAvgValue}>
-                                    {subject.weeklyAverage.toFixed(1)} / ۱۰۰
-                                  </Text>
-                                </View>
-                              </View>
-                            )}
-                          </View>
                         </View>
                       )}
                     </View>
-                  ),
-              )}
+
+                    {/* Final Exam Details */}
+                    <View style={styles.examDetailsCard}>
+                      <Text style={styles.examDetailsTitle}>
+                        <Ionicons
+                          name="school-outline"
+                          size={16}
+                          color="#8b5cf6"
+                        />{" "}
+                        امتحان سالانه (۶۰ نمره)
+                      </Text>
+
+                      {subject.finalExam ? (
+                        <View style={styles.examDetailsContent}>
+                          <View style={styles.examDetailRow}>
+                            <Text style={styles.examDetailLabel}>نمره</Text>
+                            <Text
+                              style={[
+                                styles.examDetailValue,
+                                { fontWeight: "bold" },
+                              ]}
+                            >
+                              {formatScore(subject.finalExam.marks, 60)}
+                            </Text>
+                          </View>
+                          <View style={styles.examDetailRow}>
+                            <Text style={styles.examDetailLabel}>درجه</Text>
+                            <Text
+                              style={[
+                                styles.examDetailValue,
+                                { fontWeight: "bold" },
+                              ]}
+                            >
+                              {subject.finalGradeLetter || "-"}
+                            </Text>
+                          </View>
+                          {subject.finalExam.feedback && (
+                            <View style={styles.examDetailRow}>
+                              <Text style={styles.examDetailLabel}>
+                                نظر معلم
+                              </Text>
+                              <Text style={styles.examDetailValue}>
+                                {subject.finalExam.feedback}
+                              </Text>
+                            </View>
+                          )}
+                        </View>
+                      ) : (
+                        <View style={styles.noExamData}>
+                          <Text style={styles.noExamDataText}>
+                            نمره امتحان سالانه ثبت نشده است
+                          </Text>
+                        </View>
+                      )}
+                    </View>
+
+                    {/* Final Calculation */}
+                    <View style={styles.finalGradeContainer}>
+                      <Text style={styles.finalGradeTitle}>
+                        <Ionicons
+                          name="calculator-outline"
+                          size={16}
+                          color="#f59e0b"
+                        />{" "}
+                        محاسبه نمره نهایی
+                      </Text>
+
+                      <View style={styles.calculationRow}>
+                        <Text style={styles.calculationLabel}>
+                          ۴.۵ ماهه (۴۰ نمره)
+                        </Text>
+                        <Text style={styles.calculationValue}>
+                          {subject.halfYearlyExam
+                            ? `${Math.round(subject.halfYearlyExam.marks)} / ۴۰`
+                            : "۰ / ۴۰"}
+                        </Text>
+                      </View>
+                      <View style={styles.calculationRow}>
+                        <Text style={styles.calculationLabel}>
+                          سالانه (۶۰ نمره)
+                        </Text>
+                        <Text style={styles.calculationValue}>
+                          {subject.finalExam
+                            ? `${Math.round(subject.finalExam.marks)} / ۶۰`
+                            : "۰ / ۶۰"}
+                        </Text>
+                      </View>
+                      <View
+                        style={[styles.calculationRow, styles.calculationTotal]}
+                      >
+                        <Text style={styles.calculationLabel}>
+                          مجموع (۱۰۰ نمره)
+                        </Text>
+                        <Text
+                          style={[
+                            styles.calculationValue,
+                            styles.calculationTotalValue,
+                            { color: getGradeColorUI(subject.totalScore, 100) },
+                          ]}
+                        >
+                          {subject.totalScore} / ۱۰۰
+                          {"  "}
+                          <Text style={styles.calculationLetter}>
+                            ({subject.totalGradeLetter})
+                          </Text>
+                        </Text>
+                      </View>
+
+                      {/* Progress Bar */}
+                      <View style={styles.progressContainer}>
+                        <View style={styles.progressBar}>
+                          <View
+                            style={[
+                              styles.progressFill,
+                              {
+                                width: `${Math.min(subject.totalScore, 100)}%`,
+                                backgroundColor: getGradeColorUI(
+                                  subject.totalScore,
+                                  100,
+                                ),
+                              },
+                            ]}
+                          />
+                        </View>
+                        <Text style={styles.progressLabel}>
+                          {subject.status === "PASSED" ? "✅ قبول" : "❌ رد"}
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
+                ),
+            )}
 
             {/* Performance Summary */}
-            {currentTermGrades.subjects && (
+            {safeSubjects.length > 0 && (
               <View style={styles.performanceContainer}>
                 <Text style={styles.sectionTitle}>خلاصه عملکرد</Text>
                 <View style={styles.performanceGrid}>
@@ -1219,16 +935,14 @@ export default function GradesScreen() {
                       color="#22c55e"
                     />
                     <Text style={styles.performanceValue}>
-                      {calculateTermStats(currentTermGrades.subjects).passed ||
-                        0}
+                      {calculateTermStats(safeSubjects).passed || 0}
                     </Text>
                     <Text style={styles.performanceLabel}>قبول</Text>
                   </View>
                   <View style={styles.performanceItem}>
                     <Ionicons name="close-circle" size={20} color="#dc2626" />
                     <Text style={styles.performanceValue}>
-                      {calculateTermStats(currentTermGrades.subjects).failed ||
-                        0}
+                      {calculateTermStats(safeSubjects).failed || 0}
                     </Text>
                     <Text style={styles.performanceLabel}>رد</Text>
                   </View>
@@ -1571,6 +1285,10 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: Colors.text,
   },
+  tableCellWrapper: {
+    alignItems: "center",
+    justifyContent: "center",
+  },
   subjectNameCell: {
     fontWeight: "500",
     color: Colors.text,
@@ -1748,86 +1466,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "500",
     color: Colors.text,
-  },
-  progressTrackingContainer: {
-    backgroundColor: "#fff",
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: "#e2e8f0",
-    marginBottom: 12,
-    overflow: "hidden",
-  },
-  progressTrackingTitle: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: Colors.text,
-    padding: 12,
-    backgroundColor: "#f8fafc",
-    borderBottomWidth: 1,
-    borderBottomColor: "#e2e8f0",
-  },
-  progressTrackingNote: {
-    fontSize: 11,
-    color: Colors.textSecondary,
-    fontStyle: "italic",
-    paddingHorizontal: 12,
-    paddingTop: 8,
-  },
-  progressTrackingGrid: {
-    padding: 12,
-    flexDirection: "row",
-    gap: 12,
-  },
-  progressTrackingCard: {
-    flex: 1,
-    backgroundColor: "#f8fafc",
-    borderRadius: 8,
-    padding: 10,
-  },
-  progressTrackingCardTitle: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: Colors.text,
-    marginBottom: 6,
-  },
-  progressTrackingRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    paddingVertical: 3,
-    borderBottomWidth: 1,
-    borderBottomColor: "#e2e8f0",
-  },
-  progressTrackingLabel: {
-    fontSize: 11,
-    color: Colors.textSecondary,
-  },
-  progressTrackingValue: {
-    fontSize: 11,
-    fontWeight: "500",
-  },
-  progressTrackingAverage: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    paddingTop: 6,
-    marginTop: 6,
-    borderTopWidth: 1,
-    borderTopColor: "#e2e8f0",
-  },
-  progressTrackingAvgLabel: {
-    fontSize: 11,
-    color: Colors.textSecondary,
-    fontWeight: "500",
-  },
-  progressTrackingAvgValue: {
-    fontSize: 12,
-    fontWeight: "bold",
-    color: Colors.text,
-  },
-  progressTrackingMore: {
-    fontSize: 10,
-    color: Colors.textSecondary,
-    textAlign: "center",
-    marginTop: 4,
   },
   performanceContainer: {
     paddingHorizontal: 16,

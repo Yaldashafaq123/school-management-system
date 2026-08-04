@@ -1,19 +1,19 @@
-// app/(admin)/financial/fees/templates/index.tsx
-import React, { useEffect, useState, useCallback } from "react";
+import { EmptyState } from "@/components/finance/EmptyState";
+import { FeeTemplate, financeApi } from "@/src/config/financeApi";
+import { Ionicons } from "@expo/vector-icons";
+import { useRouter } from "expo-router";
+import { useCallback, useEffect, useState } from "react";
 import {
-  View,
-  Text,
-  StyleSheet,
-  FlatList,
-  TouchableOpacity,
-  RefreshControl,
   ActivityIndicator,
   Alert,
+  FlatList,
+  RefreshControl,
+  SafeAreaView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
-import { useRouter } from "expo-router";
-import { Ionicons } from "@expo/vector-icons";
-import { financeApi, FeeTemplate } from "@/src/config/financeApi";
-import { EmptyState } from "@/components/finance/EmptyState";
 
 export default function TemplatesListScreen() {
   const router = useRouter();
@@ -42,31 +42,28 @@ export default function TemplatesListScreen() {
   }, []);
 
   const handleDelete = (template: FeeTemplate) => {
-    Alert.alert(
-      "حذف قالب",
-      `آیا از حذف "${template.name}" مطمئن هستید؟`,
-      [
-        { text: "لغو", style: "cancel" },
-        {
-          text: "حذف",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              await financeApi.deleteFeeTemplate(template.id);
-              setTemplates(prev => prev.filter(t => t.id !== template.id));
-              Alert.alert("موفقیت", "قالب با موفقیت حذف شد");
-            } catch (error: any) {
-              Alert.alert("خطا", error.message || "حذف با مشکل مواجه شد");
-            }
-          },
+    Alert.alert("حذف قالب", `آیا از حذف "${template.name}" مطمئن هستید؟`, [
+      { text: "لغو", style: "cancel" },
+      {
+        text: "حذف",
+        style: "destructive",
+        onPress: async () => {
+          try {
+            await financeApi.deleteFeeTemplate(template.id);
+            setTemplates((prev) => prev.filter((t) => t.id !== template.id));
+            Alert.alert("موفقیت", "قالب با موفقیت حذف شد");
+          } catch (error: any) {
+            Alert.alert("خطا", error.message || "حذف با مشکل مواجه شد");
+          }
         },
-      ]
-    );
+      },
+    ]);
   };
 
   const renderTemplate = ({ item }: { item: FeeTemplate }) => {
     const totalAmount = item.templateItems.reduce(
-      (sum, i) => sum + Number(i.amount), 0
+      (sum, i) => sum + Number(i.amount),
+      0,
     );
 
     return (
@@ -90,7 +87,9 @@ export default function TemplatesListScreen() {
           <View style={styles.cardActions}>
             <TouchableOpacity
               style={styles.editButton}
-              onPress={() => router.push(`/financial/fees/templates/${item.id}`)}
+              onPress={() =>
+                router.push(`/financial/fees/templates/${item.id}`)
+              }
             >
               <Ionicons name="create-outline" size={18} color="#3b82f6" />
             </TouchableOpacity>
@@ -125,18 +124,24 @@ export default function TemplatesListScreen() {
         </View>
 
         <View style={styles.cardFooter}>
-          <View style={[
-            styles.statusBadge,
-            { backgroundColor: item.isActive ? "#d1fae5" : "#f1f5f9" }
-          ]}>
-            <View style={[
-              styles.statusDot,
-              { backgroundColor: item.isActive ? "#10b981" : "#94a3b8" }
-            ]} />
-            <Text style={[
-              styles.statusText,
-              { color: item.isActive ? "#059669" : "#64748b" }
-            ]}>
+          <View
+            style={[
+              styles.statusBadge,
+              { backgroundColor: item.isActive ? "#d1fae5" : "#f1f5f9" },
+            ]}
+          >
+            <View
+              style={[
+                styles.statusDot,
+                { backgroundColor: item.isActive ? "#10b981" : "#94a3b8" },
+              ]}
+            />
+            <Text
+              style={[
+                styles.statusText,
+                { color: item.isActive ? "#059669" : "#64748b" },
+              ]}
+            >
               {item.isActive ? "فعال" : "غیرفعال"}
             </Text>
           </View>
@@ -148,15 +153,15 @@ export default function TemplatesListScreen() {
 
   if (loading) {
     return (
-      <View style={styles.loadingContainer}>
+      <SafeAreaView style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#06b6d4" />
         <Text style={styles.loadingText}>در حال بارگذاری...</Text>
-      </View>
+      </SafeAreaView>
     );
   }
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()}>
@@ -193,11 +198,14 @@ export default function TemplatesListScreen() {
           keyExtractor={(item) => item.id.toString()}
           contentContainerStyle={styles.listContent}
           refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={fetchTemplates} />
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={fetchTemplates}
+            />
           }
         />
       )}
-    </View>
+    </SafeAreaView>
   );
 }
 

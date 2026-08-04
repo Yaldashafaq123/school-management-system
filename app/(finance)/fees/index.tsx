@@ -1,4 +1,3 @@
-// app/(admin)/financial/fees/index.tsx
 import { EmptyState } from "@/components/finance/EmptyState";
 import { FilterBar } from "@/components/finance/FilterBar";
 import {
@@ -13,6 +12,7 @@ import {
   ActivityIndicator,
   FlatList,
   RefreshControl,
+  SafeAreaView,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -267,7 +267,7 @@ export default function FeesListScreen() {
   }
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()}>
@@ -326,7 +326,7 @@ export default function FeesListScreen() {
           }
         />
       )}
-    </View>
+    </SafeAreaView>
   );
 }
 

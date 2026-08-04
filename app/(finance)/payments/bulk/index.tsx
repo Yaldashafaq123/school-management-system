@@ -1,18 +1,18 @@
-// app/(admin)/financial/payments/bulk/index.tsx
-import React, { useEffect, useState } from "react";
-import {
-  View,
-  Text,
-  StyleSheet,
-  FlatList,
-  TouchableOpacity,
-  ActivityIndicator,
-  RefreshControl,
-} from "react-native";
-import { useRouter } from "expo-router";
-import { Ionicons } from "@expo/vector-icons";
-import { financeApi, ClassItem } from "@/src/config/financeApi";
 import { EmptyState } from "@/components/finance/EmptyState";
+import { ClassItem, financeApi } from "@/src/config/financeApi";
+import { Ionicons } from "@expo/vector-icons";
+import { useRouter } from "expo-router";
+import { useEffect, useState } from "react";
+import {
+  ActivityIndicator,
+  FlatList,
+  RefreshControl,
+  SafeAreaView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
 
 export default function BulkPaymentClassSelectionScreen() {
   const router = useRouter();
@@ -56,9 +56,7 @@ export default function BulkPaymentClassSelectionScreen() {
         <Text style={styles.className}>
           {item.name} {item.section ? `- ${item.section}` : ""}
         </Text>
-        <Text style={styles.classCount}>
-          {item.studentCount} شاگرد
-        </Text>
+        <Text style={styles.classCount}>{item.studentCount} شاگرد</Text>
       </View>
       <View style={styles.classArrow}>
         <Ionicons name="chevron-forward" size={24} color="#94a3b8" />
@@ -68,15 +66,15 @@ export default function BulkPaymentClassSelectionScreen() {
 
   if (loading) {
     return (
-      <View style={styles.loadingContainer}>
+      <SafeAreaView style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#8b5cf6" />
         <Text style={styles.loadingText}>در حال بارگذاری صنف‌ها...</Text>
-      </View>
+      </SafeAreaView>
     );
   }
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()}>
@@ -112,7 +110,7 @@ export default function BulkPaymentClassSelectionScreen() {
           ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
         />
       )}
-    </View>
+    </SafeAreaView>
   );
 }
 

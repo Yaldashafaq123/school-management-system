@@ -3,9 +3,6 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { BASE_URL } from "./api";
 
 // ==================== TYPES ====================
-// src/config/financeApi.ts - Add these methods to the FinanceApi class
-
-// ==================== FINANCE PROFILE ====================
 
 export interface FinanceProfile {
   user: {
@@ -60,8 +57,6 @@ export interface FinanceStats {
     salary: number | null;
   };
 }
-
-// Add to FinanceApi class:
 
 export interface FeeTemplate {
   id: number;
@@ -439,6 +434,7 @@ class FinanceApi {
       throw error;
     }
   }
+
   async getProfile(): Promise<{ success: boolean; data: FinanceProfile }> {
     return this.request("/profile");
   }
@@ -470,6 +466,7 @@ class FinanceApi {
       body: JSON.stringify(data),
     });
   }
+
   // ==================== DASHBOARD ====================
   async getDashboard(): Promise<{ success: boolean; data: DashboardSummary }> {
     return this.request("/dashboard/summary");
@@ -532,7 +529,6 @@ class FinanceApi {
       if (result && typeof result === "object") {
         const response = result as any;
         if (response.data && Array.isArray(response.data)) {
-          // Ensure items are properly mapped
           return response.data.map((template: any) => ({
             ...template,
             items: template.items || template.templateItems || [],
@@ -845,11 +841,8 @@ class FinanceApi {
     const qs = query.toString();
     return this.request(`/payment-history${qs ? `?${qs}` : ""}`);
   }
-  // Add this method to the FinanceApi class in financeApi.ts
 
-  // src/config/financeApi.ts - Add/replace this method
-
-  // ==================== STUDENTS ====================
+  // ==================== STUDENTS BY CLASS ====================
   async getStudentsByClass(classId: number): Promise<Student[]> {
     try {
       console.log(`📡 Fetching students for class ${classId}...`);
@@ -860,22 +853,18 @@ class FinanceApi {
 
       console.log(`📡 Students response:`, JSON.stringify(result, null, 2));
 
-      // Handle different response formats
       let studentsData: any[] = [];
 
       if (result && typeof result === "object") {
         const response = result as any;
 
-        // Check for data property that might be an array or object
         if (response.data) {
           if (Array.isArray(response.data)) {
             studentsData = response.data;
           } else if (typeof response.data === "object") {
-            // If data is an object with students property
             if (Array.isArray(response.data.students)) {
               studentsData = response.data.students;
             } else {
-              // Try to extract array from data object
               const values = Object.values(response.data);
               if (values.length > 0 && Array.isArray(values[0])) {
                 studentsData = values[0];
@@ -884,18 +873,14 @@ class FinanceApi {
           }
         }
 
-        // If response itself is an array
         if (Array.isArray(response)) {
           studentsData = response;
         }
       }
 
-      // Map students to expected format
       return studentsData.map((item: any) => {
-        // Try to find the user object in different possible locations
         let user = item.user || item.User || item._user || {};
 
-        // If user is not found, try to construct from available data
         if (!user || typeof user !== "object") {
           user = {
             fullName:
@@ -908,7 +893,6 @@ class FinanceApi {
           };
         }
 
-        // If user exists but fullName is missing, try other fields
         if (!user.fullName) {
           user.fullName =
             item.fullName ||
@@ -930,7 +914,7 @@ class FinanceApi {
             item.roll_number ||
             null,
           user: {
-            fullName: user.fullName || `داjjjjjنش‌آموز #${item.id}`,
+            fullName: user.fullName || `دانش‌آموز #${item.id}`,
             email: user.email || item.email || "",
             phone: user.phone || item.phone || "",
           },
@@ -942,6 +926,7 @@ class FinanceApi {
       return [];
     }
   }
+
   // ==================== BULK COLLECTION ====================
   async getClassesList(): Promise<{ success: boolean; data: ClassItem[] }> {
     return this.request("/classes-list");
@@ -1198,6 +1183,127 @@ class FinanceApi {
     if (params?.classId) query.append("classId", params.classId.toString());
     const qs = query.toString();
     return this.request(`/debug/fee-plans${qs ? `?${qs}` : ""}`);
+  }
+
+  // ==================== STUDENT FEE COLLECTION ====================
+
+  async searchStudentsByIdOrName(query: string): Promise<{ success: boolean; data: any[] }> {
+    return this.request(`/students/search?q=${encodeURIComponent(query)}`);
+  }
+
+  async getStudentFeeInfo(studentId: number): Promise<{ success: boolean; data: any }> {
+    return this.request(`/students/${studentId}/fee-info`);
+  }
+
+  async getStudentsByClassForCollection(classId: number): Promise<{ success: boolean; data: any[] }> {
+    return this.request(`/students/by-class/${classId}/collection`);
+  }
+
+  async getFeeInstallmentMonths(studentId: number, academicYearId: number): Promise<{ success: boolean; data: any[] }> {
+    return this.request(`/students/${studentId}/installments?academicYearId=${academicYearId}`);
+  }
+
+  async recordStudentFeePayment(data: {
+    studentId: number;
+    academicYearId: number;
+    month: number;
+    year: number;
+    admissionFee?: number;
+    tuitionFee: number;
+    transportFee?: number;
+    otherFees?: number;
+    discount?: number;
+    payment: number;
+    paymentMethod: string;
+    date: string;
+    details?: string;
+    billNo?: string;
+  }): Promise<{ success: boolean; data: any }> {
+    return this.request("/student-fee-payment", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async getStudentFeeHistory(studentId: number): Promise<{ success: boolean; data: any[] }> {
+    return this.request(`/students/${studentId}/fee-history`);
+  }
+
+  async updateStudentFeeRecord(id: number, data: {
+    payment?: number;
+    discount?: number;
+    details?: string;
+    date?: string;
+  }): Promise<{ success: boolean; data: any }> {
+    return this.request(`/student-fee-payment/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteStudentFeeRecord(id: number): Promise<{ success: boolean; message: string }> {
+    return this.request(`/student-fee-payment/${id}`, {
+      method: "DELETE",
+    });
+  }
+
+  async generateBillNumber(): Promise<{ success: boolean; data: { billNo: string } }> {
+    return this.request("/generate-bill-number");
+  }
+
+  async getClassTimeOptions(): Promise<{ success: boolean; data: Array<{ value: number; label: string }> }> {
+    return this.request("/class-time-options");
+  }
+
+  async getClassesByTime(time: number): Promise<{ success: boolean; data: Array<{
+    id: number;
+    name: string;
+    section?: string;
+    studentCount: number;
+  }> }> {
+    return this.request(`/classes-by-time?time=${time}`);
+  }
+
+  async getStudentsByClassAndTime(classId: number, time: number): Promise<{ success: boolean; data: Array<{
+    id: number;
+    name: string;
+    fatherName: string;
+    phone: string;
+  }> }> {
+    return this.request(`/students/by-class-time?classId=${classId}&time=${time}`);
+  }
+
+  async applyZeroBalance(data: {
+    studentId: number;
+    academicYearId: number;
+    month: number;
+    year: number;
+  }): Promise<{ success: boolean; data: any; message: string }> {
+    return this.request("/apply-zero-balance", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async getMonthlyFeeDetails(studentId: number, month: number, year: number): Promise<{ success: boolean; data: any }> {
+    return this.request(`/students/${studentId}/monthly-fee?month=${month}&year=${year}`);
+  }
+
+  async getStudentById(studentId: number): Promise<{ success: boolean; data: any }> {
+    return this.request(`/students/${studentId}`);
+  }
+
+  async getClassFeeStructure(classId: number, academicYearId: number): Promise<{ success: boolean; data: any }> {
+    return this.request(`/classes/${classId}/fee-structure?academicYearId=${academicYearId}`);
+  }
+
+  async getSchoolFeeSettings(): Promise<{ success: boolean; data: {
+    feesType: number;
+    eduType: number;
+    discountAllowness: number;
+    feesPayment: number;
+  } }> {
+    return this.request("/school-fee-settings");
   }
 }
 

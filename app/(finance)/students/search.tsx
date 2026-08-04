@@ -1,23 +1,23 @@
-// app/(admin)/financial/students/search.tsx
 import { EmptyState } from "@/components/finance/EmptyState";
 import { OutstandingBadge } from "@/components/finance/OutstandingBadge";
 import {
-    financeApi,
-    formatCurrency,
-    StudentFeeStatus,
+  financeApi,
+  formatCurrency,
+  StudentFeeStatus,
 } from "@/src/config/financeApi";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import {
-    ActivityIndicator,
-    FlatList,
-    Keyboard,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  FlatList,
+  Keyboard,
+  SafeAreaView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
 
 export default function SearchStudentsScreen() {
@@ -120,7 +120,7 @@ export default function SearchStudentsScreen() {
   );
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()}>
@@ -203,7 +203,7 @@ export default function SearchStudentsScreen() {
           <Text style={styles.initialSubtext}>حداقل ۲ حرف وارد کنید</Text>
         </View>
       )}
-    </View>
+    </SafeAreaView>
   );
 }
 
@@ -271,6 +271,7 @@ const styles = StyleSheet.create({
   chipRow: {
     flexDirection: "row",
     gap: 8,
+    flexWrap: "wrap",
   },
   chip: {
     paddingHorizontal: 14,
@@ -279,6 +280,7 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     borderWidth: 1,
     borderColor: "#e2e8f0",
+    marginBottom: 4,
   },
   chipText: {
     fontSize: 13,

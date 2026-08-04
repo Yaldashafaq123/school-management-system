@@ -1,23 +1,23 @@
 // app/(finance)/(tabs)/index.tsx
 import { useAuth } from "@/contexts/AuthContext";
 import {
-    DashboardSummary,
-    financeApi,
-    formatCurrency,
+  DashboardSummary,
+  financeApi,
+  formatCurrency,
 } from "@/src/config/financeApi";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import {
-    ActivityIndicator,
-    Dimensions,
-    RefreshControl,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Dimensions,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
 
 const { width } = Dimensions.get("window");
@@ -94,7 +94,7 @@ const FINANCE_SECTIONS = [
   },
   {
     id: "students",
-    title: "شاگردان بدهکار",
+    title: "شاگردان باقیدار",
     subtitle: "لیست بدهی شاگردان",
     icon: "people-outline",
     iconPack: "Ionicons",

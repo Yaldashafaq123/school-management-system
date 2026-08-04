@@ -1,4 +1,3 @@
-// app/(admin)/financial/expenses/index.tsx
 import { EmptyState } from "@/components/finance/EmptyState";
 import { FilterBar } from "@/components/finance/FilterBar";
 import { FinanceCard } from "@/components/finance/FinanceCard";
@@ -7,14 +6,15 @@ import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
 import {
-    ActivityIndicator,
-    FlatList,
-    RefreshControl,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  FlatList,
+  RefreshControl,
+  SafeAreaView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
 
 const TIME_FILTERS = [
@@ -176,14 +176,14 @@ export default function ExpensesListScreen() {
 
   if (loading && expenses.length === 0) {
     return (
-      <View style={styles.loadingContainer}>
+      <SafeAreaView style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#ef4444" />
-      </View>
+      </SafeAreaView>
     );
   }
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()}>
@@ -282,7 +282,7 @@ export default function ExpensesListScreen() {
           />
         </>
       )}
-    </View>
+    </SafeAreaView>
   );
 }
 

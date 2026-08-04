@@ -1,23 +1,27 @@
-// app/(admin)/financial/students/index.tsx
-import React, { useEffect, useState, useCallback } from "react";
-import {
-  View,
-  Text,
-  StyleSheet,
-  FlatList,
-  TouchableOpacity,
-  RefreshControl,
-  ActivityIndicator,
-  TextInput,
-  Linking,
-  Alert,
-} from "react-native";
-import { useRouter } from "expo-router";
-import { Ionicons } from "@expo/vector-icons";
-import { financeApi, StudentFeeStatus, formatCurrency, getMonthName } from "@/src/config/financeApi";
+import { EmptyState } from "@/components/finance/EmptyState";
 import { FilterBar } from "@/components/finance/FilterBar";
 import { OutstandingBadge } from "@/components/finance/OutstandingBadge";
-import { EmptyState } from "@/components/finance/EmptyState";
+import {
+  financeApi,
+  formatCurrency,
+  StudentFeeStatus
+} from "@/src/config/financeApi";
+import { Ionicons } from "@expo/vector-icons";
+import { useRouter } from "expo-router";
+import { useCallback, useEffect, useState } from "react";
+import {
+  ActivityIndicator,
+  Alert,
+  FlatList,
+  Linking,
+  RefreshControl,
+  SafeAreaView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from "react-native";
 
 const CLASS_FILTERS = [
   { key: "all", label: "همه صنوف", icon: "people-outline" },
@@ -28,7 +32,9 @@ const CLASS_FILTERS = [
 export default function PendingStudentsScreen() {
   const router = useRouter();
   const [students, setStudents] = useState<StudentFeeStatus[]>([]);
-  const [filteredStudents, setFilteredStudents] = useState<StudentFeeStatus[]>([]);
+  const [filteredStudents, setFilteredStudents] = useState<StudentFeeStatus[]>(
+    [],
+  );
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [filter, setFilter] = useState("all");
@@ -55,25 +61,30 @@ export default function PendingStudentsScreen() {
     fetchStudents();
   }, []);
 
-  const applyFilters = (data: StudentFeeStatus[], currentFilter: string, query: string) => {
+  const applyFilters = (
+    data: StudentFeeStatus[],
+    currentFilter: string,
+    query: string,
+  ) => {
     let filtered = [...data];
 
     // Apply status filter
     if (currentFilter === "pending") {
-      filtered = filtered.filter(s => s.totalPending > 0);
+      filtered = filtered.filter((s) => s.totalPending > 0);
     } else if (currentFilter === "overdue") {
-      filtered = filtered.filter(s => 
-        s.pendingFees?.some(f => f.status === "OVERDUE")
+      filtered = filtered.filter((s) =>
+        s.pendingFees?.some((f) => f.status === "OVERDUE"),
       );
     }
 
     // Apply search
     if (query.trim()) {
       const searchLower = query.toLowerCase();
-      filtered = filtered.filter(s =>
-        s.name?.toLowerCase().includes(searchLower) ||
-        s.phone?.includes(query) ||
-        s.className?.toLowerCase().includes(searchLower)
+      filtered = filtered.filter(
+        (s) =>
+          s.name?.toLowerCase().includes(searchLower) ||
+          s.phone?.includes(query) ||
+          s.className?.toLowerCase().includes(searchLower),
       );
     }
 
@@ -104,22 +115,24 @@ export default function PendingStudentsScreen() {
   };
 
   const handleNotify = (student: StudentFeeStatus) => {
-    Alert.alert(
-      "ارسال اطلاعیه",
-      `ارسال اطلاعیه پرداخت به ${student.name}؟`,
-      [
-        { text: "لغو", style: "cancel" },
-        {
-          text: "ارسال",
-          onPress: () => {
-            Alert.alert("موفقیت", "اطلاعیه ارسال شد");
-          },
+    Alert.alert("ارسال اطلاعیه", `ارسال اطلاعیه پرداخت به ${student.name}؟`, [
+      { text: "لغو", style: "cancel" },
+      {
+        text: "ارسال",
+        onPress: () => {
+          Alert.alert("موفقیت", "اطلاعیه ارسال شد");
         },
-      ]
-    );
+      },
+    ]);
   };
 
-  const renderStudent = ({ item, index }: { item: StudentFeeStatus; index: number }) => (
+  const renderStudent = ({
+    item,
+    index,
+  }: {
+    item: StudentFeeStatus;
+    index: number;
+  }) => (
     <TouchableOpacity
       style={styles.studentCard}
       onPress={() => router.push(`/financial/students/${item.id}`)}
@@ -127,11 +140,16 @@ export default function PendingStudentsScreen() {
     >
       {/* Rank Badge */}
       {item.totalPending > 0 && index < 3 && (
-        <View style={[styles.rankBadge, 
-          index === 0 ? styles.rankGold :
-          index === 1 ? styles.rankSilver :
-          styles.rankBronze
-        ]}>
+        <View
+          style={[
+            styles.rankBadge,
+            index === 0
+              ? styles.rankGold
+              : index === 1
+                ? styles.rankSilver
+                : styles.rankBronze,
+          ]}
+        >
           <Text style={styles.rankText}>{index + 1}</Text>
         </View>
       )}
@@ -147,9 +165,7 @@ export default function PendingStudentsScreen() {
             {item.className || "بدون صنف"}
             {item.classSection ? ` - ${item.classSection}` : ""}
           </Text>
-          {item.phone && (
-            <Text style={styles.studentPhone}>{item.phone}</Text>
-          )}
+          {item.phone && <Text style={styles.studentPhone}>{item.phone}</Text>}
         </View>
         <View style={styles.statusContainer}>
           {item.totalPending > 0 ? (
@@ -159,10 +175,7 @@ export default function PendingStudentsScreen() {
               type="danger"
             />
           ) : (
-            <OutstandingBadge
-              type="success"
-              label="پرداخت شده"
-            />
+            <OutstandingBadge type="success" label="پرداخت شده" />
           )}
         </View>
       </View>
@@ -176,7 +189,8 @@ export default function PendingStudentsScreen() {
                 styles.progressFill,
                 {
                   width: `${Math.round((item.totalPaid / item.totalFees) * 100)}%`,
-                  backgroundColor: item.totalPending > 0 ? "#f59e0b" : "#10b981",
+                  backgroundColor:
+                    item.totalPending > 0 ? "#f59e0b" : "#10b981",
                 },
               ]}
             />
@@ -192,12 +206,18 @@ export default function PendingStudentsScreen() {
         <View style={styles.pendingFeesContainer}>
           {item.pendingFees.slice(0, 3).map((fee, idx) => (
             <View key={idx} style={styles.pendingFeeItem}>
-              <View style={[
-                styles.pendingFeeDot,
-                { backgroundColor: fee.status === "OVERDUE" ? "#ef4444" : "#f59e0b" }
-              ]} />
+              <View
+                style={[
+                  styles.pendingFeeDot,
+                  {
+                    backgroundColor:
+                      fee.status === "OVERDUE" ? "#ef4444" : "#f59e0b",
+                  },
+                ]}
+              />
               <Text style={styles.pendingFeeText} numberOfLines={1}>
-                {fee.monthName || fee.status} - {formatCurrency(fee.balanceAmount)}
+                {fee.monthName || fee.status} -{" "}
+                {formatCurrency(fee.balanceAmount)}
               </Text>
             </View>
           ))}
@@ -230,7 +250,9 @@ export default function PendingStudentsScreen() {
         {item.totalPending > 0 && (
           <TouchableOpacity
             style={[styles.actionBtn, styles.payBtn]}
-            onPress={() => router.push(`/financial/payments/record?studentId=${item.id}`)}
+            onPress={() =>
+              router.push(`/financial/payments/record?studentId=${item.id}`)
+            }
           >
             <Ionicons name="wallet-outline" size={16} color="#fff" />
             <Text style={styles.payText}>پرداخت</Text>
@@ -242,15 +264,15 @@ export default function PendingStudentsScreen() {
 
   if (loading) {
     return (
-      <View style={styles.loadingContainer}>
+      <SafeAreaView style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#3b82f6" />
         <Text style={styles.loadingText}>در حال بارگذاری شاگردان...</Text>
-      </View>
+      </SafeAreaView>
     );
   }
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()}>
@@ -270,7 +292,9 @@ export default function PendingStudentsScreen() {
         <View style={styles.summaryBanner}>
           <View style={styles.summaryItem}>
             <Ionicons name="people" size={18} color="#3b82f6" />
-            <Text style={styles.summaryValue}>{summary.studentsWithPending || filteredStudents.length}</Text>
+            <Text style={styles.summaryValue}>
+              {summary.studentsWithPending || filteredStudents.length}
+            </Text>
             <Text style={styles.summaryLabel}>شاگرد بدهکار</Text>
           </View>
           <View style={styles.summaryDivider} />
@@ -324,7 +348,11 @@ export default function PendingStudentsScreen() {
         <EmptyState
           icon="checkmark-circle-outline"
           title={searchQuery ? "شاگردی پیدا نشد" : "همه پرداخت کرده‌اند"}
-          subtitle={searchQuery ? "جستجوی دیگری انجام دهید" : "هیچ شاگرد بدهکاری وجود ندارد"}
+          subtitle={
+            searchQuery
+              ? "جستجوی دیگری انجام دهید"
+              : "هیچ شاگرد بدهکاری وجود ندارد"
+          }
           actionLabel={searchQuery ? undefined : "مشاهده همه شاگردان"}
           onAction={searchQuery ? undefined : () => handleFilterChange("all")}
         />
@@ -339,7 +367,7 @@ export default function PendingStudentsScreen() {
           }
         />
       )}
-    </View>
+    </SafeAreaView>
   );
 }
 

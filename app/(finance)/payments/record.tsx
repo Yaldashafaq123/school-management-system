@@ -1,164 +1,210 @@
-// app/(admin)/financial/payments/record.tsx
-import { AmountInput } from "@/components/finance/AmountInput";
-import { PaymentMethodPicker } from "@/components/finance/PaymentMethodPicker";
-import { StudentSearchInput } from "@/components/finance/StudentSearchInput";
 import { financeApi, formatCurrency } from "@/src/config/financeApi";
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import {
-    ActivityIndicator,
-    Alert,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Alert,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
 
-// Need to import TextInput
-import { TextInput } from "react-native";
-
-interface PendingFee {
-  id: number;
-  type: "monthly" | "one-time";
-  name: string;
-  month?: string;
-  monthName?: string;
-  year?: number;
-  amount: number;
-  balance: number;
-  recordId?: number;
-  itemId?: number;
+interface FeeData {
+  studentId: number;
+  studentName: string;
+  fatherName: string;
+  phone: string;
+  className: string;
+  classTime: string;
+  admissionDate: string;
+  admissionFee: number;
+  tuitionFee: number;
+  transportFee: number;
+  discount: number;
+  payable: number;
+  payment: number;
+  remain: number;
+  month: number;
+  year: number;
+  details: string;
 }
 
 export default function RecordPaymentScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
   const [loading, setLoading] = useState(false);
-  const [step, setStep] = useState<"student" | "fee" | "payment">("student");
+  const [searchLoading, setSearchLoading] = useState(false);
 
-  // Student
+  // Student Search
+  const [studentId, setStudentId] = useState("");
+  const [studentName, setStudentName] = useState("");
+  const [searchResults, setSearchResults] = useState<any[]>([]);
   const [selectedStudent, setSelectedStudent] = useState<any>(null);
 
-  // Fee Selection
-  const [pendingFees, setPendingFees] = useState<PendingFee[]>([]);
-  const [selectedFee, setSelectedFee] = useState<PendingFee | null>(null);
-  const [loadingFees, setLoadingFees] = useState(false);
+  // Fee Data
+  const [feeData, setFeeData] = useState<FeeData>({
+    studentId: 0,
+    studentName: "",
+    fatherName: "",
+    phone: "",
+    className: "",
+    classTime: "",
+    admissionDate: "",
+    admissionFee: 0,
+    tuitionFee: 0,
+    transportFee: 0,
+    discount: 0,
+    payable: 0,
+    payment: 0,
+    remain: 0,
+    month: new Date().getMonth() + 1,
+    year: new Date().getFullYear(),
+    details: "",
+  });
 
-  // Payment
-  const [amount, setAmount] = useState("");
-  const [paymentMethod, setPaymentMethod] = useState("CASH");
-  const [referenceNo, setReferenceNo] = useState("");
-  const [notes, setNotes] = useState("");
+  // Fee History
+  const [feeHistory, setFeeHistory] = useState<any[]>([]);
+  const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1);
+  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+
+  // Options
+  const months = [
+    "حمل",
+    "ثور",
+    "جوزا",
+    "سرطان",
+    "اسد",
+    "سنبله",
+    "میزان",
+    "عقرب",
+    "قوس",
+    "جدی",
+    "دلو",
+    "حوت",
+  ];
+
+  const classTimes = ["صبح", "بعد از ظهر"];
 
   useEffect(() => {
     if (params.studentId) {
-      loadStudentFees(Number(params.studentId));
+      setStudentId(params.studentId as string);
+      fetchStudentInfo(Number(params.studentId));
     }
   }, [params.studentId]);
 
-  const handleStudentSelect = async (student: any) => {
-    setSelectedStudent(student);
-    await loadStudentFees(student.id);
-  };
-
-  const loadStudentFees = async (studentId: number) => {
-    setLoadingFees(true);
-    try {
-      const response = await financeApi.getStudentFeeSummary(studentId);
-      if (response.success) {
-        const fees: PendingFee[] = [];
-
-        response.data.forEach((assignment: any) => {
-          assignment.items?.forEach((item: any) => {
-            if (item.isRecurring && item.months) {
-              item.months.forEach((month: any) => {
-                if (month.balance > 0) {
-                  fees.push({
-                    id: month.id,
-                    type: "monthly",
-                    name: item.name,
-                    month: month.month,
-                    monthName: month.monthName,
-                    year: month.year,
-                    amount: month.amount,
-                    balance: month.balance,
-                    recordId: month.id,
-                    itemId: item.id,
-                  });
-                }
-              });
-            } else if (!item.isRecurring && item.totalBalance > 0) {
-              fees.push({
-                id: item.id,
-                type: "one-time",
-                name: item.name,
-                amount: item.totalAmount,
-                balance: item.totalBalance,
-                itemId: item.id,
-              });
-            }
-          });
-        });
-
-        setPendingFees(fees);
-        if (fees.length > 0) {
-          setSelectedFee(fees[0]);
-          setAmount(fees[0].balance.toString());
-        }
-        setStep("fee");
-      }
-    } catch (error) {
-      console.error("Load fees error:", error);
-      Alert.alert("خطا", "بارگذاری فیس‌ها با مشکل مواجه شد");
-    } finally {
-      setLoadingFees(false);
-    }
-  };
-
-  const handleFeeSelect = (fee: PendingFee) => {
-    setSelectedFee(fee);
-    setAmount(fee.balance.toString());
-    setStep("payment");
-  };
-
-  const handleSubmit = async () => {
-    if (!selectedFee || !amount || Number(amount) <= 0) {
-      Alert.alert("خطا", "مبلغ را وارد کنید");
+  const searchStudents = async (query: string) => {
+    if (query.length < 2) {
+      setSearchResults([]);
       return;
     }
 
-    if (Number(amount) > selectedFee.balance) {
+    setSearchLoading(true);
+    try {
+      const response = await financeApi.searchStudents(query);
+      if (response.success) {
+        setSearchResults(response.data);
+      }
+    } catch (error) {
+      console.error("Search error:", error);
+    } finally {
+      setSearchLoading(false);
+    }
+  };
+
+  const fetchStudentInfo = async (id: number) => {
+    setLoading(true);
+    try {
+      const response = await financeApi.getStudentFeeSummary(id);
+      if (response.success) {
+        const student = response.data.student;
+        setSelectedStudent(student);
+        setFeeData({
+          ...feeData,
+          studentId: student.id,
+          studentName: student.fullName || student.name,
+          fatherName: student.fatherName || "",
+          phone: student.phone || "",
+          className: student.class?.name || "",
+          classTime: student.classTime === 1 ? "بعد از ظهر" : "صبح",
+          admissionDate: student.admissionDate || "",
+          admissionFee: student.admissionFee || 0,
+          tuitionFee: student.tuitionFee || 0,
+          transportFee: student.transportFee || 0,
+        });
+        // Load fee history
+        await fetchFeeHistory(id);
+      }
+    } catch (error) {
+      Alert.alert("خطا", "بارگذاری اطلاعات با مشکل مواجه شد");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchFeeHistory = async (studentId: number) => {
+    try {
+      const response = await financeApi.getStudentFeeHistory(studentId);
+      if (response.success) {
+        setFeeHistory(response.data);
+      }
+    } catch (error) {
+      console.error("Fetch history error:", error);
+    }
+  };
+
+  const calculatePayable = () => {
+    const total =
+      feeData.admissionFee + feeData.tuitionFee + feeData.transportFee;
+    const payable = total - feeData.discount;
+    const remain = payable - feeData.payment;
+    setFeeData({
+      ...feeData,
+      payable: payable,
+      remain: remain > 0 ? remain : 0,
+    });
+  };
+
+  const handleSubmit = async () => {
+    if (!selectedStudent) {
+      Alert.alert("خطا", "لطفاً ابتدا شاگرد را انتخاب کنید");
+      return;
+    }
+
+    if (feeData.payment <= 0) {
+      Alert.alert("خطا", "مبلغ پرداختی را وارد کنید");
+      return;
+    }
+
+    if (feeData.payment > feeData.payable) {
       Alert.alert(
         "خطا",
-        `مبلغ نمی‌تواند بیشتر از ${formatCurrency(selectedFee.balance)} باشد`,
+        "مبلغ پرداختی نمی‌تواند بیشتر از مبلغ قابل پرداخت باشد",
       );
       return;
     }
 
     setLoading(true);
     try {
-      if (selectedFee.type === "monthly" && selectedFee.recordId) {
-        await financeApi.recordMonthlyPayment({
-          monthlyFeeRecordId: selectedFee.recordId,
-          amount: Number(amount),
-          paymentMethod,
-          referenceNo: referenceNo || undefined,
-          notes: notes || undefined,
-        });
-      } else if (selectedFee.type === "one-time" && selectedFee.itemId) {
-        await financeApi.recordOneTimePayment({
-          feeAssignmentItemId: selectedFee.itemId,
-          amount: Number(amount),
-          paymentMethod,
-          referenceNo: referenceNo || undefined,
-          notes: notes || undefined,
-        });
-      }
+      await financeApi.recordPayment({
+        studentId: selectedStudent.id,
+        month: selectedMonth,
+        year: selectedYear,
+        admissionFee: feeData.admissionFee,
+        tuitionFee: feeData.tuitionFee,
+        transportFee: feeData.transportFee,
+        otherFees: 0,
+        discount: feeData.discount,
+        payment: feeData.payment,
+        details: feeData.details,
+      });
 
       Alert.alert("موفقیت", "پرداخت با موفقیت ثبت شد", [
-        { text: "باشه", onPress: () => router.back() },
+        { text: "باشه", onPress: () => resetForm() },
       ]);
     } catch (error: any) {
       Alert.alert("خطا", error.message || "ثبت پرداخت با مشکل مواجه شد");
@@ -167,283 +213,343 @@ export default function RecordPaymentScreen() {
     }
   };
 
+  const resetForm = () => {
+    setFeeData({
+      ...feeData,
+      admissionFee: 0,
+      tuitionFee: 0,
+      transportFee: 0,
+      discount: 0,
+      payable: 0,
+      payment: 0,
+      remain: 0,
+      details: "",
+    });
+    setSelectedStudent(null);
+    setStudentId("");
+    setStudentName("");
+    setSearchResults([]);
+  };
+
+  const renderSearchResults = () => {
+    if (searchResults.length === 0) return null;
+
+    return (
+      <View style={styles.searchResults}>
+        {searchResults.map((student) => (
+          <TouchableOpacity
+            key={student.id}
+            style={styles.searchResultItem}
+            onPress={() => {
+              setSelectedStudent(student);
+              setStudentId(student.id.toString());
+              setStudentName(student.fullName || student.name);
+              setSearchResults([]);
+              fetchStudentInfo(student.id);
+            }}
+          >
+            <Ionicons name="person" size={20} color="#3b82f6" />
+            <View style={styles.searchResultInfo}>
+              <Text style={styles.searchResultName}>
+                {student.fullName || student.name}
+              </Text>
+              <Text style={styles.searchResultClass}>
+                {student.class?.name || "بدون صنف"}
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={16} color="#94a3b8" />
+          </TouchableOpacity>
+        ))}
+      </View>
+    );
+  };
+
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()}>
           <Ionicons name="arrow-back" size={24} color="#1e293b" />
         </TouchableOpacity>
-        <Text style={styles.title}>ثبت پرداخت</Text>
+        <Text style={styles.title}>دریافت فیس شاگردان</Text>
         <View style={{ width: 40 }} />
       </View>
 
-      {/* Step Indicator */}
-      <View style={styles.stepsContainer}>
-        {["student", "fee", "payment"].map((s, index) => (
-          <View key={s} style={styles.stepRow}>
-            <View
-              style={[
-                styles.stepDot,
-                step === s && styles.stepDotActive,
-                ["student", "fee", "payment"].indexOf(step) > index &&
-                  styles.stepDotCompleted,
-              ]}
-            >
-              {["student", "fee", "payment"].indexOf(step) > index ? (
-                <Ionicons name="checkmark" size={14} color="#fff" />
-              ) : (
-                <Text
-                  style={[
-                    styles.stepNumber,
-                    step === s && styles.stepNumberActive,
-                  ]}
-                >
-                  {index + 1}
-                </Text>
-              )}
-            </View>
-            <Text
-              style={[styles.stepLabel, step === s && styles.stepLabelActive]}
-            >
-              {s === "student" ? "شاگرد" : s === "fee" ? "فیس" : "پرداخت"}
-            </Text>
-            {index < 2 && <View style={styles.stepLine} />}
-          </View>
-        ))}
-      </View>
+      <ScrollView style={styles.scrollView}>
+        {/* Student Search */}
+        <View style={styles.searchSection}>
+          <Text style={styles.sectionTitle}>جستجوی شاگرد</Text>
 
-      <ScrollView
-        style={styles.scrollView}
-        showsVerticalScrollIndicator={false}
-      >
-        {/* Step 1: Student Selection */}
-        {step === "student" && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>انتخاب شاگرد</Text>
-            <StudentSearchInput
-              onSelect={handleStudentSelect}
-              value={selectedStudent}
-            />
-          </View>
-        )}
-
-        {/* Step 2: Fee Selection */}
-        {step === "fee" && (
-          <View style={styles.section}>
-            {/* Selected Student Info */}
-            <View style={styles.studentCard}>
-              <Ionicons name="person-circle" size={40} color="#3b82f6" />
-              <View>
-                <Text style={styles.studentName}>{selectedStudent?.name}</Text>
-                <Text style={styles.studentClass}>
-                  {selectedStudent?.className}
-                </Text>
-              </View>
-              <TouchableOpacity onPress={() => setStep("student")}>
-                <Ionicons name="create-outline" size={20} color="#3b82f6" />
-              </TouchableOpacity>
-            </View>
-
-            <Text style={styles.sectionTitle}>انتخاب فیس برای پرداخت</Text>
-
-            {loadingFees ? (
-              <ActivityIndicator style={{ padding: 24 }} color="#3b82f6" />
-            ) : pendingFees.length === 0 ? (
-              <View style={styles.emptyFees}>
-                <Ionicons name="checkmark-circle" size={48} color="#10b981" />
-                <Text style={styles.emptyText}>همه فیس‌ها پرداخت شده‌اند</Text>
-              </View>
-            ) : (
-              pendingFees.map((fee) => (
-                <TouchableOpacity
-                  key={`${fee.type}-${fee.id}`}
-                  style={[
-                    styles.feeCard,
-                    selectedFee?.id === fee.id &&
-                      selectedFee?.type === fee.type &&
-                      styles.feeCardSelected,
-                  ]}
-                  onPress={() => handleFeeSelect(fee)}
-                >
-                  <View style={styles.feeCardLeft}>
-                    <View
-                      style={[
-                        styles.feeTypeIcon,
-                        {
-                          backgroundColor:
-                            fee.type === "monthly" ? "#fef3c7" : "#dbeafe",
-                        },
-                      ]}
-                    >
-                      <Ionicons
-                        name={
-                          fee.type === "monthly" ? "repeat" : "receipt-outline"
-                        }
-                        size={20}
-                        color={fee.type === "monthly" ? "#d97706" : "#3b82f6"}
-                      />
-                    </View>
-                    <View>
-                      <Text style={styles.feeName}>{fee.name}</Text>
-                      {fee.type === "monthly" && (
-                        <Text style={styles.feeMonth}>
-                          {fee.monthName} {fee.year}
-                        </Text>
-                      )}
-                    </View>
-                  </View>
-                  <View style={styles.feeCardRight}>
-                    <Text style={styles.feeAmount}>
-                      {formatCurrency(fee.amount)}
-                    </Text>
-                    <Text style={styles.feeBalance}>
-                      باقی: {formatCurrency(fee.balance)}
-                    </Text>
-                  </View>
-                </TouchableOpacity>
-              ))
-            )}
-          </View>
-        )}
-
-        {/* Step 3: Payment Details */}
-        {step === "payment" && selectedFee && (
-          <View style={styles.section}>
-            {/* Selected Fee Summary */}
-            <TouchableOpacity
-              style={styles.selectedFeeCard}
-              onPress={() => setStep("fee")}
-            >
-              <View style={styles.selectedFeeHeader}>
-                <Ionicons name="wallet" size={24} color="#3b82f6" />
-                <View style={{ flex: 1, marginLeft: 12 }}>
-                  <Text style={styles.selectedFeeName}>{selectedFee.name}</Text>
-                  {selectedFee.type === "monthly" && (
-                    <Text style={styles.selectedFeeMonth}>
-                      {selectedFee.monthName} {selectedFee.year}
-                    </Text>
-                  )}
-                </View>
-                <Ionicons name="chevron-down" size={20} color="#94a3b8" />
-              </View>
-              <View style={styles.selectedFeeDetails}>
-                <View style={styles.selectedFeeRow}>
-                  <Text style={styles.selectedFeeLabel}>مبلغ کل:</Text>
-                  <Text style={styles.selectedFeeValue}>
-                    {formatCurrency(selectedFee.amount)}
-                  </Text>
-                </View>
-                <View style={styles.selectedFeeRow}>
-                  <Text style={styles.selectedFeeLabel}>باقیمانده:</Text>
-                  <Text style={[styles.selectedFeeValue, { color: "#ef4444" }]}>
-                    {formatCurrency(selectedFee.balance)}
-                  </Text>
-                </View>
-              </View>
-            </TouchableOpacity>
-
-            {/* Amount Input */}
-            <AmountInput
-              value={amount}
-              onChangeText={setAmount}
-              maxAmount={selectedFee.balance}
-              label="مبلغ پرداختی"
-            />
-
-            {/* Quick Amount Buttons */}
-            <View style={styles.quickAmounts}>
-              <TouchableOpacity
-                style={styles.quickAmountBtn}
-                onPress={() => setAmount(selectedFee.balance.toString())}
-              >
-                <Text style={styles.quickAmountText}>پرداخت کامل</Text>
-                <Text style={styles.quickAmountValue}>
-                  {formatCurrency(selectedFee.balance)}
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.quickAmountBtn}
-                onPress={() =>
-                  setAmount(Math.ceil(selectedFee.balance / 2).toString())
-                }
-              >
-                <Text style={styles.quickAmountText}>پرداخت نصف</Text>
-                <Text style={styles.quickAmountValue}>
-                  {formatCurrency(Math.ceil(selectedFee.balance / 2))}
-                </Text>
-              </TouchableOpacity>
-            </View>
-
-            {/* Payment Method */}
-            <PaymentMethodPicker
-              value={paymentMethod}
-              onSelect={setPaymentMethod}
-            />
-
-            {/* Reference Number */}
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>شماره مرجع (اختیاری)</Text>
-              <View style={styles.referenceInput}>
-                <Ionicons
-                  name="document-text-outline"
-                  size={20}
-                  color="#94a3b8"
-                />
-                <TextInput
-                  style={styles.textInput}
-                  placeholder="شماره مرجع"
-                  placeholderTextColor="#94a3b8"
-                  value={referenceNo}
-                  onChangeText={setReferenceNo}
-                  textAlign="right"
-                />
-              </View>
-            </View>
-
-            {/* Notes */}
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>یادداشت (اختیاری)</Text>
+          <View style={styles.searchRow}>
+            <View style={styles.searchField}>
+              <Text style={styles.fieldLabel}>آی دی شاگرد:</Text>
               <TextInput
-                style={[styles.textInput, styles.textArea]}
-                placeholder="یادداشت..."
- 
-                numberOfLines={2}
-                textAlign="right"
+                style={styles.fieldInput}
+                placeholder="آی دی را وارد کنید"
+                value={studentId}
+                onChangeText={(text) => {
+                  setStudentId(text);
+                  if (text.length >= 1) {
+                    fetchStudentInfo(Number(text));
+                  }
+                }}
+                keyboardType="numeric"
+              />
+            </View>
+            <View style={styles.searchField}>
+              <Text style={styles.fieldLabel}>نام شاگرد:</Text>
+              <TextInput
+                style={styles.fieldInput}
+                placeholder="نام یا نام پدر را وارد کنید"
+                value={studentName}
+                onChangeText={(text) => {
+                  setStudentName(text);
+                  searchStudents(text);
+                }}
               />
             </View>
           </View>
-        )}
 
-        <View style={{ height: 100 }} />
-      </ScrollView>
-
-      {/* Submit Button */}
-      {step === "payment" && (
-        <View style={styles.footer}>
-          <TouchableOpacity
-            style={[styles.submitButton, loading && styles.submitDisabled]}
-            onPress={handleSubmit}
-            disabled={loading}
-          >
-            {loading ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <>
-                <Ionicons name="checkmark-circle" size={24} color="#fff" />
-                <Text style={styles.submitText}>
-                  ثبت پرداخت {formatCurrency(Number(amount || 0))}
-                </Text>
-              </>
-            )}
-          </TouchableOpacity>
+          {renderSearchResults()}
         </View>
-      )}
-    </View>
+
+        {/* Student Info */}
+        {selectedStudent && (
+          <>
+            <View style={styles.infoSection}>
+              <Text style={styles.sectionTitle}>اطلاعات شاگرد</Text>
+
+              <View style={styles.infoGrid}>
+                <View style={styles.infoItem}>
+                  <Text style={styles.infoLabel}>آی دی:</Text>
+                  <Text style={styles.infoValue}>{selectedStudent.id}</Text>
+                </View>
+                <View style={styles.infoItem}>
+                  <Text style={styles.infoLabel}>نام:</Text>
+                  <Text style={styles.infoValue}>{feeData.studentName}</Text>
+                </View>
+                <View style={styles.infoItem}>
+                  <Text style={styles.infoLabel}>نام پدر:</Text>
+                  <Text style={styles.infoValue}>{feeData.fatherName}</Text>
+                </View>
+                <View style={styles.infoItem}>
+                  <Text style={styles.infoLabel}>تلفن:</Text>
+                  <Text style={styles.infoValue}>{feeData.phone}</Text>
+                </View>
+                <View style={styles.infoItem}>
+                  <Text style={styles.infoLabel}>صنف:</Text>
+                  <Text style={styles.infoValue}>{feeData.className}</Text>
+                </View>
+                <View style={styles.infoItem}>
+                  <Text style={styles.infoLabel}>وقت صنف:</Text>
+                  <Text style={styles.infoValue}>{feeData.classTime}</Text>
+                </View>
+                <View style={styles.infoItem}>
+                  <Text style={styles.infoLabel}>تاریخ ثبت:</Text>
+                  <Text style={styles.infoValue}>{feeData.admissionDate}</Text>
+                </View>
+              </View>
+            </View>
+
+            {/* Fee Entry */}
+            <View style={styles.feeSection}>
+              <Text style={styles.sectionTitle}>دریافت فیس</Text>
+
+              <View style={styles.feeRow}>
+                <View style={styles.feeItem}>
+                  <Text style={styles.feeLabel}>فیس ثبت:</Text>
+                  <TextInput
+                    style={styles.feeInput}
+                    value={feeData.admissionFee.toString()}
+                    editable={false}
+                  />
+                </View>
+                <View style={styles.feeItem}>
+                  <Text style={styles.feeLabel}>فیس تعلیمی:</Text>
+                  <TextInput
+                    style={styles.feeInput}
+                    value={feeData.tuitionFee.toString()}
+                    editable={false}
+                  />
+                </View>
+                <View style={styles.feeItem}>
+                  <Text style={styles.feeLabel}>فیس ترانسپورت:</Text>
+                  <TextInput
+                    style={styles.feeInput}
+                    value={feeData.transportFee.toString()}
+                    editable={false}
+                  />
+                </View>
+              </View>
+
+              <View style={styles.feeRow}>
+                <View style={styles.feeItem}>
+                  <Text style={styles.feeLabel}>فیس دیگر:</Text>
+                  <TextInput
+                    style={styles.feeInput}
+                    value="0"
+                    editable={false}
+                  />
+                </View>
+                <View style={styles.feeItem}>
+                  <Text style={styles.feeLabel}>تخفیف:</Text>
+                  <TextInput
+                    style={[styles.feeInput, styles.feeEditable]}
+                    value={feeData.discount.toString()}
+                    onChangeText={(text) => {
+                      const val = Number(text) || 0;
+                      setFeeData({ ...feeData, discount: val });
+                      calculatePayable();
+                    }}
+                    keyboardType="numeric"
+                  />
+                </View>
+                <View style={styles.feeItem}>
+                  <Text style={styles.feeLabel}>قابل پرداخت:</Text>
+                  <TextInput
+                    style={styles.feeInput}
+                    value={feeData.payable.toString()}
+                    editable={false}
+                  />
+                </View>
+              </View>
+
+              <View style={styles.feeRow}>
+                <View style={styles.feeItem}>
+                  <Text style={styles.feeLabel}>ماه:</Text>
+                  <TouchableOpacity
+                    style={styles.monthPicker}
+                    onPress={() => {
+                      // Show month picker
+                      Alert.alert(
+                        "انتخاب ماه",
+                        "ماه مورد نظر را انتخاب کنید",
+                        months.map((m, i) => ({
+                          text: m,
+                          onPress: () => setSelectedMonth(i + 1),
+                        })),
+                      );
+                    }}
+                  >
+                    <Text style={styles.monthPickerText}>
+                      {months[selectedMonth - 1]}
+                    </Text>
+                    <Ionicons name="chevron-down" size={16} color="#64748b" />
+                  </TouchableOpacity>
+                </View>
+                <View style={styles.feeItem}>
+                  <Text style={styles.feeLabel}>پرداخت:</Text>
+                  <TextInput
+                    style={[styles.feeInput, styles.feeEditable]}
+                    value={feeData.payment.toString()}
+                    onChangeText={(text) => {
+                      const val = Number(text) || 0;
+                      setFeeData({ ...feeData, payment: val });
+                      calculatePayable();
+                    }}
+                    keyboardType="numeric"
+                    placeholder="مبلغ را وارد کنید"
+                  />
+                </View>
+                <View style={styles.feeItem}>
+                  <Text style={styles.feeLabel}>باقیمانده:</Text>
+                  <TextInput
+                    style={[
+                      styles.feeInput,
+                      { color: feeData.remain > 0 ? "#ef4444" : "#10b981" },
+                    ]}
+                    value={feeData.remain.toString()}
+                    editable={false}
+                  />
+                </View>
+              </View>
+
+              <View style={styles.detailsRow}>
+                <Text style={styles.fieldLabel}>جزئیات:</Text>
+                <TextInput
+                  style={styles.detailsInput}
+                  placeholder="توضیحات (اختیاری)"
+                  value={feeData.details}
+                  onChangeText={(text) =>
+                    setFeeData({ ...feeData, details: text })
+                  }
+                />
+              </View>
+
+              <TouchableOpacity
+                style={[styles.submitButton, loading && styles.submitDisabled]}
+                onPress={handleSubmit}
+                disabled={loading}
+              >
+                {loading ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <>
+                    <Ionicons name="save-outline" size={20} color="#fff" />
+                    <Text style={styles.submitText}>ذخیره فیس</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            </View>
+
+            {/* Fee History */}
+            <View style={styles.historySection}>
+              <Text style={styles.sectionTitle}>تاریخچه فیس شاگرد</Text>
+
+              <View style={styles.historyHeader}>
+                <Text style={[styles.historyCell, styles.historyDate]}>
+                  تاریخ
+                </Text>
+                <Text style={[styles.historyCell, styles.historyMonth]}>
+                  ماه
+                </Text>
+                <Text style={[styles.historyCell, styles.historyAmount]}>
+                  فیس تعلیمی
+                </Text>
+                <Text style={[styles.historyCell, styles.historyAmount]}>
+                  پرداخت
+                </Text>
+                <Text style={[styles.historyCell, styles.historyAmount]}>
+                  باقی
+                </Text>
+              </View>
+
+              {feeHistory.length === 0 ? (
+                <Text style={styles.historyEmpty}>هیچ فیس ثبت نشده است</Text>
+              ) : (
+                feeHistory.map((fee, index) => (
+                  <View key={index} style={styles.historyRow}>
+                    <Text style={[styles.historyCell, styles.historyDate]}>
+                      {fee.date}
+                    </Text>
+                    <Text style={[styles.historyCell, styles.historyMonth]}>
+                      {months[fee.month - 1]}
+                    </Text>
+                    <Text style={[styles.historyCell, styles.historyAmount]}>
+                      {formatCurrency(fee.tuitionFee)}
+                    </Text>
+                    <Text style={[styles.historyCell, styles.historyAmount]}>
+                      {formatCurrency(fee.payment)}
+                    </Text>
+                    <Text
+                      style={[
+                        styles.historyCell,
+                        styles.historyAmount,
+                        styles.historyBalance,
+                      ]}
+                    >
+                      {formatCurrency(fee.balance)}
+                    </Text>
+                  </View>
+                ))
+              )}
+            </View>
+          </>
+        )}
+      </ScrollView>
+    </SafeAreaView>
   );
 }
-
-// Need to import TextInput
 
 const styles = StyleSheet.create({
   container: {
@@ -469,69 +575,6 @@ const styles = StyleSheet.create({
   scrollView: {
     flex: 1,
   },
-  stepsContainer: {
-    flexDirection: "row",
-    justifyContent: "center",
-    alignItems: "center",
-    paddingVertical: 16,
-    backgroundColor: "#fff",
-    borderBottomWidth: 1,
-    borderBottomColor: "#e2e8f0",
-    gap: 0,
-  },
-  stepRow: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  stepDot: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: "#e2e8f0",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  stepDotActive: {
-    backgroundColor: "#3b82f6",
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-  },
-  stepDotCompleted: {
-    backgroundColor: "#10b981",
-  },
-  stepNumber: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: "#64748b",
-    fontFamily: "Vazir",
-  },
-  stepNumberActive: {
-    color: "#fff",
-  },
-  stepLabel: {
-    marginLeft: 6,
-    fontSize: 12,
-    color: "#94a3b8",
-    fontFamily: "Vazir",
-    marginRight: 8,
-  },
-  stepLabelActive: {
-    color: "#3b82f6",
-    fontWeight: "600",
-  },
-  stepLine: {
-    width: 40,
-    height: 2,
-    backgroundColor: "#e2e8f0",
-    marginHorizontal: 4,
-  },
-  section: {
-    margin: 16,
-    padding: 16,
-    backgroundColor: "#fff",
-    borderRadius: 16,
-  },
   sectionTitle: {
     fontSize: 16,
     fontWeight: "700",
@@ -539,211 +582,168 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     fontFamily: "VazirBold",
   },
-  studentCard: {
+  searchSection: {
+    margin: 16,
+    padding: 16,
+    backgroundColor: "#fff",
+    borderRadius: 16,
+  },
+  searchRow: {
     flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#f8fafc",
-    padding: 12,
-    borderRadius: 12,
-    marginBottom: 16,
     gap: 12,
   },
-  studentName: {
-    fontSize: 15,
-    fontWeight: "600",
-    color: "#1e293b",
-    fontFamily: "Vazir",
+  searchField: {
+    flex: 1,
   },
-  studentClass: {
+  fieldLabel: {
     fontSize: 13,
-    color: "#64748b",
+    color: "#475569",
+    marginBottom: 4,
     fontFamily: "Vazir",
   },
-  feeCard: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    padding: 14,
+  fieldInput: {
     backgroundColor: "#f8fafc",
-    borderRadius: 12,
-    marginBottom: 8,
     borderWidth: 1,
     borderColor: "#e2e8f0",
-  },
-  feeCardSelected: {
-    backgroundColor: "#eff6ff",
-    borderColor: "#3b82f6",
-  },
-  feeCardLeft: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-  },
-  feeTypeIcon: {
-    width: 40,
-    height: 40,
     borderRadius: 10,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  feeName: {
-    fontSize: 15,
-    fontWeight: "600",
+    padding: 10,
+    fontSize: 14,
     color: "#1e293b",
     fontFamily: "Vazir",
   },
-  feeMonth: {
-    fontSize: 12,
-    color: "#64748b",
-    marginTop: 2,
-    fontFamily: "Vazir",
-  },
-  feeCardRight: {
-    alignItems: "flex-end",
-  },
-  feeAmount: {
-    fontSize: 15,
-    fontWeight: "700",
-    color: "#1e293b",
-    fontFamily: "VazirBold",
-  },
-  feeBalance: {
-    fontSize: 12,
-    color: "#ef4444",
-    marginTop: 2,
-    fontFamily: "Vazir",
-  },
-  emptyFees: {
-    alignItems: "center",
-    padding: 32,
-    gap: 12,
-  },
-  emptyText: {
-    fontSize: 16,
-    color: "#64748b",
-    fontFamily: "Vazir",
-  },
-  selectedFeeCard: {
-    backgroundColor: "#f8fafc",
-    borderRadius: 12,
-    padding: 14,
-    marginBottom: 20,
-    borderWidth: 1,
-    borderColor: "#e2e8f0",
-  },
-  selectedFeeHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  selectedFeeName: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#1e293b",
-    fontFamily: "Vazir",
-  },
-  selectedFeeMonth: {
-    fontSize: 13,
-    color: "#64748b",
-    marginTop: 2,
-    fontFamily: "Vazir",
-  },
-  selectedFeeDetails: {
+  searchResults: {
     marginTop: 12,
-    paddingTop: 12,
     borderTopWidth: 1,
     borderTopColor: "#e2e8f0",
-    gap: 6,
+    paddingTop: 12,
   },
-  selectedFeeRow: {
+  searchResultItem: {
     flexDirection: "row",
-    justifyContent: "space-between",
+    alignItems: "center",
+    padding: 12,
+    backgroundColor: "#f8fafc",
+    borderRadius: 10,
+    marginBottom: 6,
+    gap: 12,
   },
-  selectedFeeLabel: {
-    fontSize: 13,
+  searchResultInfo: {
+    flex: 1,
+  },
+  searchResultName: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#1e293b",
+    fontFamily: "Vazir",
+  },
+  searchResultClass: {
+    fontSize: 12,
+    color: "#64748b",
+    fontFamily: "Vazir",
+  },
+  infoSection: {
+    margin: 16,
+    marginTop: 0,
+    padding: 16,
+    backgroundColor: "#fff",
+    borderRadius: 16,
+  },
+  infoGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  infoItem: {
+    width: "48%",
+    backgroundColor: "#f8fafc",
+    padding: 8,
+    borderRadius: 8,
+  },
+  infoLabel: {
+    fontSize: 11,
     color: "#94a3b8",
     fontFamily: "Vazir",
   },
-  selectedFeeValue: {
+  infoValue: {
     fontSize: 14,
     fontWeight: "600",
     color: "#1e293b",
-    fontFamily: "VazirBold",
-  },
-  quickAmounts: {
-    flexDirection: "row",
-    gap: 8,
-    marginBottom: 16,
-  },
-  quickAmountBtn: {
-    flex: 1,
-    padding: 12,
-    backgroundColor: "#f0fdf4",
-    borderRadius: 10,
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: "#bbf7d0",
-  },
-  quickAmountText: {
-    fontSize: 12,
-    color: "#059669",
-    fontFamily: "Vazir",
-  },
-  quickAmountValue: {
-    fontSize: 15,
-    fontWeight: "700",
-    color: "#059669",
     marginTop: 2,
-    fontFamily: "VazirBold",
-  },
-  inputGroup: {
-    marginBottom: 16,
-  },
-  inputLabel: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#334155",
-    marginBottom: 8,
     fontFamily: "Vazir",
   },
-  referenceInput: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#f8fafc",
-    borderWidth: 1,
-    borderColor: "#e2e8f0",
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    gap: 8,
-  },
-  textInput: {
-    flex: 1,
-    fontSize: 15,
-    color: "#1e293b",
-    paddingVertical: 12,
-    fontFamily: "Vazir",
-  },
-  textArea: {
-    minHeight: 60,
-    textAlignVertical: "top",
-    backgroundColor: "#f8fafc",
-    borderWidth: 1,
-    borderColor: "#e2e8f0",
-    borderRadius: 10,
-    padding: 12,
-  },
-  footer: {
+  feeSection: {
+    margin: 16,
+    marginTop: 0,
     padding: 16,
     backgroundColor: "#fff",
-    borderTopWidth: 1,
-    borderTopColor: "#e2e8f0",
+    borderRadius: 16,
+  },
+  feeRow: {
+    flexDirection: "row",
+    gap: 10,
+    marginBottom: 10,
+  },
+  feeItem: {
+    flex: 1,
+  },
+  feeLabel: {
+    fontSize: 12,
+    color: "#475569",
+    marginBottom: 4,
+    fontFamily: "Vazir",
+  },
+  feeInput: {
+    backgroundColor: "#f8fafc",
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    borderRadius: 8,
+    padding: 8,
+    fontSize: 14,
+    color: "#1e293b",
+    fontFamily: "Vazir",
+    textAlign: "center",
+  },
+  feeEditable: {
+    backgroundColor: "#fff",
+    borderColor: "#3b82f6",
+  },
+  monthPicker: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: "#f8fafc",
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    borderRadius: 8,
+    padding: 8,
+  },
+  monthPickerText: {
+    fontSize: 14,
+    color: "#1e293b",
+    fontFamily: "Vazir",
+  },
+  detailsRow: {
+    marginTop: 10,
+  },
+  detailsInput: {
+    backgroundColor: "#f8fafc",
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    borderRadius: 8,
+    padding: 10,
+    fontSize: 14,
+    color: "#1e293b",
+    fontFamily: "Vazir",
+    minHeight: 50,
+    textAlignVertical: "top",
   },
   submitButton: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#10b981",
-    paddingVertical: 16,
-    borderRadius: 14,
+    backgroundColor: "#3b82f6",
+    paddingVertical: 14,
+    borderRadius: 12,
+    marginTop: 16,
     gap: 8,
   },
   submitDisabled: {
@@ -751,8 +751,53 @@ const styles = StyleSheet.create({
   },
   submitText: {
     color: "#fff",
-    fontSize: 17,
+    fontSize: 16,
     fontWeight: "700",
     fontFamily: "VazirBold",
+  },
+  historySection: {
+    margin: 16,
+    marginTop: 0,
+    padding: 16,
+    backgroundColor: "#fff",
+    borderRadius: 16,
+    marginBottom: 20,
+  },
+  historyHeader: {
+    flexDirection: "row",
+    backgroundColor: "#f1f5f9",
+    padding: 10,
+    borderRadius: 8,
+    marginBottom: 8,
+  },
+  historyRow: {
+    flexDirection: "row",
+    padding: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: "#f1f5f9",
+  },
+  historyCell: {
+    fontFamily: "Vazir",
+    fontSize: 12,
+    color: "#475569",
+  },
+  historyDate: {
+    flex: 1.2,
+  },
+  historyMonth: {
+    flex: 1,
+  },
+  historyAmount: {
+    flex: 1,
+    textAlign: "center",
+  },
+  historyBalance: {
+    fontWeight: "700",
+  },
+  historyEmpty: {
+    textAlign: "center",
+    color: "#94a3b8",
+    padding: 20,
+    fontFamily: "Vazir",
   },
 });

@@ -1,25 +1,25 @@
-// app/(admin)/financial/payments/index.tsx
 import { EmptyState } from "@/components/finance/EmptyState";
 import { ExportButton } from "@/components/finance/ExportButton";
 import { FilterBar } from "@/components/finance/FilterBar";
 import { PaymentHistoryItem } from "@/components/finance/PaymentHistoryItem";
 import {
-    financeApi,
-    formatCurrency,
-    PaymentRecord,
+  financeApi,
+  formatCurrency,
+  PaymentRecord,
 } from "@/src/config/financeApi";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
 import {
-    ActivityIndicator,
-    FlatList,
-    RefreshControl,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  FlatList,
+  RefreshControl,
+  SafeAreaView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
 
 const PAYMENT_TYPE_FILTERS = [
@@ -193,15 +193,15 @@ export default function PaymentHistoryScreen() {
 
   if (loading && payments.length === 0) {
     return (
-      <View style={styles.loadingContainer}>
+      <SafeAreaView style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#10b981" />
         <Text style={styles.loadingText}>در حال بارگذاری پرداخت‌ها...</Text>
-      </View>
+      </SafeAreaView>
     );
   }
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()}>
@@ -248,7 +248,7 @@ export default function PaymentHistoryScreen() {
           }
         />
       )}
-    </View>
+    </SafeAreaView>
   );
 }
 

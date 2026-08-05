@@ -1,19 +1,20 @@
 // app/(admin)/financial/fees/templates/create.tsx
-import React, { useState, useEffect } from "react";
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-  Alert,
-  ActivityIndicator,
-  TextInput,
-} from "react-native";
-import { useRouter } from "expo-router";
-import { Ionicons } from "@expo/vector-icons";
-import { financeApi, AcademicYear, ClassItem } from "@/src/config/financeApi";
 import { AmountInput } from "@/components/finance/AmountInput";
+import { AcademicYear, ClassItem, financeApi } from "@/src/config/financeApi";
+import { Ionicons } from "@expo/vector-icons";
+import { useRouter } from "expo-router";
+import { useEffect, useState } from "react";
+import {
+  ActivityIndicator,
+  Alert,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from "react-native";
 
 interface TemplateItemInput {
   feeType: string;
@@ -57,7 +58,7 @@ export default function CreateTemplateScreen() {
       ]);
       if (yearsRes.success) {
         setAcademicYears(yearsRes.data);
-        const active = yearsRes.data.find(y => y.isActive);
+        const active = yearsRes.data.find((y) => y.isActive);
         if (active) setSelectedYearId(active.id);
       }
       if (classesRes.success) setClasses(classesRes.data);
@@ -104,13 +105,16 @@ export default function CreateTemplateScreen() {
 
   const handleSelectType = (type: string) => {
     setItemType(type);
-    const found = feeTypes.find(t => t.value === type);
+    const found = feeTypes.find((t) => t.value === type);
     if (found) {
       setItemRecurring(found.recurring);
     }
   };
 
-  const totalAmount = items.reduce((sum, item) => sum + Number(item.amount || 0), 0);
+  const totalAmount = items.reduce(
+    (sum, item) => sum + Number(item.amount || 0),
+    0,
+  );
 
   const handleSubmit = async () => {
     if (!name.trim()) {
@@ -133,7 +137,7 @@ export default function CreateTemplateScreen() {
         academicYearId: selectedYearId,
         classId: selectedClassId || undefined,
         description: description || undefined,
-        items: items.map(item => ({
+        items: items.map((item) => ({
           feeType: item.feeType,
           name: item.name,
           amount: Number(item.amount),
@@ -155,7 +159,7 @@ export default function CreateTemplateScreen() {
   };
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container}>
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()}>
           <Ionicons name="arrow-back" size={24} color="#1e293b" />
@@ -164,7 +168,10 @@ export default function CreateTemplateScreen() {
         <View style={{ width: 40 }} />
       </View>
 
-      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        style={styles.scrollView}
+        showsVerticalScrollIndicator={false}
+      >
         {/* Name */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>نام قالب</Text>
@@ -185,10 +192,18 @@ export default function CreateTemplateScreen() {
             {academicYears.map((year) => (
               <TouchableOpacity
                 key={year.id}
-                style={[styles.chip, selectedYearId === year.id && styles.chipActive]}
+                style={[
+                  styles.chip,
+                  selectedYearId === year.id && styles.chipActive,
+                ]}
                 onPress={() => setSelectedYearId(year.id)}
               >
-                <Text style={[styles.chipText, selectedYearId === year.id && styles.chipTextActive]}>
+                <Text
+                  style={[
+                    styles.chipText,
+                    selectedYearId === year.id && styles.chipTextActive,
+                  ]}
+                >
                   {year.name}
                 </Text>
               </TouchableOpacity>
@@ -204,17 +219,30 @@ export default function CreateTemplateScreen() {
               style={[styles.chip, !selectedClassId && styles.chipActive]}
               onPress={() => setSelectedClassId(null)}
             >
-              <Text style={[styles.chipText, !selectedClassId && styles.chipTextActive]}>
+              <Text
+                style={[
+                  styles.chipText,
+                  !selectedClassId && styles.chipTextActive,
+                ]}
+              >
                 همه صنوف
               </Text>
             </TouchableOpacity>
             {classes.map((cls) => (
               <TouchableOpacity
                 key={cls.id}
-                style={[styles.chip, selectedClassId === cls.id && styles.chipActive]}
+                style={[
+                  styles.chip,
+                  selectedClassId === cls.id && styles.chipActive,
+                ]}
                 onPress={() => setSelectedClassId(cls.id)}
               >
-                <Text style={[styles.chipText, selectedClassId === cls.id && styles.chipTextActive]}>
+                <Text
+                  style={[
+                    styles.chipText,
+                    selectedClassId === cls.id && styles.chipTextActive,
+                  ]}
+                >
                   {cls.name} {cls.section}
                 </Text>
               </TouchableOpacity>
@@ -225,11 +253,18 @@ export default function CreateTemplateScreen() {
         {/* Fee Items */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>اقلام فیس</Text>
-          
+
           {items.map((item, index) => (
             <View key={index} style={styles.feeItemCard}>
               <View style={styles.feeItemHeader}>
-                <View style={[styles.feeItemIcon, { backgroundColor: item.isRecurring ? "#fef3c7" : "#dbeafe" }]}>
+                <View
+                  style={[
+                    styles.feeItemIcon,
+                    {
+                      backgroundColor: item.isRecurring ? "#fef3c7" : "#dbeafe",
+                    },
+                  ]}
+                >
                   <Ionicons
                     name={item.isRecurring ? "repeat" : "receipt-outline"}
                     size={18}
@@ -277,10 +312,18 @@ export default function CreateTemplateScreen() {
                 {feeTypes.map((type) => (
                   <TouchableOpacity
                     key={type.value}
-                    style={[styles.typeChip, itemType === type.value && styles.typeChipActive]}
+                    style={[
+                      styles.typeChip,
+                      itemType === type.value && styles.typeChipActive,
+                    ]}
                     onPress={() => handleSelectType(type.value)}
                   >
-                    <Text style={[styles.typeChipText, itemType === type.value && styles.typeChipTextActive]}>
+                    <Text
+                      style={[
+                        styles.typeChipText,
+                        itemType === type.value && styles.typeChipTextActive,
+                      ]}
+                    >
                       {type.label}
                     </Text>
                   </TouchableOpacity>
@@ -300,7 +343,10 @@ export default function CreateTemplateScreen() {
               </TouchableOpacity>
 
               <View style={styles.addItemActions}>
-                <TouchableOpacity style={[styles.btn, styles.btnPrimary]} onPress={addItem}>
+                <TouchableOpacity
+                  style={[styles.btn, styles.btnPrimary]}
+                  onPress={addItem}
+                >
                   <Text style={styles.btnPrimaryText}>اضافه کردن</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
@@ -324,7 +370,9 @@ export default function CreateTemplateScreen() {
           {items.length > 0 && (
             <View style={styles.totalContainer}>
               <Text style={styles.totalLabel}>مجموع:</Text>
-              <Text style={styles.totalAmount}>{totalAmount.toLocaleString()} افغانی</Text>
+              <Text style={styles.totalAmount}>
+                {totalAmount.toLocaleString()} افغانی
+              </Text>
             </View>
           )}
         </View>
@@ -364,7 +412,7 @@ export default function CreateTemplateScreen() {
           )}
         </TouchableOpacity>
       </View>
-    </View>
+    </SafeAreaView>
   );
 }
 
@@ -380,7 +428,12 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: "#e2e8f0",
   },
-  title: { fontSize: 20, fontWeight: "700", color: "#1e293b", fontFamily: "VazirBold" },
+  title: {
+    fontSize: 20,
+    fontWeight: "700",
+    color: "#1e293b",
+    fontFamily: "VazirBold",
+  },
   scrollView: { flex: 1 },
   section: {
     margin: 16,
@@ -431,8 +484,20 @@ const styles = StyleSheet.create({
   chipActive: { backgroundColor: "#eff6ff", borderColor: "#3b82f6" },
   chipText: { fontSize: 13, color: "#64748b", fontFamily: "Vazir" },
   chipTextActive: { color: "#3b82f6", fontWeight: "600" },
-  subLabel: { fontSize: 14, fontWeight: "600", color: "#475569", marginBottom: 8, fontFamily: "Vazir", marginTop: 12 },
-  typeGrid: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginBottom: 12 },
+  subLabel: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#475569",
+    marginBottom: 8,
+    fontFamily: "Vazir",
+    marginTop: 12,
+  },
+  typeGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6,
+    marginBottom: 12,
+  },
   typeChip: {
     paddingHorizontal: 12,
     paddingVertical: 6,
@@ -444,7 +509,12 @@ const styles = StyleSheet.create({
   typeChipActive: { backgroundColor: "#eff6ff", borderColor: "#3b82f6" },
   typeChipText: { fontSize: 12, color: "#64748b", fontFamily: "Vazir" },
   typeChipTextActive: { color: "#3b82f6", fontWeight: "600" },
-  checkbox: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 12 },
+  checkbox: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 12,
+  },
   checkboxText: { fontSize: 14, color: "#475569", fontFamily: "Vazir" },
   feeItemCard: {
     backgroundColor: "#f8fafc",
@@ -467,10 +537,26 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   feeItemInfo: { flex: 1 },
-  feeItemName: { fontSize: 14, fontWeight: "600", color: "#1e293b", fontFamily: "Vazir" },
-  feeItemType: { fontSize: 11, color: "#94a3b8", marginTop: 2, fontFamily: "Vazir" },
+  feeItemName: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#1e293b",
+    fontFamily: "Vazir",
+  },
+  feeItemType: {
+    fontSize: 11,
+    color: "#94a3b8",
+    marginTop: 2,
+    fontFamily: "Vazir",
+  },
   feeItemAmountContainer: { alignItems: "flex-end" },
-  feeItemAmount: { fontSize: 14, fontWeight: "600", color: "#475569", fontFamily: "Vazir", marginBottom: 4 },
+  feeItemAmount: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#475569",
+    fontFamily: "Vazir",
+    marginBottom: 4,
+  },
   addItemForm: {
     marginTop: 8,
     padding: 16,
@@ -512,8 +598,18 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: "#e2e8f0",
   },
-  totalLabel: { fontSize: 16, fontWeight: "700", color: "#1e293b", fontFamily: "VazirBold" },
-  totalAmount: { fontSize: 18, fontWeight: "700", color: "#06b6d4", fontFamily: "VazirBold" },
+  totalLabel: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#1e293b",
+    fontFamily: "VazirBold",
+  },
+  totalAmount: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: "#06b6d4",
+    fontFamily: "VazirBold",
+  },
   footer: {
     padding: 16,
     backgroundColor: "#fff",
@@ -535,5 +631,10 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
   },
   submitDisabled: { opacity: 0.6 },
-  submitText: { color: "#fff", fontSize: 18, fontWeight: "700", fontFamily: "VazirBold" },
+  submitText: {
+    color: "#fff",
+    fontSize: 18,
+    fontWeight: "700",
+    fontFamily: "VazirBold",
+  },
 });

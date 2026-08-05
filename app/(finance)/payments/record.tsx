@@ -1,3 +1,4 @@
+// app/(finance)/payments/record.tsx
 import { financeApi, formatCurrency } from "@/src/config/financeApi";
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -38,7 +39,6 @@ export default function RecordPaymentScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
   const [loading, setLoading] = useState(false);
-  const [searchLoading, setSearchLoading] = useState(false);
 
   // Student Search
   const [studentId, setStudentId] = useState("");
@@ -70,7 +70,6 @@ export default function RecordPaymentScreen() {
   // Fee History
   const [feeHistory, setFeeHistory] = useState<any[]>([]);
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1);
-  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
 
   // Options
   const months = [
@@ -88,8 +87,6 @@ export default function RecordPaymentScreen() {
     "حوت",
   ];
 
-  const classTimes = ["صبح", "بعد از ظهر"];
-
   useEffect(() => {
     if (params.studentId) {
       setStudentId(params.studentId as string);
@@ -103,44 +100,41 @@ export default function RecordPaymentScreen() {
       return;
     }
 
-    setSearchLoading(true);
     try {
-      const response = await financeApi.searchStudents(query);
-      if (response.success) {
-        setSearchResults(response.data);
+      // searchStudents returns Student[] directly
+      const results = await financeApi.searchStudents(query);
+      if (results && Array.isArray(results)) {
+        setSearchResults(results);
       }
     } catch (error) {
       console.error("Search error:", error);
-    } finally {
-      setSearchLoading(false);
     }
   };
 
   const fetchStudentInfo = async (id: number) => {
     setLoading(true);
     try {
-      const response = await financeApi.getStudentFeeSummary(id);
-      if (response.success) {
-        const student = response.data.student;
-        setSelectedStudent(student);
+      // Use getStudentById which is available in the API
+      const response = await financeApi.getStudentById(id);
+      if (response && response.success && response.data) {
+        const studentData = response.data;
+        setSelectedStudent(studentData);
         setFeeData({
           ...feeData,
-          studentId: student.id,
-          studentName: student.fullName || student.name,
-          fatherName: student.fatherName || "",
-          phone: student.phone || "",
-          className: student.class?.name || "",
-          classTime: student.classTime === 1 ? "بعد از ظهر" : "صبح",
-          admissionDate: student.admissionDate || "",
-          admissionFee: student.admissionFee || 0,
-          tuitionFee: student.tuitionFee || 0,
-          transportFee: student.transportFee || 0,
+          studentId: studentData.id,
+          studentName: studentData.fullName || studentData.name || "",
+          fatherName: studentData.fatherName || "",
+          phone: studentData.phone || "",
+          className: studentData.class?.name || "",
+          classTime: studentData.classTime === 1 ? "بعد از ظهر" : "صبح",
+          admissionDate: studentData.admissionDate || "",
         });
         // Load fee history
         await fetchFeeHistory(id);
       }
     } catch (error) {
       Alert.alert("خطا", "بارگذاری اطلاعات با مشکل مواجه شد");
+      console.error(error);
     } finally {
       setLoading(false);
     }
@@ -149,8 +143,8 @@ export default function RecordPaymentScreen() {
   const fetchFeeHistory = async (studentId: number) => {
     try {
       const response = await financeApi.getStudentFeeHistory(studentId);
-      if (response.success) {
-        setFeeHistory(response.data);
+      if (response && response.success) {
+        setFeeHistory(response.data || []);
       }
     } catch (error) {
       console.error("Fetch history error:", error);
@@ -164,7 +158,7 @@ export default function RecordPaymentScreen() {
     const remain = payable - feeData.payment;
     setFeeData({
       ...feeData,
-      payable: payable,
+      payable: payable > 0 ? payable : 0,
       remain: remain > 0 ? remain : 0,
     });
   };
@@ -190,16 +184,19 @@ export default function RecordPaymentScreen() {
 
     setLoading(true);
     try {
-      await financeApi.recordPayment({
+      await financeApi.recordStudentFeePayment({
         studentId: selectedStudent.id,
+        academicYearId: 1, // You should get this from your app state or API
         month: selectedMonth,
-        year: selectedYear,
-        admissionFee: feeData.admissionFee,
+        year: feeData.year || new Date().getFullYear(),
         tuitionFee: feeData.tuitionFee,
+        admissionFee: feeData.admissionFee,
         transportFee: feeData.transportFee,
         otherFees: 0,
         discount: feeData.discount,
         payment: feeData.payment,
+        paymentMethod: "CASH",
+        date: new Date().toISOString().split("T")[0],
         details: feeData.details,
       });
 
@@ -236,14 +233,19 @@ export default function RecordPaymentScreen() {
 
     return (
       <View style={styles.searchResults}>
-        {searchResults.map((student) => (
+        {searchResults.map((student: any) => (
           <TouchableOpacity
             key={student.id}
             style={styles.searchResultItem}
             onPress={() => {
               setSelectedStudent(student);
               setStudentId(student.id.toString());
-              setStudentName(student.fullName || student.name);
+              setStudentName(
+                student.user?.fullName ||
+                  student.fullName ||
+                  student.name ||
+                  "",
+              );
               setSearchResults([]);
               fetchStudentInfo(student.id);
             }}
@@ -251,10 +253,13 @@ export default function RecordPaymentScreen() {
             <Ionicons name="person" size={20} color="#3b82f6" />
             <View style={styles.searchResultInfo}>
               <Text style={styles.searchResultName}>
-                {student.fullName || student.name}
+                {student.user?.fullName ||
+                  student.fullName ||
+                  student.name ||
+                  "نامشخص"}
               </Text>
               <Text style={styles.searchResultClass}>
-                {student.class?.name || "بدون صنف"}
+                {student.class?.name || student.className || "بدون صنف"}
               </Text>
             </View>
             <Ionicons name="chevron-forward" size={16} color="#94a3b8" />
@@ -420,7 +425,6 @@ export default function RecordPaymentScreen() {
                   <TouchableOpacity
                     style={styles.monthPicker}
                     onPress={() => {
-                      // Show month picker
                       Alert.alert(
                         "انتخاب ماه",
                         "ماه مورد نظر را انتخاب کنید",
@@ -520,16 +524,16 @@ export default function RecordPaymentScreen() {
                 feeHistory.map((fee, index) => (
                   <View key={index} style={styles.historyRow}>
                     <Text style={[styles.historyCell, styles.historyDate]}>
-                      {fee.date}
+                      {fee.date || ""}
                     </Text>
                     <Text style={[styles.historyCell, styles.historyMonth]}>
-                      {months[fee.month - 1]}
+                      {fee.monthName || ""}
                     </Text>
                     <Text style={[styles.historyCell, styles.historyAmount]}>
-                      {formatCurrency(fee.tuitionFee)}
+                      {formatCurrency(fee.tuitionFee || fee.amount || 0)}
                     </Text>
                     <Text style={[styles.historyCell, styles.historyAmount]}>
-                      {formatCurrency(fee.payment)}
+                      {formatCurrency(fee.payment || 0)}
                     </Text>
                     <Text
                       style={[
@@ -538,7 +542,7 @@ export default function RecordPaymentScreen() {
                         styles.historyBalance,
                       ]}
                     >
-                      {formatCurrency(fee.balance)}
+                      {formatCurrency(fee.balance || 0)}
                     </Text>
                   </View>
                 ))

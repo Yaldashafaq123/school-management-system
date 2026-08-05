@@ -1,17 +1,17 @@
 // app/(admin)/financial/payments/[id].tsx
-import React, { useEffect, useState } from "react";
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-  ActivityIndicator,
-  Share,
-} from "react-native";
-import { useLocalSearchParams, useRouter } from "expo-router";
-import { Ionicons } from "@expo/vector-icons";
 import { formatCurrency } from "@/src/config/financeApi";
+import { Ionicons } from "@expo/vector-icons";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import { useState } from "react";
+import {
+  SafeAreaView,
+  ScrollView,
+  Share,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View
+} from "react-native";
 
 export default function PaymentReceiptScreen() {
   const { id } = useLocalSearchParams();
@@ -30,7 +30,7 @@ export default function PaymentReceiptScreen() {
   };
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()}>
@@ -42,7 +42,10 @@ export default function PaymentReceiptScreen() {
         </TouchableOpacity>
       </View>
 
-      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        style={styles.scrollView}
+        showsVerticalScrollIndicator={false}
+      >
         {/* Receipt Card */}
         <View style={styles.receiptCard}>
           {/* Success Banner */}
@@ -51,9 +54,7 @@ export default function PaymentReceiptScreen() {
               <Ionicons name="checkmark-circle" size={48} color="#10b981" />
             </View>
             <Text style={styles.successText}>پرداخت موفق</Text>
-            <Text style={styles.successAmount}>
-              {formatCurrency(2500)}
-            </Text>
+            <Text style={styles.successAmount}>{formatCurrency(2500)}</Text>
           </View>
 
           {/* Receipt Details */}
@@ -63,25 +64,25 @@ export default function PaymentReceiptScreen() {
               <Text style={styles.detailValue}>#{id}</Text>
             </View>
             <View style={styles.detailDivider} />
-            
+
             <View style={styles.detailRow}>
               <Text style={styles.detailLabel}>شاگرد</Text>
               <Text style={styles.detailValue}>احمد محمدی</Text>
             </View>
             <View style={styles.detailDivider} />
-            
+
             <View style={styles.detailRow}>
               <Text style={styles.detailLabel}>صنف</Text>
               <Text style={styles.detailValue}>صنف ۸ - A</Text>
             </View>
             <View style={styles.detailDivider} />
-            
+
             <View style={styles.detailRow}>
               <Text style={styles.detailLabel}>عنوان فیس</Text>
               <Text style={styles.detailValue}>شهریه ماهانه - حمل ۱۴۰۳</Text>
             </View>
             <View style={styles.detailDivider} />
-            
+
             <View style={styles.detailRow}>
               <Text style={styles.detailLabel}>مبلغ</Text>
               <Text style={[styles.detailValue, styles.detailAmount]}>
@@ -89,7 +90,7 @@ export default function PaymentReceiptScreen() {
               </Text>
             </View>
             <View style={styles.detailDivider} />
-            
+
             <View style={styles.detailRow}>
               <Text style={styles.detailLabel}>روش پرداخت</Text>
               <View style={styles.methodBadge}>
@@ -98,7 +99,7 @@ export default function PaymentReceiptScreen() {
               </View>
             </View>
             <View style={styles.detailDivider} />
-            
+
             <View style={styles.detailRow}>
               <Text style={styles.detailLabel}>تاریخ</Text>
               <Text style={styles.detailValue}>
@@ -110,7 +111,7 @@ export default function PaymentReceiptScreen() {
               </Text>
             </View>
             <View style={styles.detailDivider} />
-            
+
             <View style={styles.detailRow}>
               <Text style={styles.detailLabel}>ساعت</Text>
               <Text style={styles.detailValue}>
@@ -121,7 +122,7 @@ export default function PaymentReceiptScreen() {
               </Text>
             </View>
             <View style={styles.detailDivider} />
-            
+
             <View style={styles.detailRow}>
               <Text style={styles.detailLabel}>تایید کننده</Text>
               <Text style={styles.detailValue}>محمد کریمی</Text>
@@ -141,7 +142,7 @@ export default function PaymentReceiptScreen() {
             <Ionicons name="share-outline" size={20} color="#3b82f6" />
             <Text style={styles.actionText}>اشتراک‌گذاری</Text>
           </TouchableOpacity>
-          
+
           <TouchableOpacity
             style={styles.actionButton}
             onPress={() => router.push("/financial/payments/record")}
@@ -149,7 +150,7 @@ export default function PaymentReceiptScreen() {
             <Ionicons name="add-circle-outline" size={20} color="#10b981" />
             <Text style={styles.actionText}>پرداخت جدید</Text>
           </TouchableOpacity>
-          
+
           <TouchableOpacity
             style={styles.actionButton}
             onPress={() => router.back()}
@@ -161,7 +162,7 @@ export default function PaymentReceiptScreen() {
 
         <View style={{ height: 40 }} />
       </ScrollView>
-    </View>
+    </SafeAreaView>
   );
 }
 

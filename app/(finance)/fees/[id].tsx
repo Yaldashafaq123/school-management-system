@@ -1,20 +1,27 @@
 // app/(admin)/financial/fees/[id].tsx
-import React, { useEffect, useState } from "react";
+import { CollectionProgress } from "@/components/finance/CollectionProgress";
+import { FeeItemCard } from "@/components/finance/FeeItemCard";
 import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
+  FeeAssignment,
+  financeApi,
+  formatCurrency,
+  getFeeStatusColor,
+  getFeeStatusLabel,
+  getMonthName,
+} from "@/src/config/financeApi";
+import { Ionicons } from "@expo/vector-icons";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import { useEffect, useState } from "react";
+import {
   ActivityIndicator,
   Alert,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
-import { useLocalSearchParams, useRouter } from "expo-router";
-import { Ionicons } from "@expo/vector-icons";
-import { financeApi, FeeAssignment, formatCurrency, getMonthName, getFeeStatusColor, getFeeStatusLabel } from "@/src/config/financeApi";
-import { FeeItemCard } from "@/components/finance/FeeItemCard";
-import { CollectionProgress } from "@/components/finance/CollectionProgress";
-import { OutstandingBadge } from "@/components/finance/OutstandingBadge";
 
 export default function FeeDetailsScreen() {
   const { id } = useLocalSearchParams();
@@ -22,7 +29,9 @@ export default function FeeDetailsScreen() {
   const [assignment, setAssignment] = useState<FeeAssignment | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<"all" | "monthly" | "onetime">("all");
+  const [activeTab, setActiveTab] = useState<"all" | "monthly" | "onetime">(
+    "all",
+  );
 
   useEffect(() => {
     fetchDetails();
@@ -43,7 +52,13 @@ export default function FeeDetailsScreen() {
   };
 
   const calculateTotals = () => {
-    if (!assignment) return { totalAmount: 0, totalPaid: 0, totalBalance: 0, discountTotal: 0 };
+    if (!assignment)
+      return {
+        totalAmount: 0,
+        totalPaid: 0,
+        totalBalance: 0,
+        discountTotal: 0,
+      };
 
     let totalAmount = 0;
     let totalPaid = 0;
@@ -60,7 +75,9 @@ export default function FeeDetailsScreen() {
       } else {
         totalAmount += Number(item.finalAmount || item.amount);
         totalPaid += Number(item.paidAmount || 0);
-        totalBalance += (Number(item.finalAmount || item.amount) - Number(item.paidAmount || 0));
+        totalBalance +=
+          Number(item.finalAmount || item.amount) -
+          Number(item.paidAmount || 0);
       }
       discountTotal += Number(item.discountAmount || 0);
     }
@@ -80,40 +97,37 @@ export default function FeeDetailsScreen() {
   };
 
   const handleDiscount = () => {
-    Alert.alert(
-      "اعمال تخفیف",
-      "مبلغ تخفیف را وارد کنید",
-      [
-        { text: "لغو", style: "cancel" },
-        { text: "اعمال", onPress: () => console.log("Apply discount") },
-      ]
-    );
+    Alert.alert("اعمال تخفیف", "مبلغ تخفیف را وارد کنید", [
+      { text: "لغو", style: "cancel" },
+      { text: "اعمال", onPress: () => console.log("Apply discount") },
+    ]);
   };
 
   if (loading) {
     return (
-      <View style={styles.loadingContainer}>
+      <SafeAreaView style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#3b82f6" />
-      </View>
+      </SafeAreaView>
     );
   }
 
   if (error || !assignment) {
     return (
-      <View style={styles.loadingContainer}>
+      <SafeAreaView style={styles.loadingContainer}>
         <Ionicons name="alert-circle" size={48} color="#ef4444" />
         <Text style={styles.errorText}>{error || "Not found"}</Text>
         <TouchableOpacity style={styles.retryButton} onPress={fetchDetails}>
           <Text style={styles.retryText}>تلاش مجدد</Text>
         </TouchableOpacity>
-      </View>
+      </SafeAreaView>
     );
   }
 
-  const { totalAmount, totalPaid, totalBalance, discountTotal } = calculateTotals();
+  const { totalAmount, totalPaid, totalBalance, discountTotal } =
+    calculateTotals();
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()}>
@@ -122,16 +136,25 @@ export default function FeeDetailsScreen() {
         <Text style={styles.title}>جزئیات فیس</Text>
         <TouchableOpacity
           style={styles.deleteButton}
-          onPress={() => Alert.alert("حذف", "آیا مطمئن هستید؟", [
-            { text: "خیر" },
-            { text: "بله", style: "destructive", onPress: () => console.log("Delete") },
-          ])}
+          onPress={() =>
+            Alert.alert("حذف", "آیا مطمئن هستید؟", [
+              { text: "خیر" },
+              {
+                text: "بله",
+                style: "destructive",
+                onPress: () => console.log("Delete"),
+              },
+            ])
+          }
         >
           <Ionicons name="trash-outline" size={20} color="#ef4444" />
         </TouchableOpacity>
       </View>
 
-      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        style={styles.scrollView}
+        showsVerticalScrollIndicator={false}
+      >
         {/* Student Info */}
         <View style={styles.studentCard}>
           <View style={styles.studentAvatar}>
@@ -148,11 +171,18 @@ export default function FeeDetailsScreen() {
               {assignment.academicYear?.name || "نامشخص"}
             </Text>
           </View>
-          <View style={[
-            styles.statusBadge,
-            { backgroundColor: getFeeStatusColor(assignment.status) + "20" }
-          ]}>
-            <Text style={[styles.statusText, { color: getFeeStatusColor(assignment.status) }]}>
+          <View
+            style={[
+              styles.statusBadge,
+              { backgroundColor: getFeeStatusColor(assignment.status) + "20" },
+            ]}
+          >
+            <Text
+              style={[
+                styles.statusText,
+                { color: getFeeStatusColor(assignment.status) },
+              ]}
+            >
               {getFeeStatusLabel(assignment.status)}
             </Text>
           </View>
@@ -165,11 +195,13 @@ export default function FeeDetailsScreen() {
             total={totalAmount}
             size="large"
           />
-          
+
           <View style={styles.summaryGrid}>
             <View style={styles.summaryItem}>
               <Text style={styles.summaryLabel}>فیس کل</Text>
-              <Text style={styles.summaryValue}>{formatCurrency(totalAmount)}</Text>
+              <Text style={styles.summaryValue}>
+                {formatCurrency(totalAmount)}
+              </Text>
             </View>
             <View style={styles.summaryItem}>
               <Text style={styles.summaryLabel}>پرداخت شده</Text>
@@ -179,7 +211,12 @@ export default function FeeDetailsScreen() {
             </View>
             <View style={styles.summaryItem}>
               <Text style={styles.summaryLabel}>باقیمانده</Text>
-              <Text style={[styles.summaryValue, { color: totalBalance > 0 ? "#ef4444" : "#059669" }]}>
+              <Text
+                style={[
+                  styles.summaryValue,
+                  { color: totalBalance > 0 ? "#ef4444" : "#059669" },
+                ]}
+              >
                 {formatCurrency(totalBalance)}
               </Text>
             </View>
@@ -226,7 +263,12 @@ export default function FeeDetailsScreen() {
               style={[styles.tab, activeTab === tab.key && styles.tabActive]}
               onPress={() => setActiveTab(tab.key as any)}
             >
-              <Text style={[styles.tabText, activeTab === tab.key && styles.tabTextActive]}>
+              <Text
+                style={[
+                  styles.tabText,
+                  activeTab === tab.key && styles.tabTextActive,
+                ]}
+              >
                 {tab.label}
               </Text>
             </TouchableOpacity>
@@ -285,31 +327,32 @@ export default function FeeDetailsScreen() {
         </View>
 
         {/* Discounts History */}
-        {assignment.studentDiscounts && assignment.studentDiscounts.length > 0 && (
-          <View style={styles.discountsSection}>
-            <Text style={styles.sectionTitle}>تخفیف‌ها</Text>
-            {assignment.studentDiscounts.map((discount) => (
-              <View key={discount.id} style={styles.discountItem}>
-                <View style={styles.discountIcon}>
-                  <Ionicons name="pricetag" size={18} color="#8b5cf6" />
-                </View>
-                <View style={styles.discountInfo}>
-                  <Text style={styles.discountAmount}>
-                    {formatCurrency(Number(discount.amount))}
+        {assignment.studentDiscounts &&
+          assignment.studentDiscounts.length > 0 && (
+            <View style={styles.discountsSection}>
+              <Text style={styles.sectionTitle}>تخفیف‌ها</Text>
+              {assignment.studentDiscounts.map((discount) => (
+                <View key={discount.id} style={styles.discountItem}>
+                  <View style={styles.discountIcon}>
+                    <Ionicons name="pricetag" size={18} color="#8b5cf6" />
+                  </View>
+                  <View style={styles.discountInfo}>
+                    <Text style={styles.discountAmount}>
+                      {formatCurrency(Number(discount.amount))}
+                    </Text>
+                    <Text style={styles.discountReason}>{discount.reason}</Text>
+                  </View>
+                  <Text style={styles.discountBy}>
+                    {discount.approver?.fullName || "نامشخص"}
                   </Text>
-                  <Text style={styles.discountReason}>{discount.reason}</Text>
                 </View>
-                <Text style={styles.discountBy}>
-                  {discount.approver?.fullName || "نامشخص"}
-                </Text>
-              </View>
-            ))}
-          </View>
-        )}
+              ))}
+            </View>
+          )}
 
         <View style={{ height: 40 }} />
       </ScrollView>
-    </View>
+    </SafeAreaView>
   );
 }
 

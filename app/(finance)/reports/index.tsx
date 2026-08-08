@@ -19,7 +19,7 @@ const REPORT_CATEGORIES = [
         title: "راپور روزانه",
         subtitle: "وصولی امروز به تفکیک",
         icon: "today-outline",
-        route: "/financial/reports/daily",
+        route: "/(finance)/reports/daily",
         color: "#3b82f6",
         gradient: ["#3b82f6", "#2563eb"],
       },
@@ -28,7 +28,7 @@ const REPORT_CATEGORIES = [
         title: "راپور ماهانه",
         subtitle: "وصولی ماه جاری",
         icon: "calendar-outline",
-        route: "/financial/reports/monthly",
+        route: "/(finance)/reports/monthly",
         color: "#8b5cf6",
         gradient: ["#8b5cf6", "#7c3aed"],
       },
@@ -42,7 +42,7 @@ const REPORT_CATEGORIES = [
         title: "بدهکارها",
         subtitle: "شاگردان بدهکار و معوق",
         icon: "alert-circle-outline",
-        route: "/financial/reports/outstanding",
+        route: "/(finance)/reports/outstanding",
         color: "#ef4444",
         gradient: ["#ef4444", "#dc2626"],
       },
@@ -51,7 +51,7 @@ const REPORT_CATEGORIES = [
         title: "راپور صنف‌ها",
         subtitle: "وصولی به تفکیک صنف",
         icon: "people-outline",
-        route: "/financial/reports/class-wise",
+        route: "/(finance)/reports/class-wise",
         color: "#10b981",
         gradient: ["#10b981", "#059669"],
       },
@@ -60,7 +60,7 @@ const REPORT_CATEGORIES = [
         title: "صورت عایدات",
         subtitle: "عایدات و مصارف",
         icon: "stats-chart-outline",
-        route: "/financial/reports/income-statement",
+        route: "/(finance)/reports/income-statement",
         color: "#f59e0b",
         gradient: ["#f59e0b", "#d97706"],
       },
@@ -74,7 +74,7 @@ const REPORT_CATEGORIES = [
         title: "صدور راپور",
         subtitle: "Excel / PDF",
         icon: "download-outline",
-        route: "/financial/reports/export",
+        route: "/(finance)/reports/export",
         color: "#06b6d4",
         gradient: ["#06b6d4", "#0891b2"],
       },
@@ -161,28 +161,28 @@ export default function ReportsMenuScreen() {
           <View style={styles.quickStatsGrid}>
             <TouchableOpacity
               style={styles.quickStatCard}
-              onPress={() => router.push("/financial/reports/daily")}
+              onPress={() => router.push("/(finance)/reports/daily")}
             >
               <Ionicons name="today" size={24} color="#3b82f6" />
               <Text style={styles.quickStatText}>امروز</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.quickStatCard}
-              onPress={() => router.push("/financial/reports/outstanding")}
+              onPress={() => router.push("/(finance)/reports/outstanding")}
             >
               <Ionicons name="warning" size={24} color="#ef4444" />
               <Text style={styles.quickStatText}>بدهکارها</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.quickStatCard}
-              onPress={() => router.push("/financial/reports/class-wise")}
+              onPress={() => router.push("/(finance)/reports/class-wise")}
             >
               <Ionicons name="people" size={24} color="#10b981" />
               <Text style={styles.quickStatText}>صنف‌ها</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.quickStatCard}
-              onPress={() => router.push("/financial/reports/income-statement")}
+              onPress={() => router.push("/(finance)/reports/income-statement")}
             >
               <Ionicons name="stats-chart" size={24} color="#f59e0b" />
               <Text style={styles.quickStatText}>عایدات</Text>

@@ -81,7 +81,7 @@ export default function OutstandingReportScreen() {
   }) => (
     <TouchableOpacity
       style={styles.studentCard}
-      onPress={() => router.push(`/financial/students/${item.studentId}`)}
+      onPress={() => router.push(`/(finance)/students/${item.studentId}`)}
     >
       <View style={styles.cardHeader}>
         <View style={styles.rankSection}>

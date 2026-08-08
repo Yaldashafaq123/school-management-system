@@ -79,7 +79,7 @@ export default function SearchStudentsScreen() {
 
   const handleSelectStudent = (student: StudentFeeStatus) => {
     Keyboard.dismiss();
-    router.push(`/financial/students/${student.id}`);
+    router.push(`/(finance)/students/${student.id}`);
   };
 
   const renderStudent = ({ item }: { item: StudentFeeStatus }) => (

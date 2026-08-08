@@ -114,7 +114,7 @@ export default function SalariesListScreen() {
     return (
       <TouchableOpacity
         style={styles.salaryCard}
-        onPress={() => router.push(`/financial/salaries/${item.id}`)}
+        onPress={() => router.push(`/(finance)/salaries/${item.id}`)}
         activeOpacity={0.7}
       >
         {/* Header */}
@@ -189,7 +189,7 @@ export default function SalariesListScreen() {
             <TouchableOpacity
               style={styles.payButton}
               onPress={() =>
-                router.push(`/financial/salaries/payment?id=${item.id}`)
+                router.push(`/(finance)/salaries/payment?id=${item.id}`)
               }
             >
               <Ionicons name="wallet-outline" size={16} color="#fff" />
@@ -225,7 +225,7 @@ export default function SalariesListScreen() {
         <Text style={styles.title}>معاشات اساتید</Text>
         <TouchableOpacity
           style={styles.generateButton}
-          onPress={() => router.push("/financial/salaries/generate")}
+          onPress={() => router.push("/(finance)/salaries/generate")}
         >
           <Ionicons name="add-circle-outline" size={24} color="#fff" />
         </TouchableOpacity>
@@ -265,7 +265,7 @@ export default function SalariesListScreen() {
           title="هیچ معاشی ثبت نشده"
           subtitle="برای شروع، معاشات ماهانه را تولید کنید"
           actionLabel="تولید معاشات"
-          onAction={() => router.push("/financial/salaries/generate")}
+          onAction={() => router.push("/(finance)/salaries/generate")}
         />
       ) : (
         <FlatList

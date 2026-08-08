@@ -60,7 +60,7 @@ export default function ClassWiseReportScreen() {
     return (
       <TouchableOpacity
         style={styles.classCard}
-        onPress={() => router.push(`../payments/bulk/${item.classId}`)}
+        onPress={() => router.push(`/(finance)/payments/bulk/${item.classId}`)}
       >
         <View style={styles.classHeader}>
           <View style={styles.classRank}>
@@ -116,7 +116,7 @@ export default function ClassWiseReportScreen() {
           <TouchableOpacity
             style={styles.classActionBtn}
             onPress={() =>
-              router.push(`../payments/bulk/${item.classId}`)
+              router.push(`/(finance)/payments/bulk/${item.classId}`)
             }
           >
             <Ionicons name="wallet-outline" size={16} color="#8b5cf6" />
@@ -125,7 +125,7 @@ export default function ClassWiseReportScreen() {
           <TouchableOpacity
             style={styles.classActionBtn}
             onPress={() =>
-              router.push(`../students?classId=${item.classId}`)
+              router.push(`/(finance)/students?classId=${item.classId}`)
             }
           >
             <Ionicons name="people-outline" size={16} color="#3b82f6" />

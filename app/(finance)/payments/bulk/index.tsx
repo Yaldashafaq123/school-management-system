@@ -46,7 +46,7 @@ export default function BulkPaymentClassSelectionScreen() {
   const renderClass = ({ item }: { item: ClassItem }) => (
     <TouchableOpacity
       style={styles.classCard}
-      onPress={() => router.push(`/financial/payments/bulk/${item.id}`)}
+      onPress={() => router.push(`/(finance)/payments/bulk/${item.id}`)}
       activeOpacity={0.7}
     >
       <View style={styles.classIcon}>

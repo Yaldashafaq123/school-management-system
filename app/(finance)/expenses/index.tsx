@@ -131,7 +131,7 @@ export default function ExpensesListScreen() {
   const renderExpense = ({ item }: { item: any }) => (
     <TouchableOpacity
       style={styles.expenseCard}
-      onPress={() => router.push(`/financial/expenses/${item.id}`)}
+      onPress={() => router.push(`/(finance)/expenses/${item.id}`)}
       activeOpacity={0.7}
     >
       <View style={styles.expenseLeft}>
@@ -192,7 +192,7 @@ export default function ExpensesListScreen() {
         <Text style={styles.title}>مصارف</Text>
         <TouchableOpacity
           style={styles.addButton}
-          onPress={() => router.push("/financial/expenses/create")}
+          onPress={() => router.push("/(finance)/expenses/create")}
         >
           <Ionicons name="add" size={24} color="#fff" />
         </TouchableOpacity>
@@ -231,7 +231,7 @@ export default function ExpensesListScreen() {
         />
         <TouchableOpacity
           style={styles.categoriesButton}
-          onPress={() => router.push("/financial/expenses/categories")}
+          onPress={() => router.push("/(finance)/expenses/categories")}
         >
           <Ionicons name="pricetags-outline" size={20} color="#3b82f6" />
         </TouchableOpacity>

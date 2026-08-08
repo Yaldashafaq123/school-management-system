@@ -210,7 +210,7 @@ export default function PaymentHistoryScreen() {
         <Text style={styles.title}>تاریخچه پرداخت‌ها</Text>
         <TouchableOpacity
           style={styles.addButton}
-          onPress={() => router.push("/financial/payments/record")}
+          onPress={() => router.push("/(finance)/payments/record")}
         >
           <Ionicons name="add" size={24} color="#fff" />
         </TouchableOpacity>
@@ -222,7 +222,7 @@ export default function PaymentHistoryScreen() {
           title="هیچ پرداختی ثبت نشده"
           subtitle="برای شروع، یک پرداخت جدید ثبت کنید"
           actionLabel="ثبت پرداخت جدید"
-          onAction={() => router.push("/financial/payments/record")}
+          onAction={() => router.push("/(finance)/payments/record")}
         />
       ) : (
         <FlatList
@@ -230,7 +230,7 @@ export default function PaymentHistoryScreen() {
           renderItem={({ item }) => (
             <PaymentHistoryItem
               payment={item}
-              onPress={() => router.push(`/financial/payments/${item.id}`)}
+              onPress={() => router.push(`/(finance)/payments/${item.id}`)}
             />
           )}
           keyExtractor={(item, index) => `${item.id}-${index}`}

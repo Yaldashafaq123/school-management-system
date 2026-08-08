@@ -4,7 +4,7 @@ import { OutstandingBadge } from "@/components/finance/OutstandingBadge";
 import {
   financeApi,
   formatCurrency,
-  StudentFeeStatus
+  StudentFeeStatus,
 } from "@/src/config/financeApi";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
@@ -135,7 +135,7 @@ export default function PendingStudentsScreen() {
   }) => (
     <TouchableOpacity
       style={styles.studentCard}
-      onPress={() => router.push(`/financial/students/${item.id}`)}
+      onPress={() => router.push(`/(finance)/students/${item.id}`)}
       activeOpacity={0.7}
     >
       {/* Rank Badge */}
@@ -251,7 +251,7 @@ export default function PendingStudentsScreen() {
           <TouchableOpacity
             style={[styles.actionBtn, styles.payBtn]}
             onPress={() =>
-              router.push(`/financial/payments/record?studentId=${item.id}`)
+              router.push(`/(finance)/payments/record?studentId=${item.id}`)
             }
           >
             <Ionicons name="wallet-outline" size={16} color="#fff" />
@@ -281,7 +281,7 @@ export default function PendingStudentsScreen() {
         <Text style={styles.title}>شاگردان بدهکار</Text>
         <TouchableOpacity
           style={styles.searchIconButton}
-          onPress={() => router.push("/financial/students/search")}
+          onPress={() => router.push("/(finance)/students/search")}
         >
           <Ionicons name="search" size={24} color="#3b82f6" />
         </TouchableOpacity>

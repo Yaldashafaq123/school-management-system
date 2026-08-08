@@ -117,7 +117,7 @@ export default function FeesListScreen() {
     return (
       <TouchableOpacity
         style={styles.card}
-        onPress={() => router.push(`/financial/fees/${item.id}`)}
+        onPress={() => router.push(`./${item.id}`)}
         activeOpacity={0.7}
       >
         {/* Header */}
@@ -237,7 +237,7 @@ export default function FeesListScreen() {
                 style={styles.payButton}
                 onPress={() =>
                   router.push(
-                    `/financial/payments/record?studentId=${item.studentId}&assignmentId=${item.id}`,
+                    `/(finance)/payments/record?studentId=${item.studentId}&assignmentId=${item.id}`,
                   )
                 }
               >
@@ -247,7 +247,7 @@ export default function FeesListScreen() {
             )}
             <TouchableOpacity
               style={styles.detailsButton}
-              onPress={() => router.push(`/financial/fees/${item.id}`)}
+              onPress={() => router.push(`/(finance)/fees/${item.id}`)}
             >
               <Ionicons name="eye-outline" size={16} color="#3b82f6" />
             </TouchableOpacity>
@@ -276,7 +276,7 @@ export default function FeesListScreen() {
         <Text style={styles.title}>فیس شاگردان</Text>
         <TouchableOpacity
           style={styles.addButton}
-          onPress={() => router.push("/financial/fees/create")}
+          onPress={() => router.push("/(finance)/fees/create")}
         >
           <Ionicons name="add" size={24} color="#fff" />
         </TouchableOpacity>
@@ -306,7 +306,7 @@ export default function FeesListScreen() {
           title="هیچ فیس پیدا نشد"
           subtitle="برای شاگردان فیس تعیین کنید"
           actionLabel="ایجاد فیس جدید"
-          onAction={() => router.push("/financial/fees/create")}
+          onAction={() => router.push("/(finance)/fees/create")}
         />
       ) : (
         <FlatList

@@ -98,8 +98,10 @@ export default function RecordPaymentScreen() {
   const [oneTimeFees, setOneTimeFees] = useState<any[]>([]);
   const [academicYearId, setAcademicYearId] = useState(1);
 
-  // ✅ Add string state for payment input
-  const [paymentInput, setPaymentInput] = useState("");
+  // Payment inputs
+  const [monthlyPaymentInput, setMonthlyPaymentInput] = useState("");
+  const [oneTimePaymentInput, setOneTimePaymentInput] = useState("");
+  const [totalPaymentInput, setTotalPaymentInput] = useState("");
 
   // Options
   const months = [
@@ -150,7 +152,6 @@ export default function RecordPaymentScreen() {
   const fetchStudentInfo = async (id: number) => {
     setLoading(true);
     try {
-      // Get basic student info
       const response = await financeApi.getStudentById(id);
       if (response && response.success && response.data) {
         const studentData = response.data;
@@ -167,10 +168,7 @@ export default function RecordPaymentScreen() {
           admissionDate: studentData.admissionDate || "",
         });
 
-        // Fetch fee info
         await fetchStudentFeeInfo(id);
-
-        // Load fee history
         await fetchFeeHistory(id);
       }
     } catch (error) {
@@ -187,11 +185,7 @@ export default function RecordPaymentScreen() {
       if (response && response.success && response.data) {
         const data = response.data;
 
-        // Store monthly and one-time fees
-        setMonthlyFees(data.monthlyFees || []);
-        setOneTimeFees(data.oneTimeFees || []);
-
-        // Get academic year ID from the data
+        // Get academic year ID
         if (data.academicYear) {
           setAcademicYearId(data.academicYear.id);
           setFeeData((prev) => ({
@@ -200,7 +194,16 @@ export default function RecordPaymentScreen() {
           }));
         }
 
-        // Get the current month key
+        // Store ALL monthly fees
+        setMonthlyFees(data.monthlyFees || []);
+
+        // ✅ FIX: Store only one-time fees with balance > 0
+        const activeOneTimeFees = (data.oneTimeFees || []).filter(
+          (f: any) =>
+            f.balance > 0 && (f.status === "PENDING" || f.status === "PARTIAL"),
+        );
+        setOneTimeFees(activeOneTimeFees);
+
         const monthKey = months[selectedMonth - 1];
         const monthKeyEnglish = MONTH_MAP[monthKey] || monthKey;
 
@@ -209,50 +212,40 @@ export default function RecordPaymentScreen() {
           (f: any) => f.month === monthKeyEnglish,
         );
 
-        // If no fee found for selected month, find any pending monthly fee
         if (!monthlyFee) {
           monthlyFee = data.monthlyFees?.find(
             (f: any) => f.status === "PENDING" || f.status === "PARTIAL",
           );
         }
 
-        // Find pending one-time fees
-        const pendingOneTimeFees =
-          data.oneTimeFees?.filter(
-            (f: any) => f.status === "PENDING" || f.status === "PARTIAL",
-          ) || [];
-
-        // Calculate totals
+        // Calculate monthly fee
         const tuitionFee = monthlyFee ? Number(monthlyFee.amount) : 0;
-        const admissionFee = data.feeDetails?.admissionFee || 0;
-        const transportFee = data.feeDetails?.transportFee || 0;
-        const otherFees = pendingOneTimeFees.reduce(
-          (sum: number, f: any) => sum + Number(f.amount),
-          0,
-        );
-
-        // Calculate payable (balance for monthly fee + one-time fees)
         const monthlyBalance = monthlyFee
           ? Number(monthlyFee.balance || monthlyFee.amount)
           : 0;
-        const oneTimeBalance = pendingOneTimeFees.reduce(
+
+        // ✅ Calculate ONE-TIME balance from active fees only
+        const oneTimeBalance = activeOneTimeFees.reduce(
           (sum: number, f: any) => sum + Number(f.balance || f.amount),
           0,
         );
+
+        // Total payable = monthly + pending one-time
         const totalPayable = monthlyBalance + oneTimeBalance;
 
         setFeeData((prev) => ({
           ...prev,
           tuitionFee: tuitionFee,
-          admissionFee: admissionFee,
-          transportFee: transportFee,
-          otherFees: otherFees,
+          admissionFee: 0,
+          transportFee: 0,
+          otherFees: oneTimeBalance,
           payable: totalPayable,
           remain: totalPayable - prev.payment,
         }));
 
-        // ✅ Reset payment input when fees are loaded
-        setPaymentInput("");
+        setMonthlyPaymentInput("");
+        setOneTimePaymentInput("");
+        setTotalPaymentInput("");
       }
     } catch (error) {
       console.error("Fetch fee info error:", error);
@@ -270,71 +263,82 @@ export default function RecordPaymentScreen() {
     }
   };
 
-  // ✅ Fixed: Calculate payable based on current values
-  const calculatePayable = () => {
-    const total =
-      feeData.tuitionFee +
-      feeData.admissionFee +
-      feeData.transportFee +
-      feeData.otherFees;
-    const payable = total - feeData.discount;
-    const remain = payable - feeData.payment;
+  // Handle monthly payment change
+  const handleMonthlyPaymentChange = (text: string) => {
+    const numericText = text.replace(/[^0-9]/g, "");
+    setMonthlyPaymentInput(numericText);
+    const val = numericText ? Number(numericText) : 0;
+    updateTotals(val, Number(oneTimePaymentInput) || 0);
+  };
+
+  // Handle one-time payment change
+  const handleOneTimePaymentChange = (text: string) => {
+    const numericText = text.replace(/[^0-9]/g, "");
+    setOneTimePaymentInput(numericText);
+    const val = numericText ? Number(numericText) : 0;
+    updateTotals(Number(monthlyPaymentInput) || 0, val);
+  };
+
+  // Update totals when either payment changes
+  const updateTotals = (monthly: number, oneTime: number) => {
+    const total = monthly + oneTime;
+    setTotalPaymentInput(total > 0 ? total.toString() : "");
+
+    const payable = feeData.tuitionFee + feeData.otherFees;
+    const remain = payable - total;
 
     setFeeData((prev) => ({
       ...prev,
-      payable: payable > 0 ? payable : 0,
+      payment: total,
       remain: remain > 0 ? remain : 0,
     }));
   };
 
-  // ✅ Handle payment input change - properly update state
-  const handlePaymentChange = (text: string) => {
-    // Only allow numbers
+  // Handle total payment change (auto-distribute)
+  const handleTotalPaymentChange = (text: string) => {
     const numericText = text.replace(/[^0-9]/g, "");
-    setPaymentInput(numericText);
+    setTotalPaymentInput(numericText);
+    const total = numericText ? Number(numericText) : 0;
 
-    const val = numericText ? Number(numericText) : 0;
+    // Auto-distribute: first pay monthly, then one-time
+    const monthlyBalance = feeData.tuitionFee;
+    let monthly = Math.min(total, monthlyBalance);
+    let oneTime = total - monthly;
 
-    // Update payment value in feeData
-    setFeeData((prev) => {
-      const newPayment = val;
-      const total =
-        prev.tuitionFee +
-        prev.admissionFee +
-        prev.transportFee +
-        prev.otherFees;
-      const payable = total - prev.discount;
-      const remain = payable - newPayment;
+    // Cap one-time payment to remaining one-time balance
+    const oneTimeBalance = feeData.otherFees;
+    if (oneTime > oneTimeBalance) {
+      oneTime = oneTimeBalance;
+      monthly = total - oneTime;
+    }
 
-      return {
-        ...prev,
-        payment: newPayment,
-        payable: payable > 0 ? payable : 0,
-        remain: remain > 0 ? remain : 0,
-      };
-    });
+    setMonthlyPaymentInput(monthly > 0 ? monthly.toString() : "");
+    setOneTimePaymentInput(oneTime > 0 ? oneTime.toString() : "");
+
+    const remain = monthlyBalance - monthly + (oneTimeBalance - oneTime);
+    setFeeData((prev) => ({
+      ...prev,
+      payment: total,
+      remain: remain > 0 ? remain : 0,
+    }));
   };
 
   const handleSubmit = async () => {
-    // ✅ Debug - log current values
-    console.log("🔍 [DEBUG] Submit - paymentInput:", paymentInput);
-    console.log("🔍 [DEBUG] Submit - feeData.payment:", feeData.payment);
-    console.log("🔍 [DEBUG] Submit - feeData.payable:", feeData.payable);
-
     if (!selectedStudent) {
       Alert.alert("خطا", "لطفاً ابتدا شاگرد را انتخاب کنید");
       return;
     }
 
-    // ✅ Check payment using both the input and the state
-    const paymentAmount = Number(paymentInput) || feeData.payment;
+    const monthlyAmount = Number(monthlyPaymentInput) || 0;
+    const oneTimeAmount = Number(oneTimePaymentInput) || 0;
+    const totalAmount = monthlyAmount + oneTimeAmount;
 
-    if (paymentAmount <= 0) {
+    if (totalAmount <= 0) {
       Alert.alert("خطا", "مبلغ پرداختی را وارد کنید");
       return;
     }
 
-    if (paymentAmount > feeData.payable) {
+    if (totalAmount > feeData.payable) {
       Alert.alert(
         "خطا",
         "مبلغ پرداختی نمی‌تواند بیشتر از مبلغ قابل پرداخت باشد",
@@ -347,7 +351,6 @@ export default function RecordPaymentScreen() {
       const monthKey = months[selectedMonth - 1];
       const monthKeyEnglish = MONTH_MAP[monthKey] || monthKey;
 
-      // Find the monthly fee record for this month
       const monthlyFee = monthlyFees.find(
         (f: any) => f.month === monthKeyEnglish,
       );
@@ -358,21 +361,37 @@ export default function RecordPaymentScreen() {
         return;
       }
 
-      await financeApi.recordStudentFeePayment({
+      // ✅ Calculate actual one-time fee from active fees only
+      const activeOneTime = oneTimeFees.filter(
+        (f: any) =>
+          f.balance > 0 && (f.status === "PENDING" || f.status === "PARTIAL"),
+      );
+      const oneTimeTotal = activeOneTime.reduce(
+        (sum: number, f: any) => sum + Number(f.balance || f.amount),
+        0,
+      );
+
+      const payload = {
         studentId: selectedStudent.id,
         academicYearId: feeData.academicYearId || 1,
         month: selectedMonth,
         year: feeData.year || new Date().getFullYear(),
-        tuitionFee: feeData.tuitionFee,
-        admissionFee: feeData.admissionFee,
-        transportFee: feeData.transportFee,
-        otherFees: feeData.otherFees,
+        tuitionFee: monthlyAmount > 0 ? monthlyAmount : feeData.tuitionFee,
+        admissionFee: 0,
+        transportFee: 0,
+        otherFees: oneTimeTotal,
         discount: feeData.discount,
-        payment: paymentAmount, // ✅ Use the correct payment amount
+        payment: totalAmount,
         paymentMethod: "CASH",
         date: new Date().toISOString().split("T")[0],
         details: feeData.details,
-      });
+      };
+
+      await financeApi.recordStudentFeePayment(payload);
+
+      // Refresh data
+      await fetchStudentFeeInfo(selectedStudent.id);
+      await fetchFeeHistory(selectedStudent.id);
 
       Alert.alert("موفقیت", "پرداخت با موفقیت ثبت شد", [
         { text: "باشه", onPress: () => resetForm() },
@@ -397,7 +416,9 @@ export default function RecordPaymentScreen() {
       remain: 0,
       details: "",
     });
-    setPaymentInput("");
+    setMonthlyPaymentInput("");
+    setOneTimePaymentInput("");
+    setTotalPaymentInput("");
     setSelectedStudent(null);
     setStudentId("");
     setStudentName("");
@@ -538,7 +559,7 @@ export default function RecordPaymentScreen() {
             <View style={styles.feeSection}>
               <Text style={styles.sectionTitle}>دریافت فیس</Text>
 
-              {/* Show monthly fee status */}
+              {/* Monthly Fee Status */}
               {monthlyFees.length > 0 && (
                 <View style={styles.monthlyStatusContainer}>
                   <Text style={styles.monthlyStatusTitle}>
@@ -575,15 +596,52 @@ export default function RecordPaymentScreen() {
                 </View>
               )}
 
+              {/* One-Time Fee Status - ✅ Only shows fees with balance > 0 */}
+              {(() => {
+                const activeOneTime = oneTimeFees.filter(
+                  (f: any) =>
+                    f.balance > 0 &&
+                    (f.status === "PENDING" || f.status === "PARTIAL"),
+                );
+                if (activeOneTime.length === 0) return null;
+
+                return (
+                  <View style={styles.oneTimeStatusContainer}>
+                    <Text style={styles.oneTimeStatusTitle}>
+                      فیس‌های یکباره:
+                    </Text>
+                    {activeOneTime.map((fee, index) => (
+                      <View key={index} style={styles.oneTimeStatusItem}>
+                        <Text style={styles.oneTimeStatusName}>{fee.name}</Text>
+                        <Text
+                          style={[
+                            styles.oneTimeStatusBadge,
+                            fee.status === "PAID"
+                              ? styles.statusPaid
+                              : fee.status === "PARTIAL"
+                                ? styles.statusPartial
+                                : styles.statusPending,
+                          ]}
+                        >
+                          {fee.status === "PAID"
+                            ? "✅ پرداخت شده"
+                            : fee.status === "PARTIAL"
+                              ? "⚡ پرداخت ناقص"
+                              : "⏳ در انتظار"}
+                        </Text>
+                        <Text style={styles.oneTimeStatusAmount}>
+                          {formatCurrency(fee.amount)}
+                          {fee.status !== "PAID" &&
+                            ` (باقی: ${formatCurrency(fee.balance)})`}
+                        </Text>
+                      </View>
+                    ))}
+                  </View>
+                );
+              })()}
+
+              {/* Fee Amounts Display */}
               <View style={styles.feeRow}>
-                <View style={styles.feeItem}>
-                  <Text style={styles.feeLabel}>فیس ثبت:</Text>
-                  <TextInput
-                    style={styles.feeInput}
-                    value={feeData.admissionFee.toString()}
-                    editable={false}
-                  />
-                </View>
                 <View style={styles.feeItem}>
                   <Text style={styles.feeLabel}>فیس تعلیمی:</Text>
                   <TextInput
@@ -593,18 +651,7 @@ export default function RecordPaymentScreen() {
                   />
                 </View>
                 <View style={styles.feeItem}>
-                  <Text style={styles.feeLabel}>فیس ترانسپورت:</Text>
-                  <TextInput
-                    style={styles.feeInput}
-                    value={feeData.transportFee.toString()}
-                    editable={false}
-                  />
-                </View>
-              </View>
-
-              <View style={styles.feeRow}>
-                <View style={styles.feeItem}>
-                  <Text style={styles.feeLabel}>فیس دیگر:</Text>
+                  <Text style={styles.feeLabel}>فیس یکباره:</Text>
                   <TextInput
                     style={styles.feeInput}
                     value={feeData.otherFees.toString()}
@@ -619,11 +666,7 @@ export default function RecordPaymentScreen() {
                     onChangeText={(text) => {
                       const val = Number(text) || 0;
                       setFeeData((prev) => {
-                        const total =
-                          prev.tuitionFee +
-                          prev.admissionFee +
-                          prev.transportFee +
-                          prev.otherFees;
+                        const total = prev.tuitionFee + prev.otherFees;
                         const payable = total - val;
                         const remain = payable - prev.payment;
                         return {
@@ -637,16 +680,43 @@ export default function RecordPaymentScreen() {
                     keyboardType="numeric"
                   />
                 </View>
+              </View>
+
+              {/* Payment Inputs */}
+              <View style={styles.feeRow}>
                 <View style={styles.feeItem}>
-                  <Text style={styles.feeLabel}>قابل پرداخت:</Text>
+                  <Text style={styles.feeLabel}>پرداخت فیس تعلیمی:</Text>
                   <TextInput
-                    style={styles.feeInput}
-                    value={feeData.payable.toString()}
-                    editable={false}
+                    style={[styles.feeInput, styles.feeEditable]}
+                    value={monthlyPaymentInput}
+                    onChangeText={handleMonthlyPaymentChange}
+                    keyboardType="numeric"
+                    placeholder="مبلغ"
+                  />
+                </View>
+                <View style={styles.feeItem}>
+                  <Text style={styles.feeLabel}>پرداخت فیس یکباره:</Text>
+                  <TextInput
+                    style={[styles.feeInput, styles.feeEditable]}
+                    value={oneTimePaymentInput}
+                    onChangeText={handleOneTimePaymentChange}
+                    keyboardType="numeric"
+                    placeholder="مبلغ"
+                  />
+                </View>
+                <View style={styles.feeItem}>
+                  <Text style={styles.feeLabel}>مجموع پرداخت:</Text>
+                  <TextInput
+                    style={[styles.feeInput, styles.feeEditable]}
+                    value={totalPaymentInput}
+                    onChangeText={handleTotalPaymentChange}
+                    keyboardType="numeric"
+                    placeholder="مجموع"
                   />
                 </View>
               </View>
 
+              {/* Month and Balance */}
               <View style={styles.feeRow}>
                 <View style={styles.feeItem}>
                   <Text style={styles.feeLabel}>ماه:</Text>
@@ -670,13 +740,11 @@ export default function RecordPaymentScreen() {
                   </TouchableOpacity>
                 </View>
                 <View style={styles.feeItem}>
-                  <Text style={styles.feeLabel}>پرداخت:</Text>
+                  <Text style={styles.feeLabel}>قابل پرداخت:</Text>
                   <TextInput
-                    style={[styles.feeInput, styles.feeEditable]}
-                    value={paymentInput}
-                    onChangeText={handlePaymentChange}
-                    keyboardType="numeric"
-                    placeholder="مبلغ را وارد کنید"
+                    style={styles.feeInput}
+                    value={feeData.payable.toString()}
+                    editable={false}
                   />
                 </View>
                 <View style={styles.feeItem}>
@@ -1028,7 +1096,6 @@ const styles = StyleSheet.create({
     padding: 20,
     fontFamily: "Vazir",
   },
-  // Monthly status styles
   monthlyStatusContainer: {
     backgroundColor: "#f8fafc",
     borderRadius: 10,
@@ -1080,6 +1147,49 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "600",
     color: "#1e293b",
+    fontFamily: "Vazir",
+  },
+  oneTimeStatusContainer: {
+    backgroundColor: "#f0fdf4",
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: "#bbf7d0",
+  },
+  oneTimeStatusTitle: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#166534",
+    marginBottom: 8,
+    fontFamily: "VazirBold",
+  },
+  oneTimeStatusItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: 6,
+    borderBottomWidth: 1,
+    borderBottomColor: "#dcfce7",
+  },
+  oneTimeStatusName: {
+    fontSize: 13,
+    color: "#166534",
+    fontFamily: "Vazir",
+    flex: 1,
+  },
+  oneTimeStatusBadge: {
+    fontSize: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 4,
+    fontFamily: "Vazir",
+    marginHorizontal: 8,
+  },
+  oneTimeStatusAmount: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#166534",
     fontFamily: "Vazir",
   },
 });

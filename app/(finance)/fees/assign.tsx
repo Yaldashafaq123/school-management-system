@@ -1,31 +1,31 @@
 // app/(admin)/financial/fees/assign.tsx
 import {
-    AcademicYear,
-    ClassItem,
-    FeeCategory,
-    FeeItemInput,
-    financeApi,
-    formatCurrency,
-    getFeeTypeIcon,
-    getFeeTypeLabel,
-    Student,
+  AcademicYear,
+  ClassItem,
+  FeeCategory,
+  FeeItemInput,
+  financeApi,
+  formatCurrency,
+  getFeeTypeIcon,
+  getFeeTypeLabel,
+  Student,
 } from "@/src/config/financeApi";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import React, { useCallback, useEffect, useState } from "react";
 import {
-    ActivityIndicator,
-    Alert,
-    FlatList,
-    Modal,
-    SafeAreaView,
-    ScrollView,
-    StatusBar,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Alert,
+  FlatList,
+  Modal,
+  SafeAreaView,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
 
 // ==================== COMPONENTS ====================
@@ -283,7 +283,6 @@ const feeTypeStyles = StyleSheet.create({
 const getStudentName = (student: Student | null): string => {
   if (!student) return "انتخاب شاگرد";
 
-  // Try different possible locations for the name
   const name =
     student.user?.fullName ||
     (student as any).fullName ||
@@ -329,8 +328,15 @@ export default function AssignFeeScreen() {
   const [newItemType, setNewItemType] = useState("MONTHLY_TUITION");
   const [newItemName, setNewItemName] = useState("");
   const [newItemAmount, setNewItemAmount] = useState("");
-  const [newItemRecurring, setNewItemRecurring] = useState(false);
   const [notes, setNotes] = useState("");
+
+  // ==================== HELPER ====================
+
+  // ✅ Determine if a fee type is recurring based on the type
+  const isFeeTypeRecurring = (feeType: string): boolean => {
+    const recurringTypes = ["MONTHLY_TUITION", "MONTHLY_TRANSPORT"];
+    return recurringTypes.includes(feeType);
+  };
 
   // ==================== LOAD DATA ====================
 
@@ -429,20 +435,22 @@ export default function AssignFeeScreen() {
       return;
     }
 
+    // ✅ Automatically set isRecurring based on fee type
+    const isRecurring = isFeeTypeRecurring(newItemType);
+
     setFeeItems([
       ...feeItems,
       {
         feeType: newItemType,
         name: newItemName.trim(),
         amount,
-        isRecurring: newItemRecurring,
+        isRecurring: isRecurring,
       },
     ]);
 
     setNewItemName("");
     setNewItemAmount("");
     setNewItemType("MONTHLY_TUITION");
-    setNewItemRecurring(false);
     setShowAddItem(false);
   };
 
@@ -662,7 +670,7 @@ export default function AssignFeeScreen() {
                   <Text style={styles.feeItemName}>{item.name}</Text>
                   <Text style={styles.feeItemType}>
                     {getFeeTypeLabel(item.feeType)}
-                    {item.isRecurring && " • ماهانه"}
+                    {item.isRecurring ? " • ماهانه" : " • یکباره"}
                   </Text>
                 </View>
               </View>
@@ -704,22 +712,19 @@ export default function AssignFeeScreen() {
                 categories={categories}
               />
 
-              <TouchableOpacity
-                style={[
-                  styles.recurringToggle,
-                  newItemRecurring && styles.recurringToggleActive,
-                ]}
-                onPress={() => setNewItemRecurring(!newItemRecurring)}
-              >
+              {/* ✅ Show info about the fee type */}
+              <View style={styles.feeTypeInfo}>
                 <Ionicons
-                  name={
-                    newItemRecurring ? "checkmark-circle" : "ellipse-outline"
-                  }
-                  size={20}
-                  color={newItemRecurring ? "#10b981" : "#94a3b8"}
+                  name="information-circle-outline"
+                  size={16}
+                  color="#64748b"
                 />
-                <Text style={styles.recurringText}>فیس ماهانه (تکراری)</Text>
-              </TouchableOpacity>
+                <Text style={styles.feeTypeInfoText}>
+                  {isFeeTypeRecurring(newItemType)
+                    ? "این نوع فیس به صورت ماهانه (تکراری) ثبت می‌شود"
+                    : "این نوع فیس به صورت یکباره ثبت می‌شود"}
+                </Text>
+              </View>
 
               <View style={styles.addItemActions}>
                 <TouchableOpacity
@@ -883,7 +888,6 @@ export default function AssignFeeScreen() {
         onClose={() => setShowStudentModal(false)}
         keyExtractor={(item) => item.id.toString()}
         renderItem={(item) => {
-          // Try multiple possible locations for the name
           const fullName =
             item.user?.fullName ||
             (item as any).fullName ||
@@ -1102,18 +1106,18 @@ const styles = StyleSheet.create({
     color: "#1e293b",
     fontFamily: "Vazir",
   },
-  recurringToggle: {
+  // ✅ Fee type info
+  feeTypeInfo: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
+    gap: 6,
+    paddingVertical: 4,
   },
-  recurringToggleActive: {
-    opacity: 1,
-  },
-  recurringText: {
-    fontSize: 14,
-    color: "#475569",
+  feeTypeInfoText: {
+    fontSize: 12,
+    color: "#64748b",
     fontFamily: "Vazir",
+    flex: 1,
   },
   addItemActions: {
     flexDirection: "row",

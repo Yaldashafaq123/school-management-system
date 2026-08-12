@@ -1,4 +1,4 @@
-// app/(hr)/staff/[id].tsx - FIXED
+// app/(hr)/staff/[id].tsx - COMPLETE DETAIL PAGE WITH ALL FIELDS
 import { formatCurrency, getRoleLabel, hrApi } from "@/src/config/hrApi";
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -14,10 +14,10 @@ import {
     View,
 } from "react-native";
 
-// ✅ FIX: Use proper type with union discrimination
 type StaffDetail = {
   id: number;
   fullName: string;
+  nameFarsi?: string;
   email: string;
   phone: string;
   role: string;
@@ -26,6 +26,80 @@ type StaffDetail = {
   createdAt: string;
   profileImage?: string;
   rfidCode?: string;
+  staffType?: string;
+  position?: string;
+  department?: string;
+  joinDate?: string;
+  salary?: number;
+  specialization?: string;
+  experience?: string;
+  qualification?: string;
+  attendanceCount?: number;
+  
+  // Personal Info
+  fatherName?: string;
+  fatherNameFarsi?: string;
+  grandfatherName?: string;
+  grandfatherNameFarsi?: string;
+  sex?: string;
+  maritalStatus?: string;
+  bloodType?: string;
+  civilId?: string;
+  civilIdIssueDate?: string;
+  civilIdExpiryDate?: string;
+  birthDate?: string;
+  birthPlace?: string;
+  nationality?: string;
+  currentAddress?: string;
+  permanentAddress?: string;
+  emergencyContactName?: string;
+  emergencyContactPhone?: string;
+  emergencyContactRelation?: string;
+  
+  // Education
+  educationLevel?: string;
+  educationField?: string;
+  educationInstitution?: string;
+  graduationYear?: number;
+  workExperience?: string;
+  
+  // Contract
+  contractStartDate?: string;
+  contractEndDate?: string;
+  contractType?: string;
+  workSchedule?: string;
+  workShift?: string;
+  baseSalary?: number;
+  salaryCurrency?: string;
+  hasContract?: boolean;
+  notes?: string;
+  
+  // Bank
+  bankAccountNumber?: string;
+  bankName?: string;
+  
+  // Insurance
+  insuranceNumber?: string;
+  insuranceProvider?: string;
+  hasInsurance?: boolean;
+  
+  // Relations
+  staff?: {
+    id: number;
+    staffType: string;
+    position: string;
+    department: string;
+    isActive: boolean;
+    joinDate: string;
+    salary: number;
+    notes: string;
+    specialization: string;
+    emergencyContact: string;
+    emergencyPhone: string;
+    contractFile: string;
+    idCardFile: string;
+    photoFile: string;
+  };
   Teacher?: {
     id: number;
     bio: string;
@@ -45,7 +119,7 @@ type StaffDetail = {
     publications: string;
     contractEndDate: string;
     overtimeRate: number;
-    TeacherSubject: { Subject: { name: string } }[];
+    TeacherSubject: { Subject: { id: number; name: string } }[];
   };
   FinanceStaff?: {
     id: number;
@@ -73,53 +147,96 @@ type StaffDetail = {
   };
 };
 
-// ✅ FIX: Helper function to safely get role data
-const getRoleData = (staff: StaffDetail) => {
-  if (staff.Teacher) {
-    return {
-      position: "استاد",
-      department: "تعلیمی",
-      joinDate: staff.Teacher.joiningDate,
-      salary: staff.Teacher.baseSalary,
-      specialization: staff.Teacher.specialization,
-      experience: staff.Teacher.experience,
-    };
-  } else if (staff.FinanceStaff) {
-    return {
-      position: staff.FinanceStaff.position || "کارمند مالی",
-      department: staff.FinanceStaff.department || "مالی",
-      joinDate: staff.FinanceStaff.joinDate,
-      salary: staff.FinanceStaff.salary,
-      specialization: null,
-      experience: null,
-    };
-  } else if (staff.PrincipalStaff) {
-    return {
-      position: staff.PrincipalStaff.position || "مدیر مکتب",
-      department: "مدیریت",
-      joinDate: staff.PrincipalStaff.joinDate,
-      salary: null,
-      specialization: null,
-      experience: staff.PrincipalStaff.experience,
-    };
-  } else if (staff.HRStaff) {
-    return {
-      position: staff.HRStaff.position || "کارمند منابع بشری",
-      department: staff.HRStaff.department || "منابع بشری",
-      joinDate: staff.HRStaff.joinDate,
-      salary: staff.HRStaff.salary,
-      specialization: null,
-      experience: null,
-    };
-  }
-  return {
-    position: getRoleLabel(staff.role),
-    department: "عمومی",
-    joinDate: staff.createdAt,
-    salary: null,
-    specialization: null,
-    experience: null,
+const getSexLabel = (sex?: string) => {
+  const map: Record<string, string> = {
+    MALE: "مرد",
+    FEMALE: "زن",
+    OTHER: "سایر",
   };
+  return sex ? map[sex] || sex : "ثبت نشده";
+};
+
+const getMaritalStatusLabel = (status?: string) => {
+  const map: Record<string, string> = {
+    SINGLE: "مجرد",
+    MARRIED: "متاهل",
+    DIVORCED: "مطلقه",
+    WIDOWED: "بیوه",
+  };
+  return status ? map[status] || status : "ثبت نشده";
+};
+
+const getEducationLevelLabel = (level?: string) => {
+  const map: Record<string, string> = {
+    NO_FORMAL: "بدون تحصیلات",
+    PRIMARY: "ابتدایی",
+    SECONDARY: "متوسطه",
+    HIGH_SCHOOL: "دیپلم",
+    BACHELORS: "لیسانس",
+    MASTERS: "فوق لیسانس",
+    DOCTORATE: "دکترا",
+    OTHER: "سایر",
+  };
+  return level ? map[level] || level : "ثبت نشده";
+};
+
+const getContractTypeLabel = (type?: string) => {
+  const map: Record<string, string> = {
+    PERMANENT: "دائم",
+    TEMPORARY: "موقت",
+    CONTRACT: "قراردادی",
+    CASUAL: "روزمزد",
+    PROBATION: "آزمایشی",
+  };
+  return type ? map[type] || type : "ثبت نشده";
+};
+
+const getWorkShiftLabel = (shift?: string) => {
+  const map: Record<string, string> = {
+    MORNING: "قبل از ظهر",
+    AFTERNOON: "بعد از ظهر",
+    EVENING: "شام",
+    NIGHT: "شب",
+    ROTATING: "چرخشی",
+    FLEXIBLE: "روز مکمل",
+  };
+  return shift ? map[shift] || shift : "ثبت نشده";
+};
+
+const getBloodTypeLabel = (type?: string) => {
+  const map: Record<string, string> = {
+    A_POSITIVE: "A+",
+    A_NEGATIVE: "A-",
+    B_POSITIVE: "B+",
+    B_NEGATIVE: "B-",
+    AB_POSITIVE: "AB+",
+    AB_NEGATIVE: "AB-",
+    O_POSITIVE: "O+",
+    O_NEGATIVE: "O-",
+  };
+  return type ? map[type] || type : "ثبت نشده";
+};
+
+const getStaffTypeLabel = (type?: string) => {
+  const map: Record<string, string> = {
+    TEACHER: "استاد",
+    ADMIN: "مدیر",
+    FINANCE: "مالی",
+    HR: "منابع بشری",
+    PRINCIPAL: "مدیر مکتب",
+    CHEF: "آشپز",
+    GUARD: "نگهبان",
+    DRIVER: "راننده",
+    CLEANER: "نظافتچی",
+    SECURITY: "امنیتی",
+    MAINTENANCE: "تکنیسین",
+    LIBRARIAN: "کتابدار",
+    NURSE: "پرستار",
+    COUNSELOR: "مشاور",
+    COACH: "مربی",
+    OTHER: "سایر",
+  };
+  return type ? map[type] || type : "ثبت نشده";
 };
 
 export default function StaffDetailScreen() {
@@ -129,7 +246,6 @@ export default function StaffDetailScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [staff, setStaff] = useState<StaffDetail | null>(null);
 
-  // ✅ FIX: Define fetchStaff as a separate function
   const fetchStaff = async () => {
     try {
       const response = await hrApi.getStaffById(Number(id));
@@ -145,12 +261,10 @@ export default function StaffDetailScreen() {
     }
   };
 
-  // ✅ FIX: Add fetchStaff to dependency array
   useEffect(() => {
     if (id) {
       fetchStaff();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
   const onRefresh = () => {
@@ -201,18 +315,7 @@ export default function StaffDetailScreen() {
     );
   }
 
-  // ✅ FIX: Use helper function to get role data
-  const roleData = getRoleData(staff);
-  const position = roleData.position;
-  const department = roleData.department;
-  const joiningDate = roleData.joinDate;
-  const salary = roleData.salary || 0;
-  const specialization = roleData.specialization;
-  const experience = roleData.experience;
-
-  // Get subjects for teacher
-  const subjects =
-    staff.Teacher?.TeacherSubject?.map((ts) => ts.Subject.name) || [];
+  const subjects = staff.Teacher?.TeacherSubject?.map((ts) => ts.Subject.name) || [];
 
   return (
     <ScrollView
@@ -233,8 +336,15 @@ export default function StaffDetailScreen() {
           <Text style={styles.avatarText}>{staff.fullName.charAt(0)}</Text>
         </View>
         <Text style={styles.staffName}>{staff.fullName}</Text>
-        <Text style={styles.staffPosition}>{position}</Text>
-        <Text style={styles.staffDepartment}>{department}</Text>
+        {staff.nameFarsi && (
+          <Text style={styles.staffNameFarsi}>{staff.nameFarsi}</Text>
+        )}
+        <Text style={styles.staffPosition}>
+          {staff.position || getStaffTypeLabel(staff.staffType || staff.role)}
+        </Text>
+        <Text style={styles.staffDepartment}>
+          {staff.department || "عمومی"}
+        </Text>
         <View style={styles.statusRow}>
           <View
             style={[
@@ -266,6 +376,13 @@ export default function StaffDetailScreen() {
               {staff.verified ? "تایید شده" : "تایید نشده"}
             </Text>
           </View>
+          {staff.staffType && (
+            <View style={[styles.statusBadge, { backgroundColor: "#ede9fe" }]}>
+              <Text style={[styles.statusText, { color: "#8b5cf6" }]}>
+                {getStaffTypeLabel(staff.staffType)}
+              </Text>
+            </View>
+          )}
         </View>
       </View>
 
@@ -288,60 +405,264 @@ export default function StaffDetailScreen() {
         )}
       </View>
 
+      {/* Personal Info */}
+      <View style={styles.infoCard}>
+        <Text style={styles.sectionTitle}>اطلاعات شخصی</Text>
+        
+        <View style={styles.infoRow}>
+          <Ionicons name="person-outline" size={20} color="#64748b" />
+          <Text style={styles.infoText}>نام پدر: {staff.fatherName || "ثبت نشده"}</Text>
+        </View>
+        {staff.fatherNameFarsi && (
+          <View style={styles.infoRow}>
+            <Ionicons name="person-outline" size={20} color="#64748b" />
+            <Text style={styles.infoText}>نام پدر (فارسی): {staff.fatherNameFarsi}</Text>
+          </View>
+        )}
+        <View style={styles.infoRow}>
+          <Ionicons name="people-outline" size={20} color="#64748b" />
+          <Text style={styles.infoText}>نام پدر کلان: {staff.grandfatherName || "ثبت نشده"}</Text>
+        </View>
+        <View style={styles.infoRow}>
+          <Ionicons name="male-female-outline" size={20} color="#64748b" />
+          <Text style={styles.infoText}>جنسیت: {getSexLabel(staff.sex)}</Text>
+        </View>
+        <View style={styles.infoRow}>
+          <Ionicons name="heart-outline" size={20} color="#64748b" />
+          <Text style={styles.infoText}>وضعیت مدنی: {getMaritalStatusLabel(staff.maritalStatus)}</Text>
+        </View>
+        <View style={styles.infoRow}>
+          <Ionicons name="water-outline" size={20} color="#64748b" />
+          <Text style={styles.infoText}>گروه خونی: {getBloodTypeLabel(staff.bloodType)}</Text>
+        </View>
+        <View style={styles.infoRow}>
+          <Ionicons name="document-text-outline" size={20} color="#64748b" />
+          <Text style={styles.infoText}>شماره تذکره: {staff.civilId || "ثبت نشده"}</Text>
+        </View>
+        {staff.civilIdIssueDate && (
+          <View style={styles.infoRow}>
+            <Ionicons name="calendar-outline" size={20} color="#64748b" />
+            <Text style={styles.infoText}>تاریخ صدور تذکره: {new Date(staff.civilIdIssueDate).toLocaleDateString("fa-IR")}</Text>
+          </View>
+        )}
+        {staff.civilIdExpiryDate && (
+          <View style={styles.infoRow}>
+            <Ionicons name="calendar-outline" size={20} color="#64748b" />
+            <Text style={styles.infoText}>تاریخ انقضای تذکره: {new Date(staff.civilIdExpiryDate).toLocaleDateString("fa-IR")}</Text>
+          </View>
+        )}
+        <View style={styles.infoRow}>
+          <Ionicons name="calendar-outline" size={20} color="#64748b" />
+          <Text style={styles.infoText}>تاریخ تولد: {staff.birthDate ? new Date(staff.birthDate).toLocaleDateString("fa-IR") : "ثبت نشده"}</Text>
+        </View>
+        <View style={styles.infoRow}>
+          <Ionicons name="location-outline" size={20} color="#64748b" />
+          <Text style={styles.infoText}>محل تولد: {staff.birthPlace || "ثبت نشده"}</Text>
+        </View>
+        <View style={styles.infoRow}>
+          <Ionicons name="flag-outline" size={20} color="#64748b" />
+          <Text style={styles.infoText}>ملیت: {staff.nationality || "ثبت نشده"}</Text>
+        </View>
+      </View>
+
+      {/* Address Info */}
+      <View style={styles.infoCard}>
+        <Text style={styles.sectionTitle}>آدرس</Text>
+        {staff.permanentAddress && (
+          <>
+            <Text style={styles.subSectionTitle}>آدرس اصلی</Text>
+            <View style={styles.infoRow}>
+              <Ionicons name="location-outline" size={20} color="#64748b" />
+              <Text style={styles.infoText}>{staff.permanentAddress}</Text>
+            </View>
+          </>
+        )}
+        {staff.currentAddress && (
+          <>
+            <Text style={styles.subSectionTitle}>آدرس فعلی</Text>
+            <View style={styles.infoRow}>
+              <Ionicons name="location-outline" size={20} color="#64748b" />
+              <Text style={styles.infoText}>{staff.currentAddress}</Text>
+            </View>
+          </>
+        )}
+        {!staff.permanentAddress && !staff.currentAddress && (
+          <Text style={styles.emptyText}>آدرسی ثبت نشده است</Text>
+        )}
+      </View>
+
+      {/* Emergency Contact */}
+      {(staff.emergencyContactName || staff.emergencyContactPhone) && (
+        <View style={styles.infoCard}>
+          <Text style={styles.sectionTitle}>اطلاعات اضطراری</Text>
+          {staff.emergencyContactName && (
+            <View style={styles.infoRow}>
+              <Ionicons name="person-outline" size={20} color="#64748b" />
+              <Text style={styles.infoText}>نام: {staff.emergencyContactName}</Text>
+            </View>
+          )}
+          {staff.emergencyContactPhone && (
+            <View style={styles.infoRow}>
+              <Ionicons name="call-outline" size={20} color="#64748b" />
+              <Text style={styles.infoText}>شماره: {staff.emergencyContactPhone}</Text>
+            </View>
+          )}
+          {staff.emergencyContactRelation && (
+            <View style={styles.infoRow}>
+              <Ionicons name="people-outline" size={20} color="#64748b" />
+              <Text style={styles.infoText}>نسبت: {staff.emergencyContactRelation}</Text>
+            </View>
+          )}
+        </View>
+      )}
+
       {/* Employment Info */}
       <View style={styles.infoCard}>
         <Text style={styles.sectionTitle}>اطلاعات استخدامی</Text>
         <View style={styles.infoRow}>
           <Ionicons name="calendar-outline" size={20} color="#64748b" />
           <Text style={styles.infoText}>
-            تاریخ پیوستن:{" "}
-            {joiningDate
-              ? new Date(joiningDate).toLocaleDateString("fa-IR")
-              : "ثبت نشده"}
+            تاریخ پیوستن: {staff.joinDate ? new Date(staff.joinDate).toLocaleDateString("fa-IR") : "ثبت نشده"}
           </Text>
         </View>
-        {salary > 0 && (
+        {(staff.salary || staff.baseSalary) && (
           <View style={styles.infoRow}>
             <Ionicons name="cash-outline" size={20} color="#64748b" />
-            <Text style={styles.infoText}>معاش: {formatCurrency(salary)}</Text>
+            <Text style={styles.infoText}>
+              معاش: {formatCurrency(staff.salary || staff.baseSalary || 0)} {staff.salaryCurrency || "AFN"}
+            </Text>
           </View>
         )}
         <View style={styles.infoRow}>
           <Ionicons name="briefcase-outline" size={20} color="#64748b" />
           <Text style={styles.infoText}>نقش: {getRoleLabel(staff.role)}</Text>
         </View>
-        {experience && (
+        {staff.experience && (
           <View style={styles.infoRow}>
             <Ionicons name="time-outline" size={20} color="#64748b" />
-            <Text style={styles.infoText}>سابقه: {experience}</Text>
+            <Text style={styles.infoText}>سابقه: {staff.experience}</Text>
+          </View>
+        )}
+        {staff.workExperience && (
+          <View style={styles.infoRow}>
+            <Ionicons name="briefcase-outline" size={20} color="#64748b" />
+            <Text style={styles.infoText}>سابقه کار: {staff.workExperience}</Text>
+          </View>
+        )}
+        {staff.notes && (
+          <View style={styles.infoRow}>
+            <Ionicons name="document-text-outline" size={20} color="#64748b" />
+            <Text style={styles.infoText}>یادداشت: {staff.notes}</Text>
           </View>
         )}
       </View>
 
+      {/* Contract Info */}
+      <View style={styles.infoCard}>
+        <Text style={styles.sectionTitle}>اطلاعات قرارداد</Text>
+        <View style={styles.infoRow}>
+          <Ionicons name="document-outline" size={20} color="#64748b" />
+          <Text style={styles.infoText}>نوع قرارداد: {getContractTypeLabel(staff.contractType)}</Text>
+        </View>
+        {staff.contractStartDate && (
+          <View style={styles.infoRow}>
+            <Ionicons name="calendar-outline" size={20} color="#64748b" />
+            <Text style={styles.infoText}>تاریخ شروع: {new Date(staff.contractStartDate).toLocaleDateString("fa-IR")}</Text>
+          </View>
+        )}
+        {staff.contractEndDate && (
+          <View style={styles.infoRow}>
+            <Ionicons name="calendar-outline" size={20} color="#64748b" />
+            <Text style={styles.infoText}>تاریخ پایان: {new Date(staff.contractEndDate).toLocaleDateString("fa-IR")}</Text>
+          </View>
+        )}
+        <View style={styles.infoRow}>
+          <Ionicons name="time-outline" size={20} color="#64748b" />
+          <Text style={styles.infoText}>وقت کاری: {getWorkShiftLabel(staff.workShift || staff.workSchedule)}</Text>
+        </View>
+        <View style={styles.infoRow}>
+          <Ionicons name="checkmark-circle-outline" size={20} color="#64748b" />
+          <Text style={styles.infoText}>
+            دارای قرارداد: {staff.hasContract ? "بله" : "خیر"}
+          </Text>
+        </View>
+      </View>
+
+      {/* Education Info */}
+      {staff.educationLevel || staff.educationField || staff.educationInstitution ? (
+        <View style={styles.infoCard}>
+          <Text style={styles.sectionTitle}>تحصیلات</Text>
+          {staff.educationLevel && (
+            <View style={styles.infoRow}>
+              <Ionicons name="school-outline" size={20} color="#64748b" />
+              <Text style={styles.infoText}>مدرک تحصیلی: {getEducationLevelLabel(staff.educationLevel)}</Text>
+            </View>
+          )}
+          {staff.educationField && (
+            <View style={styles.infoRow}>
+              <Ionicons name="book-outline" size={20} color="#64748b" />
+              <Text style={styles.infoText}>رشته تحصیلی: {staff.educationField}</Text>
+            </View>
+          )}
+          {staff.educationInstitution && (
+            <View style={styles.infoRow}>
+              <Ionicons name="business-outline" size={20} color="#64748b" />
+              <Text style={styles.infoText}>موسسه تحصیلی: {staff.educationInstitution}</Text>
+            </View>
+          )}
+          {staff.graduationYear && (
+            <View style={styles.infoRow}>
+              <Ionicons name="calendar-outline" size={20} color="#64748b" />
+              <Text style={styles.infoText}>سال فراغت: {staff.graduationYear}</Text>
+            </View>
+          )}
+        </View>
+      ) : null}
+
       {/* Teacher Specific Info */}
       {staff.Teacher && (
         <View style={styles.infoCard}>
-          <Text style={styles.sectionTitle}>اطلاعات آموزشی</Text>
+          <Text style={styles.sectionTitle}>اطلاعات آموزشی (استاد)</Text>
           {staff.Teacher.teacherCode && (
             <View style={styles.infoRow}>
               <Ionicons name="id-card-outline" size={20} color="#64748b" />
-              <Text style={styles.infoText}>
-                کد استاد: {staff.Teacher.teacherCode}
-              </Text>
+              <Text style={styles.infoText}>کد استاد: {staff.Teacher.teacherCode}</Text>
             </View>
           )}
-          {specialization && (
+          {staff.Teacher.specialization && (
             <View style={styles.infoRow}>
               <Ionicons name="school-outline" size={20} color="#64748b" />
-              <Text style={styles.infoText}>تخصص: {specialization}</Text>
+              <Text style={styles.infoText}>تخصص: {staff.Teacher.specialization}</Text>
+            </View>
+          )}
+          {staff.Teacher.teachingExperience && (
+            <View style={styles.infoRow}>
+              <Ionicons name="time-outline" size={20} color="#64748b" />
+              <Text style={styles.infoText}>تجربه تدریس: {staff.Teacher.teachingExperience} سال</Text>
             </View>
           )}
           {staff.Teacher.rating > 0 && (
             <View style={styles.infoRow}>
               <Ionicons name="star-outline" size={20} color="#f59e0b" />
-              <Text style={styles.infoText}>
-                امتیاز: {staff.Teacher.rating}
-              </Text>
+              <Text style={styles.infoText}>امتیاز: {staff.Teacher.rating}/5</Text>
+            </View>
+          )}
+          {staff.Teacher.languageSkills && (
+            <View style={styles.infoRow}>
+              <Ionicons name="language-outline" size={20} color="#64748b" />
+              <Text style={styles.infoText}>مهارت‌های زبانی: {staff.Teacher.languageSkills}</Text>
+            </View>
+          )}
+          {staff.Teacher.awards && (
+            <View style={styles.infoRow}>
+              <Ionicons name="trophy-outline" size={20} color="#64748b" />
+              <Text style={styles.infoText}>جوایز: {staff.Teacher.awards}</Text>
+            </View>
+          )}
+          {staff.Teacher.publications && (
+            <View style={styles.infoRow}>
+              <Ionicons name="book-outline" size={20} color="#64748b" />
+              <Text style={styles.infoText}>انتشارات: {staff.Teacher.publications}</Text>
             </View>
           )}
           {subjects.length > 0 && (
@@ -360,17 +681,80 @@ export default function StaffDetailScreen() {
       )}
 
       {/* Principal Specific Info */}
-      {staff.PrincipalStaff && staff.PrincipalStaff.qualification && (
+      {staff.PrincipalStaff && (
         <View style={styles.infoCard}>
-          <Text style={styles.sectionTitle}>مدارک تحصیلی</Text>
-          <View style={styles.infoRow}>
-            <Ionicons name="school-outline" size={20} color="#64748b" />
-            <Text style={styles.infoText}>
-              {staff.PrincipalStaff.qualification}
-            </Text>
-          </View>
+          <Text style={styles.sectionTitle}>اطلاعات مدیریت (مدیر مکتب)</Text>
+          {staff.PrincipalStaff.qualification && (
+            <View style={styles.infoRow}>
+              <Ionicons name="school-outline" size={20} color="#64748b" />
+              <Text style={styles.infoText}>مدرک تحصیلی: {staff.PrincipalStaff.qualification}</Text>
+            </View>
+          )}
+          {staff.PrincipalStaff.experience && (
+            <View style={styles.infoRow}>
+              <Ionicons name="time-outline" size={20} color="#64748b" />
+              <Text style={styles.infoText}>سابقه: {staff.PrincipalStaff.experience}</Text>
+            </View>
+          )}
         </View>
       )}
+
+      {/* Bank Info */}
+      {(staff.bankAccountNumber || staff.bankName) && (
+        <View style={styles.infoCard}>
+          <Text style={styles.sectionTitle}>اطلاعات بانکی</Text>
+          {staff.bankName && (
+            <View style={styles.infoRow}>
+              <Ionicons name="business-outline" size={20} color="#64748b" />
+              <Text style={styles.infoText}>نام بانک: {staff.bankName}</Text>
+            </View>
+          )}
+          {staff.bankAccountNumber && (
+            <View style={styles.infoRow}>
+              <Ionicons name="card-outline" size={20} color="#64748b" />
+              <Text style={styles.infoText}>شماره حساب: {staff.bankAccountNumber}</Text>
+            </View>
+          )}
+        </View>
+      )}
+
+      {/* Insurance Info */}
+      {(staff.insuranceNumber || staff.insuranceProvider) && (
+        <View style={styles.infoCard}>
+          <Text style={styles.sectionTitle}>اطلاعات بیمه</Text>
+          <View style={styles.infoRow}>
+            <Ionicons name="checkmark-circle-outline" size={20} color="#64748b" />
+            <Text style={styles.infoText}>دارای بیمه: {staff.hasInsurance ? "بله" : "خیر"}</Text>
+          </View>
+          {staff.insuranceProvider && (
+            <View style={styles.infoRow}>
+              <Ionicons name="business-outline" size={20} color="#64748b" />
+              <Text style={styles.infoText}>شرکت بیمه: {staff.insuranceProvider}</Text>
+            </View>
+          )}
+          {staff.insuranceNumber && (
+            <View style={styles.infoRow}>
+              <Ionicons name="card-outline" size={20} color="#64748b" />
+              <Text style={styles.infoText}>شماره بیمه: {staff.insuranceNumber}</Text>
+            </View>
+          )}
+        </View>
+      )}
+
+      {/* Stats */}
+      <View style={styles.infoCard}>
+        <Text style={styles.sectionTitle}>آمار</Text>
+        <View style={styles.infoRow}>
+          <Ionicons name="calendar-outline" size={20} color="#64748b" />
+          <Text style={styles.infoText}>تاریخ ثبت: {new Date(staff.createdAt).toLocaleDateString("fa-IR")}</Text>
+        </View>
+        {staff.attendanceCount !== undefined && (
+          <View style={styles.infoRow}>
+            <Ionicons name="checkmark-circle-outline" size={20} color="#64748b" />
+            <Text style={styles.infoText}>تعداد حضور: {staff.attendanceCount} روز</Text>
+          </View>
+        )}
+      </View>
 
       {/* Actions */}
       <View style={styles.actionContainer}>
@@ -448,6 +832,12 @@ const styles = StyleSheet.create({
     color: "#1e293b",
     fontFamily: "VazirBold",
   },
+  staffNameFarsi: {
+    fontSize: 16,
+    color: "#64748b",
+    marginTop: 2,
+    fontFamily: "Vazir",
+  },
   staffPosition: {
     fontSize: 16,
     color: "#64748b",
@@ -455,7 +845,7 @@ const styles = StyleSheet.create({
     fontFamily: "Vazir",
   },
   staffDepartment: { fontSize: 14, color: "#94a3b8", fontFamily: "Vazir" },
-  statusRow: { flexDirection: "row", gap: 8, marginTop: 8 },
+  statusRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 8, justifyContent: "center" },
   statusBadge: { paddingHorizontal: 12, paddingVertical: 4, borderRadius: 8 },
   statusText: { fontSize: 13, fontWeight: "600", fontFamily: "Vazir" },
   infoCard: {
@@ -475,6 +865,17 @@ const styles = StyleSheet.create({
     color: "#1e293b",
     marginBottom: 12,
     fontFamily: "VazirBold",
+    borderBottomWidth: 1,
+    borderBottomColor: "#f1f5f9",
+    paddingBottom: 8,
+  },
+  subSectionTitle: {
+    fontSize: 14,
+    fontWeight: "500",
+    color: "#475569",
+    marginTop: 8,
+    marginBottom: 4,
+    fontFamily: "VazirBold",
   },
   infoRow: {
     flexDirection: "row",
@@ -482,7 +883,14 @@ const styles = StyleSheet.create({
     gap: 12,
     paddingVertical: 6,
   },
-  infoText: { fontSize: 15, color: "#1e293b", fontFamily: "Vazir" },
+  infoText: { fontSize: 15, color: "#1e293b", fontFamily: "Vazir", flex: 1 },
+  emptyText: {
+    fontSize: 14,
+    color: "#94a3b8",
+    fontFamily: "Vazir",
+    textAlign: "center",
+    paddingVertical: 8,
+  },
   subjectsContainer: { marginTop: 8 },
   subjectsLabel: {
     fontSize: 14,

@@ -66,20 +66,6 @@ const REPORT_CATEGORIES = [
       },
     ],
   },
-  {
-    title: "صادرات",
-    items: [
-      {
-        id: "export",
-        title: "صدور راپور",
-        subtitle: "Excel / PDF",
-        icon: "download-outline",
-        route: "/(finance)/reports/export",
-        color: "#06b6d4",
-        gradient: ["#06b6d4", "#0891b2"],
-      },
-    ],
-  },
 ];
 
 export default function ReportsMenuScreen() {

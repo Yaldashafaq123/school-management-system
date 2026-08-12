@@ -252,7 +252,7 @@ export default function ExpensesListScreen() {
           title="هیچ مصرفی ثبت نشده"
           subtitle="برای شروع، یک مصرف جدید ثبت کنید"
           actionLabel="ثبت مصرف جدید"
-          onAction={() => router.push("/financial/expenses/create")}
+          onAction={() => router.push("/(finance)/expenses/create")}
         />
       ) : (
         <>

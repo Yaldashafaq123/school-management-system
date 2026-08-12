@@ -45,6 +45,13 @@ const QUICK_ACTIONS = [
     route: "/(hr)/id-cards",
     color: "#3b82f6",
   },
+  {
+    id: "attendance-reports",
+    title: " گزارش حضور و غیاب",
+    icon: "card",
+    route: "/(hr)/attendance/report",
+    color: "#3b82f6",
+  },
 ];
 
 // HR Modules

@@ -35,9 +35,6 @@ export interface HRProfile {
   };
 }
 
-// src/config/hrApi.ts - Add these types
-
-// ✅ Add StaffType enum
 export type StaffType =
   | "TEACHER"
   | "ADMIN"
@@ -56,7 +53,6 @@ export type StaffType =
   | "COACH"
   | "OTHER";
 
-// ✅ Update StaffMember interface
 export interface StaffMember {
   id: number;
   fullName: string;
@@ -78,8 +74,6 @@ export interface StaffMember {
   teacherCode?: string;
   experience?: string;
   qualification?: string;
-
-  // Personal Info
   fatherName?: string;
   fatherNameFarsi?: string;
   grandfatherName?: string;
@@ -101,8 +95,6 @@ export interface StaffMember {
   insuranceNumber?: string;
   insuranceProvider?: string;
   hasInsurance?: boolean;
-
-  // Stats
   attendanceCount?: number;
   salaryCount?: number;
 }
@@ -318,15 +310,12 @@ class HRApi {
   }
 
   async createStaff(data: {
-    // Basic
     fullName: string;
     nameFarsi?: string;
     email: string;
     phone?: string;
     password: string;
     role?: string;
-
-    // Staff Type (NEW)
     staffType: StaffType;
     position?: string;
     department?: string;
@@ -340,8 +329,6 @@ class HRApi {
     contractFile?: string;
     idCardFile?: string;
     photoFile?: string;
-
-    // Personal Info (User model)
     fatherName?: string;
     fatherNameFarsi?: string;
     grandfatherName?: string;
@@ -389,6 +376,8 @@ class HRApi {
     id: number,
     data: {
       fullName?: string;
+      nameFarsi?: string;
+      email?: string;
       phone?: string;
       isActive?: boolean;
       position?: string;
@@ -397,6 +386,45 @@ class HRApi {
       specialization?: string;
       experience?: string;
       qualification?: string;
+      staffType?: string;
+      joinDate?: string;
+      notes?: string;
+      fatherName?: string;
+      fatherNameFarsi?: string;
+      grandfatherName?: string;
+      grandfatherNameFarsi?: string;
+      sex?: string;
+      maritalStatus?: string;
+      bloodType?: string;
+      civilId?: string;
+      civilIdIssueDate?: string;
+      civilIdExpiryDate?: string;
+      birthDate?: string;
+      birthPlace?: string;
+      nationality?: string;
+      currentAddress?: string;
+      permanentAddress?: string;
+      emergencyContactName?: string;
+      emergencyContactPhone?: string;
+      emergencyContactRelation?: string;
+      educationLevel?: string;
+      educationField?: string;
+      educationInstitution?: string;
+      graduationYear?: number;
+      workExperience?: string;
+      contractStartDate?: string;
+      contractEndDate?: string;
+      contractType?: string;
+      workSchedule?: string;
+      workShift?: string;
+      baseSalary?: number;
+      salaryCurrency?: string;
+      bankAccountNumber?: string;
+      bankName?: string;
+      insuranceNumber?: string;
+      insuranceProvider?: string;
+      hasInsurance?: boolean;
+      hasContract?: boolean;
     },
   ): Promise<ApiResponse<any>> {
     return this.request(`/staff/${id}`, {
@@ -462,6 +490,67 @@ class HRApi {
     if (params?.year) query.append("year", params.year.toString());
     const qs = query.toString();
     return this.request(`/attendance/summary${qs ? `?${qs}` : ""}`);
+  }
+
+  // ==================== ATTENDANCE REPORTS (NEW) ====================
+
+  /**
+   * Get attendance report for all staff with filtering
+   */
+  async getAttendanceReport(params?: {
+    startDate?: string;
+    endDate?: string;
+    staffId?: number;
+    staffType?: string;
+    department?: string;
+    page?: number;
+    limit?: number;
+  }): Promise<ApiResponse<any>> {
+    const query = new URLSearchParams();
+    if (params?.startDate) query.append("startDate", params.startDate);
+    if (params?.endDate) query.append("endDate", params.endDate);
+    if (params?.staffId) query.append("staffId", params.staffId.toString());
+    if (params?.staffType) query.append("staffType", params.staffType);
+    if (params?.department) query.append("department", params.department);
+    if (params?.page) query.append("page", params.page.toString());
+    if (params?.limit) query.append("limit", params.limit.toString());
+    const qs = query.toString();
+    return this.request(`/attendance/report${qs ? `?${qs}` : ""}`);
+  }
+
+  /**
+   * Get monthly attendance for a specific staff member
+   */
+  async getStaffMonthlyAttendance(
+    staffId: number,
+    params?: {
+      month?: number;
+      year?: number;
+    },
+  ): Promise<ApiResponse<any>> {
+    const query = new URLSearchParams();
+    if (params?.month) query.append("month", params.month.toString());
+    if (params?.year) query.append("year", params.year.toString());
+    const qs = query.toString();
+    return this.request(
+      `/attendance/staff/${staffId}/monthly${qs ? `?${qs}` : ""}`,
+    );
+  }
+
+  /**
+   * Export attendance report
+   */
+  async exportAttendanceReport(params?: {
+    startDate?: string;
+    endDate?: string;
+    staffType?: string;
+  }): Promise<ApiResponse<any>> {
+    const query = new URLSearchParams();
+    if (params?.startDate) query.append("startDate", params.startDate);
+    if (params?.endDate) query.append("endDate", params.endDate);
+    if (params?.staffType) query.append("staffType", params.staffType);
+    const qs = query.toString();
+    return this.request(`/attendance/export${qs ? `?${qs}` : ""}`);
   }
 
   // ==================== SALARIES ====================

@@ -1,4 +1,4 @@
-// app/(hr)/staff/add.tsx - COMPLETE WITH ALL STAFF TYPES
+// app/(hr)/staff/add.tsx - COMPLETE WITH ALL STAFF TYPES AND PHP FORM FIELDS
 import { hrApi, StaffType } from "@/src/config/hrApi";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
@@ -36,16 +36,16 @@ const STAFF_TYPES: { key: StaffType; label: string; icon: string }[] = [
 ];
 
 const SEX_OPTIONS = [
-  { key: "MALE", label: "مرد" },
-  { key: "FEMALE", label: "زن" },
-  { key: "OTHER", label: "سایر" },
+  { key: "MALE", label: "مرد", value: "MALE" },
+  { key: "FEMALE", label: "زن", value: "FEMALE" },
+  { key: "OTHER", label: "سایر", value: "OTHER" },
 ];
 
 const MARITAL_STATUS = [
-  { key: "SINGLE", label: "مجرد" },
-  { key: "MARRIED", label: "متاهل" },
-  { key: "DIVORCED", label: "مطلقه" },
-  { key: "WIDOWED", label: "بیوه" },
+  { key: "SINGLE", label: "مجرد", value: "SINGLE" },
+  { key: "MARRIED", label: "متاهل", value: "MARRIED" },
+  { key: "DIVORCED", label: "مطلقه", value: "DIVORCED" },
+  { key: "WIDOWED", label: "بیوه", value: "WIDOWED" },
 ];
 
 const EDUCATION_LEVELS = [
@@ -67,12 +67,32 @@ const CONTRACT_TYPES = [
   { key: "PROBATION", label: "آزمایشی" },
 ];
 
+const WORK_SHIFTS = [
+  { key: "MORNING", label: "قبل از ظهر" },
+  { key: "AFTERNOON", label: "بعد از ظهر" },
+  { key: "FLEXIBLE", label: "روز مکمل" },
+  { key: "EVENING", label: "شام" },
+  { key: "NIGHT", label: "شب" },
+  { key: "ROTATING", label: "چرخشی" },
+];
+
+const BLOOD_TYPES = [
+  { key: "A_POSITIVE", label: "A+" },
+  { key: "A_NEGATIVE", label: "A-" },
+  { key: "B_POSITIVE", label: "B+" },
+  { key: "B_NEGATIVE", label: "B-" },
+  { key: "AB_POSITIVE", label: "AB+" },
+  { key: "AB_NEGATIVE", label: "AB-" },
+  { key: "O_POSITIVE", label: "O+" },
+  { key: "O_NEGATIVE", label: "O-" },
+];
+
 export default function AddStaffScreen() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [formData, setFormData] = useState({
-    // Basic Info
+    // ===== BASIC INFO (PHP: name, lname, staffs_id_no) =====
     fullName: "",
     nameFarsi: "",
     email: "",
@@ -80,21 +100,24 @@ export default function AddStaffScreen() {
     password: "",
     staffType: "TEACHER" as StaffType,
 
-    // Employment
+    // ===== EMPLOYMENT (PHP: type_id, year, date_start, date_end, work_time) =====
     position: "",
     department: "",
     joinDate: "",
+    contractStartDate: "",
+    contractEndDate: "",
+    workSchedule: "MORNING",
     salary: "",
     isActive: true,
     notes: "",
 
-    // Teacher Specific
+    // ===== TEACHER SPECIFIC =====
     specialization: "",
     experience: "",
     teacherCode: "",
     qualification: "",
 
-    // Personal Info
+    // ===== PERSONAL INFO (PHP: fname, gender, state, blood_no, birth_date, idcord_no) =====
     fatherName: "",
     fatherNameFarsi: "",
     grandfatherName: "",
@@ -108,43 +131,57 @@ export default function AddStaffScreen() {
     birthDate: "",
     birthPlace: "",
     nationality: "افغان",
-    currentAddress: "",
-    permanentAddress: "",
+
+    // ===== ADDRESS (PHP: main_pro, main_dis, main_area, current_pro, current_dis, current_area, current_home_no) =====
+    permanentProvince: "",
+    permanentDistrict: "",
+    permanentArea: "",
+    currentProvince: "",
+    currentDistrict: "",
+    currentArea: "",
+    currentHomeNo: "",
+
+    // ===== EMERGENCY CONTACT =====
     emergencyContactName: "",
     emergencyContactPhone: "",
     emergencyContactRelation: "",
 
-    // Education
+    // ===== EDUCATION (PHP: education_degree, education_faculty) =====
     educationLevel: "",
     educationField: "",
     educationInstitution: "",
     graduationYear: "",
     workExperience: "",
 
-    // Contract
-    contractStartDate: "",
-    contractEndDate: "",
+    // ===== CONTRACT =====
     contractType: "PERMANENT",
-    workSchedule: "",
     workShift: "",
     baseSalary: "",
     salaryCurrency: "AFN",
 
-    // Bank
+    // ===== BANK =====
     bankAccountNumber: "",
     bankName: "",
 
-    // Insurance
+    // ===== INSURANCE =====
     insuranceNumber: "",
     insuranceProvider: "",
     hasInsurance: false,
     hasContract: false,
+
+    // ===== PHP SPECIFIC FIELDS =====
+    tin: "", // نمبر تشخیصیه (TIN)
+    paymentType: "0", // شیوه پرداخت معاش (0=ماهوار)
+    taxMonth: "", // مالیه یک ماه %
+    absentDeduction: "", // قطع معاش در یک روز غیرحاضری
+    overtimeGuarantee: "", // مقدار تضمین هر ماه
+    staffsIdNo: "", // آی دی کارمند
   });
 
   const handleSubmit = async () => {
-    // Validate required fields
+    // Validate required fields (matches PHP form)
     if (!formData.fullName.trim()) {
-      Alert.alert("خطا", "نام کامل الزامی است");
+      Alert.alert("خطا", "اسم کارمند الزامی است");
       return;
     }
     if (!formData.email.trim() || !formData.password.trim()) {
@@ -155,31 +192,57 @@ export default function AddStaffScreen() {
       Alert.alert("خطا", "رمز عبور باید حداقل ۶ کاراکتر باشد");
       return;
     }
+    if (!formData.staffType) {
+      Alert.alert("خطا", "نوعیت کارمند الزامی است");
+      return;
+    }
 
     setLoading(true);
     try {
+      // Build address strings from components (matching PHP format)
+      const permanentAddress = [
+        formData.permanentProvince,
+        formData.permanentDistrict,
+        formData.permanentArea,
+      ]
+        .filter(Boolean)
+        .join("، ");
+
+      const currentAddress = [
+        formData.currentProvince,
+        formData.currentDistrict,
+        formData.currentArea,
+        formData.currentHomeNo,
+      ]
+        .filter(Boolean)
+        .join("، ");
+
       const response = await hrApi.createStaff({
-        // Basic
+        // ===== BASIC INFO =====
         fullName: formData.fullName.trim(),
         nameFarsi: formData.nameFarsi || undefined,
-        email: formData.email.trim(),
+        email: formData.email.trim().toLowerCase(),
         phone: formData.phone || undefined,
         password: formData.password,
         staffType: formData.staffType,
+
+        // ===== EMPLOYMENT =====
         position: formData.position || undefined,
         department: formData.department || undefined,
         joinDate: formData.joinDate || undefined,
+        contractStartDate: formData.contractStartDate || undefined,
+        contractEndDate: formData.contractEndDate || undefined,
+        workSchedule: formData.workSchedule || undefined,
         salary: formData.salary ? parseFloat(formData.salary) : undefined,
         isActive: formData.isActive,
         notes: formData.notes || undefined,
 
-        // Teacher Specific
+        // ===== TEACHER SPECIFIC =====
         specialization: formData.specialization || undefined,
-        //experience: formData.experience || undefined,
-        //teacherCode: formData.teacherCode || undefined,
-        //qualification: formData.qualification || undefined,
+        workExperience: formData.experience || undefined,
+        // teacherCode: formData.teacherCode || undefined,
 
-        // Personal Info
+        // ===== PERSONAL INFO =====
         fatherName: formData.fatherName || undefined,
         fatherNameFarsi: formData.fatherNameFarsi || undefined,
         grandfatherName: formData.grandfatherName || undefined,
@@ -193,42 +256,56 @@ export default function AddStaffScreen() {
         birthDate: formData.birthDate || undefined,
         birthPlace: formData.birthPlace || undefined,
         nationality: formData.nationality || "افغان",
-        currentAddress: formData.currentAddress || undefined,
-        permanentAddress: formData.permanentAddress || undefined,
+
+        // ===== ADDRESS =====
+        permanentAddress: permanentAddress || undefined,
+        currentAddress: currentAddress || undefined,
+
+        // ===== EMERGENCY CONTACT =====
         emergencyContactName: formData.emergencyContactName || undefined,
         emergencyContactPhone: formData.emergencyContactPhone || undefined,
         emergencyContactRelation:
           formData.emergencyContactRelation || undefined,
 
-        // Education
+        // ===== EDUCATION =====
         educationLevel: formData.educationLevel || undefined,
         educationField: formData.educationField || undefined,
         educationInstitution: formData.educationInstitution || undefined,
         graduationYear: formData.graduationYear
           ? parseInt(formData.graduationYear)
           : undefined,
-        workExperience: formData.workExperience || undefined,
 
-        // Contract
-        contractStartDate: formData.contractStartDate || undefined,
-        contractEndDate: formData.contractEndDate || undefined,
+        // ===== CONTRACT =====
         contractType: formData.contractType || undefined,
-        workSchedule: formData.workSchedule || undefined,
         workShift: formData.workShift || undefined,
         baseSalary: formData.baseSalary
           ? parseFloat(formData.baseSalary)
-          : undefined,
+          : formData.salary
+            ? parseFloat(formData.salary)
+            : undefined,
         salaryCurrency: formData.salaryCurrency || "AFN",
 
-        // Bank
+        // ===== BANK =====
         bankAccountNumber: formData.bankAccountNumber || undefined,
         bankName: formData.bankName || undefined,
 
-        // Insurance
+        // ===== INSURANCE =====
         insuranceNumber: formData.insuranceNumber || undefined,
         insuranceProvider: formData.insuranceProvider || undefined,
         hasInsurance: formData.hasInsurance,
         hasContract: formData.hasContract,
+
+        // ===== PHP SPECIFIC FIELDS =====
+        tin: formData.tin || undefined,
+        paymentType: formData.paymentType || "0",
+        taxMonth: formData.taxMonth ? parseFloat(formData.taxMonth) : undefined,
+        absentDeduction: formData.absentDeduction
+          ? parseFloat(formData.absentDeduction)
+          : undefined,
+        overtimeGuarantee: formData.overtimeGuarantee
+          ? parseFloat(formData.overtimeGuarantee)
+          : undefined,
+        staffsIdNo: formData.staffsIdNo || undefined,
       });
 
       if (response.success) {
@@ -252,46 +329,204 @@ export default function AddStaffScreen() {
       <Text style={styles.title}>ثبت کارمند جدید</Text>
 
       <View style={styles.card}>
-        {/* ========== BASIC INFO ========== */}
-        <Text style={styles.sectionTitle}>اطلاعات پایه</Text>
+        {/* ===== BASIC INFO (PHP: name, lname, staffs_id_no) ===== */}
+        <Text style={styles.sectionTitle}>معلومات اساسی کارمند</Text>
 
-        <Text style={styles.label}>نام کامل *</Text>
+        <View style={styles.row}>
+          <View style={styles.halfField}>
+            <Text style={styles.label}>آی دی کارمند</Text>
+            <TextInput
+              style={[styles.input, styles.readonlyInput]}
+              placeholder="آی دی خودکار"
+              placeholderTextColor="#94a3b8"
+              value={formData.staffsIdNo}
+              editable={false}
+            />
+          </View>
+          <View style={styles.halfField}>
+            <Text style={styles.label}>تاریخ تولد</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="YYYY-MM-DD"
+              placeholderTextColor="#94a3b8"
+              value={formData.birthDate}
+              onChangeText={(text) =>
+                setFormData({ ...formData, birthDate: text })
+              }
+            />
+          </View>
+        </View>
+
+        <View style={styles.row}>
+          <View style={styles.halfField}>
+            <Text style={styles.label}>اسم *</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="اسم کارمند"
+              placeholderTextColor="#94a3b8"
+              value={formData.fullName}
+              onChangeText={(text) =>
+                setFormData({ ...formData, fullName: text })
+              }
+            />
+          </View>
+          <View style={styles.halfField}>
+            <Text style={styles.label}>تخلص</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="اسم خانواده گی"
+              placeholderTextColor="#94a3b8"
+              value={formData.nameFarsi}
+              onChangeText={(text) =>
+                setFormData({ ...formData, nameFarsi: text })
+              }
+            />
+          </View>
+        </View>
+
+        <Text style={styles.label}>اسم پدر</Text>
         <TextInput
           style={styles.input}
-          placeholder="نام کامل"
+          placeholder="اسم پدر کارمند"
           placeholderTextColor="#94a3b8"
-          value={formData.fullName}
-          onChangeText={(text) => setFormData({ ...formData, fullName: text })}
+          value={formData.fatherName}
+          onChangeText={(text) =>
+            setFormData({ ...formData, fatherName: text })
+          }
         />
 
-        <Text style={styles.label}>نام به فارسی</Text>
+        <View style={styles.row}>
+          <View style={styles.halfField}>
+            <Text style={styles.label}>جنسیت</Text>
+            <View style={styles.radioGroup}>
+              {SEX_OPTIONS.map((opt) => (
+                <TouchableOpacity
+                  key={opt.key}
+                  style={[
+                    styles.radioButton,
+                    formData.sex === opt.key && styles.radioSelected,
+                  ]}
+                  onPress={() => setFormData({ ...formData, sex: opt.key })}
+                >
+                  <Text
+                    style={[
+                      styles.radioText,
+                      formData.sex === opt.key && styles.radioTextSelected,
+                    ]}
+                  >
+                    {opt.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+          <View style={styles.halfField}>
+            <Text style={styles.label}>حالت مدنی</Text>
+            <View style={styles.radioGroup}>
+              {MARITAL_STATUS.slice(0, 2).map((opt) => (
+                <TouchableOpacity
+                  key={opt.key}
+                  style={[
+                    styles.radioButton,
+                    formData.maritalStatus === opt.key && styles.radioSelected,
+                  ]}
+                  onPress={() =>
+                    setFormData({ ...formData, maritalStatus: opt.key })
+                  }
+                >
+                  <Text
+                    style={[
+                      styles.radioText,
+                      formData.maritalStatus === opt.key &&
+                        styles.radioTextSelected,
+                    ]}
+                  >
+                    {opt.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+        </View>
+
+        <Text style={styles.label}>گروپ خون</Text>
+        <View style={styles.optionsGrid}>
+          {BLOOD_TYPES.map((opt) => (
+            <TouchableOpacity
+              key={opt.key}
+              style={[
+                styles.optionItem,
+                formData.bloodType === opt.key && styles.optionSelected,
+              ]}
+              onPress={() => setFormData({ ...formData, bloodType: opt.key })}
+            >
+              <Text
+                style={[
+                  styles.optionText,
+                  formData.bloodType === opt.key && styles.optionTextSelected,
+                ]}
+              >
+                {opt.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        <Text style={styles.label}>شماره تذکره</Text>
         <TextInput
           style={styles.input}
-          placeholder="نام به فارسی"
+          placeholder="شماره تذکره کارمند"
           placeholderTextColor="#94a3b8"
-          value={formData.nameFarsi}
-          onChangeText={(text) => setFormData({ ...formData, nameFarsi: text })}
+          value={formData.civilId}
+          onChangeText={(text) => setFormData({ ...formData, civilId: text })}
         />
 
-        <Text style={styles.label}>ایمیل *</Text>
+        <View style={styles.row}>
+          <View style={styles.halfField}>
+            <Text style={styles.label}>تاریخ صدور تذکره</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="YYYY-MM-DD"
+              placeholderTextColor="#94a3b8"
+              value={formData.civilIdIssueDate}
+              onChangeText={(text) =>
+                setFormData({ ...formData, civilIdIssueDate: text })
+              }
+            />
+          </View>
+          <View style={styles.halfField}>
+            <Text style={styles.label}>تاریخ انقضای تذکره</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="YYYY-MM-DD"
+              placeholderTextColor="#94a3b8"
+              value={formData.civilIdExpiryDate}
+              onChangeText={(text) =>
+                setFormData({ ...formData, civilIdExpiryDate: text })
+              }
+            />
+          </View>
+        </View>
+
+        <Text style={styles.label}>شماره تماس</Text>
         <TextInput
           style={styles.input}
-          placeholder="ایمیل"
+          placeholder="شماره تماس کارمند"
+          placeholderTextColor="#94a3b8"
+          value={formData.phone}
+          onChangeText={(text) => setFormData({ ...formData, phone: text })}
+          keyboardType="phone-pad"
+        />
+
+        <Text style={styles.label}>ایمیل آدرس *</Text>
+        <TextInput
+          style={styles.input}
+          placeholder="ایمیل آدرس کارمند"
           placeholderTextColor="#94a3b8"
           value={formData.email}
           onChangeText={(text) => setFormData({ ...formData, email: text })}
           keyboardType="email-address"
           autoCapitalize="none"
-        />
-
-        <Text style={styles.label}>شماره تماس</Text>
-        <TextInput
-          style={styles.input}
-          placeholder="شماره تماس"
-          placeholderTextColor="#94a3b8"
-          value={formData.phone}
-          onChangeText={(text) => setFormData({ ...formData, phone: text })}
-          keyboardType="phone-pad"
         />
 
         <Text style={styles.label}>رمز عبور *</Text>
@@ -304,8 +539,149 @@ export default function AddStaffScreen() {
           secureTextEntry
         />
 
-        {/* ========== STAFF TYPE ========== */}
-        <Text style={styles.label}>نوع کارمند *</Text>
+        {/* ===== ADDRESS (PHP: main_pro, main_dis, main_area, current_pro, current_dis, current_area, current_home_no) ===== */}
+        <Text style={styles.sectionTitle}>آدرس کارمند</Text>
+
+        <Text style={styles.subSectionTitle}>آدرس اصلی</Text>
+        <View style={styles.row}>
+          <View style={styles.thirdField}>
+            <Text style={styles.label}>ولایت</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="ولایت اصلی"
+              placeholderTextColor="#94a3b8"
+              value={formData.permanentProvince}
+              onChangeText={(text) =>
+                setFormData({ ...formData, permanentProvince: text })
+              }
+            />
+          </View>
+          <View style={styles.thirdField}>
+            <Text style={styles.label}>ناحیه</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="ناحیه اصلی"
+              placeholderTextColor="#94a3b8"
+              value={formData.permanentDistrict}
+              onChangeText={(text) =>
+                setFormData({ ...formData, permanentDistrict: text })
+              }
+            />
+          </View>
+          <View style={styles.thirdField}>
+            <Text style={styles.label}>منطقه</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="منطقه اصلی"
+              placeholderTextColor="#94a3b8"
+              value={formData.permanentArea}
+              onChangeText={(text) =>
+                setFormData({ ...formData, permanentArea: text })
+              }
+            />
+          </View>
+        </View>
+
+        <Text style={styles.subSectionTitle}>آدرس فعلی</Text>
+        <View style={styles.row}>
+          <View style={styles.thirdField}>
+            <Text style={styles.label}>ولایت</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="ولایت فعلی"
+              placeholderTextColor="#94a3b8"
+              value={formData.currentProvince}
+              onChangeText={(text) =>
+                setFormData({ ...formData, currentProvince: text })
+              }
+            />
+          </View>
+          <View style={styles.thirdField}>
+            <Text style={styles.label}>ناحیه</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="ناحیه فعلی"
+              placeholderTextColor="#94a3b8"
+              value={formData.currentDistrict}
+              onChangeText={(text) =>
+                setFormData({ ...formData, currentDistrict: text })
+              }
+            />
+          </View>
+          <View style={styles.thirdField}>
+            <Text style={styles.label}>منطقه</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="منطقه فعلی"
+              placeholderTextColor="#94a3b8"
+              value={formData.currentArea}
+              onChangeText={(text) =>
+                setFormData({ ...formData, currentArea: text })
+              }
+            />
+          </View>
+        </View>
+        <Text style={styles.label}>نمبر خانه</Text>
+        <TextInput
+          style={styles.input}
+          placeholder="نمبر خانه فعلی"
+          placeholderTextColor="#94a3b8"
+          value={formData.currentHomeNo}
+          onChangeText={(text) =>
+            setFormData({ ...formData, currentHomeNo: text })
+          }
+        />
+
+        {/* ===== EDUCATION (PHP: education_degree, education_faculty) ===== */}
+        <Text style={styles.sectionTitle}>تحصیلات</Text>
+
+        <View style={styles.row}>
+          <View style={styles.halfField}>
+            <Text style={styles.label}>درجه تحصیلی</Text>
+            <View style={styles.optionsGrid}>
+              {EDUCATION_LEVELS.map((opt) => (
+                <TouchableOpacity
+                  key={opt.key}
+                  style={[
+                    styles.optionItem,
+                    formData.educationLevel === opt.key &&
+                      styles.optionSelected,
+                  ]}
+                  onPress={() =>
+                    setFormData({ ...formData, educationLevel: opt.key })
+                  }
+                >
+                  <Text
+                    style={[
+                      styles.optionText,
+                      formData.educationLevel === opt.key &&
+                        styles.optionTextSelected,
+                    ]}
+                  >
+                    {opt.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+          <View style={styles.halfField}>
+            <Text style={styles.label}>رشته تحصیلی</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="رشته تحصیلی"
+              placeholderTextColor="#94a3b8"
+              value={formData.educationField}
+              onChangeText={(text) =>
+                setFormData({ ...formData, educationField: text })
+              }
+            />
+          </View>
+        </View>
+
+        {/* ===== CONTRACT (PHP: type_id, year, date_start, date_end, work_time) ===== */}
+        <Text style={styles.sectionTitle}>قرارداد</Text>
+
+        <Text style={styles.label}>نوعیت کارمند *</Text>
         <View style={styles.optionsGrid}>
           {STAFF_TYPES.map((type) => (
             <TouchableOpacity
@@ -328,22 +704,105 @@ export default function AddStaffScreen() {
           ))}
         </View>
 
-        {/* ========== EMPLOYMENT INFO ========== */}
-        <Text style={styles.sectionTitle}>اطلاعات استخدامی</Text>
+        <View style={styles.row}>
+          <View style={styles.halfField}>
+            <Text style={styles.label}>تاریخ آغاز قرارداد</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="YYYY-MM-DD"
+              placeholderTextColor="#94a3b8"
+              value={formData.contractStartDate}
+              onChangeText={(text) =>
+                setFormData({ ...formData, contractStartDate: text })
+              }
+            />
+          </View>
+          <View style={styles.halfField}>
+            <Text style={styles.label}>تاریخ ختم قرارداد</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="YYYY-MM-DD"
+              placeholderTextColor="#94a3b8"
+              value={formData.contractEndDate}
+              onChangeText={(text) =>
+                setFormData({ ...formData, contractEndDate: text })
+              }
+            />
+          </View>
+        </View>
 
-        <Text style={styles.label}>سمت</Text>
-        <TextInput
-          style={styles.input}
-          placeholder="سمت"
-          placeholderTextColor="#94a3b8"
-          value={formData.position}
-          onChangeText={(text) => setFormData({ ...formData, position: text })}
-        />
+        <Text style={styles.label}>وقت کاری</Text>
+        <View style={styles.optionsGrid}>
+          {WORK_SHIFTS.map((opt) => (
+            <TouchableOpacity
+              key={opt.key}
+              style={[
+                styles.optionItem,
+                formData.workSchedule === opt.key && styles.optionSelected,
+              ]}
+              onPress={() =>
+                setFormData({ ...formData, workSchedule: opt.key })
+              }
+            >
+              <Text
+                style={[
+                  styles.optionText,
+                  formData.workSchedule === opt.key &&
+                    styles.optionTextSelected,
+                ]}
+              >
+                {opt.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        <View style={styles.row}>
+          <View style={styles.halfField}>
+            <Text style={styles.label}>نوع قرارداد</Text>
+            <View style={styles.optionsGrid}>
+              {CONTRACT_TYPES.map((opt) => (
+                <TouchableOpacity
+                  key={opt.key}
+                  style={[
+                    styles.optionItem,
+                    formData.contractType === opt.key && styles.optionSelected,
+                  ]}
+                  onPress={() =>
+                    setFormData({ ...formData, contractType: opt.key })
+                  }
+                >
+                  <Text
+                    style={[
+                      styles.optionText,
+                      formData.contractType === opt.key &&
+                        styles.optionTextSelected,
+                    ]}
+                  >
+                    {opt.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+          <View style={styles.halfField}>
+            <Text style={styles.label}>سمت</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="سمت کارمند"
+              placeholderTextColor="#94a3b8"
+              value={formData.position}
+              onChangeText={(text) =>
+                setFormData({ ...formData, position: text })
+              }
+            />
+          </View>
+        </View>
 
         <Text style={styles.label}>بخش</Text>
         <TextInput
           style={styles.input}
-          placeholder="بخش"
+          placeholder="بخش کارمند"
           placeholderTextColor="#94a3b8"
           value={formData.department}
           onChangeText={(text) =>
@@ -351,24 +810,104 @@ export default function AddStaffScreen() {
           }
         />
 
-        <Text style={styles.label}>تاریخ پیوستن</Text>
-        <TextInput
-          style={styles.input}
-          placeholder="YYYY-MM-DD"
-          placeholderTextColor="#94a3b8"
-          value={formData.joinDate}
-          onChangeText={(text) => setFormData({ ...formData, joinDate: text })}
-        />
+        {/* ===== PHP SPECIFIC FIELDS ===== */}
+        <Text style={styles.sectionTitle}>معلومات مالی</Text>
 
-        <Text style={styles.label}>معاش</Text>
+        <Text style={styles.label}>نمبر تشخیصیه (TIN)</Text>
         <TextInput
           style={styles.input}
-          placeholder="معاش (افغانی)"
+          placeholder="نمبر تشخیصیه کارمند"
           placeholderTextColor="#94a3b8"
-          value={formData.salary}
-          onChangeText={(text) => setFormData({ ...formData, salary: text })}
+          value={formData.tin}
+          onChangeText={(text) => setFormData({ ...formData, tin: text })}
           keyboardType="numeric"
         />
+
+        <Text style={styles.label}>شیوه پرداخت معاش</Text>
+        <View style={styles.optionsGrid}>
+          <TouchableOpacity
+            style={[
+              styles.optionItem,
+              formData.paymentType === "0" && styles.optionSelected,
+            ]}
+            onPress={() => setFormData({ ...formData, paymentType: "0" })}
+          >
+            <Text
+              style={[
+                styles.optionText,
+                formData.paymentType === "0" && styles.optionTextSelected,
+              ]}
+            >
+              ماهوار
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.row}>
+          <View style={styles.halfField}>
+            <Text style={styles.label}>معاش یک ماه</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="معاش یک ماه"
+              placeholderTextColor="#94a3b8"
+              value={formData.salary}
+              onChangeText={(text) => {
+                setFormData({ ...formData, salary: text });
+                // Auto-calculate tax if needed
+                if (text && parseFloat(text) > 0) {
+                  const tax = (parseFloat(text) * 5) / 100;
+                  setFormData((prev) => ({
+                    ...prev,
+                    taxMonth: tax.toString(),
+                  }));
+                }
+              }}
+              keyboardType="numeric"
+            />
+          </View>
+          <View style={styles.halfField}>
+            <Text style={styles.label}>مالیه یک ماه %</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="مالیه یک ماه"
+              placeholderTextColor="#94a3b8"
+              value={formData.taxMonth}
+              onChangeText={(text) =>
+                setFormData({ ...formData, taxMonth: text })
+              }
+              keyboardType="numeric"
+            />
+          </View>
+        </View>
+
+        <View style={styles.row}>
+          <View style={styles.halfField}>
+            <Text style={styles.label}>قطع معاش در یک روز غیرحاضری</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="قطع معاش در یک روز"
+              placeholderTextColor="#94a3b8"
+              value={formData.absentDeduction}
+              onChangeText={(text) =>
+                setFormData({ ...formData, absentDeduction: text })
+              }
+              keyboardType="numeric"
+            />
+          </View>
+          <View style={styles.halfField}>
+            <Text style={styles.label}>مقدار تضمین هر ماه</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="مقدار تضمین هر ماه"
+              placeholderTextColor="#94a3b8"
+              value={formData.overtimeGuarantee}
+              onChangeText={(text) =>
+                setFormData({ ...formData, overtimeGuarantee: text })
+              }
+              keyboardType="numeric"
+            />
+          </View>
+        </View>
 
         <View style={styles.switchRow}>
           <Text style={styles.label}>فعال</Text>
@@ -389,69 +928,11 @@ export default function AddStaffScreen() {
           value={formData.notes}
           onChangeText={(text) => setFormData({ ...formData, notes: text })}
           multiline
-          numberOfLines={2}
+          numberOfLines={3}
           textAlignVertical="top"
         />
 
-        {/* ========== TEACHER SPECIFIC ========== */}
-        {formData.staffType === "TEACHER" && (
-          <>
-            <Text style={styles.sectionTitle}>اطلاعات آموزشی (استاد)</Text>
-
-            <Text style={styles.label}>تخصص</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="تخصص"
-              placeholderTextColor="#94a3b8"
-              value={formData.specialization}
-              onChangeText={(text) =>
-                setFormData({ ...formData, specialization: text })
-              }
-            />
-
-            <Text style={styles.label}>سابقه کار</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="سابقه کار"
-              placeholderTextColor="#94a3b8"
-              value={formData.experience}
-              onChangeText={(text) =>
-                setFormData({ ...formData, experience: text })
-              }
-            />
-
-            <Text style={styles.label}>کد استاد</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="کد استاد"
-              placeholderTextColor="#94a3b8"
-              value={formData.teacherCode}
-              onChangeText={(text) =>
-                setFormData({ ...formData, teacherCode: text })
-              }
-            />
-          </>
-        )}
-
-        {/* ========== PRINCIPAL SPECIFIC ========== */}
-        {formData.staffType === "PRINCIPAL" && (
-          <>
-            <Text style={styles.sectionTitle}>اطلاعات مدیریت (مدیر مکتب)</Text>
-
-            <Text style={styles.label}>مدرک تحصیلی</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="مدرک تحصیلی"
-              placeholderTextColor="#94a3b8"
-              value={formData.qualification}
-              onChangeText={(text) =>
-                setFormData({ ...formData, qualification: text })
-              }
-            />
-          </>
-        )}
-
-        {/* ========== ADVANCED INFO ========== */}
+        {/* ===== ADVANCED INFO ===== */}
         <TouchableOpacity
           style={styles.advancedToggle}
           onPress={() => setShowAdvanced(!showAdvanced)}
@@ -463,195 +944,8 @@ export default function AddStaffScreen() {
 
         {showAdvanced && (
           <>
-            {/* Personal Info */}
-            <Text style={styles.sectionTitle}>اطلاعات شخصی</Text>
-
-            <Text style={styles.label}>نام پدر</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="نام پدر"
-              placeholderTextColor="#94a3b8"
-              value={formData.fatherName}
-              onChangeText={(text) =>
-                setFormData({ ...formData, fatherName: text })
-              }
-            />
-
-            <Text style={styles.label}>نام پدر به فارسی</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="نام پدر به فارسی"
-              placeholderTextColor="#94a3b8"
-              value={formData.fatherNameFarsi}
-              onChangeText={(text) =>
-                setFormData({ ...formData, fatherNameFarsi: text })
-              }
-            />
-
-            <Text style={styles.label}>نام پدر کلان</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="نام پدر کلان"
-              placeholderTextColor="#94a3b8"
-              value={formData.grandfatherName}
-              onChangeText={(text) =>
-                setFormData({ ...formData, grandfatherName: text })
-              }
-            />
-
-            <Text style={styles.label}>جنسیت</Text>
-            <View style={styles.optionsGrid}>
-              {SEX_OPTIONS.map((opt) => (
-                <TouchableOpacity
-                  key={opt.key}
-                  style={[
-                    styles.optionItem,
-                    formData.sex === opt.key && styles.optionSelected,
-                  ]}
-                  onPress={() => setFormData({ ...formData, sex: opt.key })}
-                >
-                  <Text
-                    style={[
-                      styles.optionText,
-                      formData.sex === opt.key && styles.optionTextSelected,
-                    ]}
-                  >
-                    {opt.label}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-
-            <Text style={styles.label}>وضعیت تاهل</Text>
-            <View style={styles.optionsGrid}>
-              {MARITAL_STATUS.map((opt) => (
-                <TouchableOpacity
-                  key={opt.key}
-                  style={[
-                    styles.optionItem,
-                    formData.maritalStatus === opt.key && styles.optionSelected,
-                  ]}
-                  onPress={() =>
-                    setFormData({ ...formData, maritalStatus: opt.key })
-                  }
-                >
-                  <Text
-                    style={[
-                      styles.optionText,
-                      formData.maritalStatus === opt.key &&
-                        styles.optionTextSelected,
-                    ]}
-                  >
-                    {opt.label}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-
-            <Text style={styles.label}>گروه خونی</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="مثال: A+"
-              placeholderTextColor="#94a3b8"
-              value={formData.bloodType}
-              onChangeText={(text) =>
-                setFormData({ ...formData, bloodType: text })
-              }
-            />
-
-            <Text style={styles.label}>شماره تذکره</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="شماره تذکره"
-              placeholderTextColor="#94a3b8"
-              value={formData.civilId}
-              onChangeText={(text) =>
-                setFormData({ ...formData, civilId: text })
-              }
-            />
-
-            <Text style={styles.label}>تاریخ صدور تذکره</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="YYYY-MM-DD"
-              placeholderTextColor="#94a3b8"
-              value={formData.civilIdIssueDate}
-              onChangeText={(text) =>
-                setFormData({ ...formData, civilIdIssueDate: text })
-              }
-            />
-
-            <Text style={styles.label}>تاریخ انقضای تذکره</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="YYYY-MM-DD"
-              placeholderTextColor="#94a3b8"
-              value={formData.civilIdExpiryDate}
-              onChangeText={(text) =>
-                setFormData({ ...formData, civilIdExpiryDate: text })
-              }
-            />
-
-            <Text style={styles.label}>تاریخ تولد</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="YYYY-MM-DD"
-              placeholderTextColor="#94a3b8"
-              value={formData.birthDate}
-              onChangeText={(text) =>
-                setFormData({ ...formData, birthDate: text })
-              }
-            />
-
-            <Text style={styles.label}>محل تولد</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="محل تولد"
-              placeholderTextColor="#94a3b8"
-              value={formData.birthPlace}
-              onChangeText={(text) =>
-                setFormData({ ...formData, birthPlace: text })
-              }
-            />
-
-            <Text style={styles.label}>ملیت</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="ملیت"
-              placeholderTextColor="#94a3b8"
-              value={formData.nationality}
-              onChangeText={(text) =>
-                setFormData({ ...formData, nationality: text })
-              }
-            />
-
-            <Text style={styles.label}>آدرس فعلی</Text>
-            <TextInput
-              style={[styles.input, styles.textArea]}
-              placeholder="آدرس فعلی"
-              placeholderTextColor="#94a3b8"
-              value={formData.currentAddress}
-              onChangeText={(text) =>
-                setFormData({ ...formData, currentAddress: text })
-              }
-              multiline
-              numberOfLines={2}
-              textAlignVertical="top"
-            />
-
-            <Text style={styles.label}>آدرس دایم</Text>
-            <TextInput
-              style={[styles.input, styles.textArea]}
-              placeholder="آدرس دایم"
-              placeholderTextColor="#94a3b8"
-              value={formData.permanentAddress}
-              onChangeText={(text) =>
-                setFormData({ ...formData, permanentAddress: text })
-              }
-              multiline
-              numberOfLines={2}
-              textAlignVertical="top"
-            />
+            {/* Emergency Contact */}
+            <Text style={styles.sectionTitle}>اطلاعات اضطراری</Text>
 
             <Text style={styles.label}>نام شخص اضطراری</Text>
             <TextInput
@@ -686,154 +980,6 @@ export default function AddStaffScreen() {
                 setFormData({ ...formData, emergencyContactRelation: text })
               }
             />
-
-            {/* Education */}
-            <Text style={styles.sectionTitle}>تحصیلات</Text>
-
-            <Text style={styles.label}>مدرک تحصیلی</Text>
-            <View style={styles.optionsGrid}>
-              {EDUCATION_LEVELS.map((opt) => (
-                <TouchableOpacity
-                  key={opt.key}
-                  style={[
-                    styles.optionItem,
-                    formData.educationLevel === opt.key &&
-                      styles.optionSelected,
-                  ]}
-                  onPress={() =>
-                    setFormData({ ...formData, educationLevel: opt.key })
-                  }
-                >
-                  <Text
-                    style={[
-                      styles.optionText,
-                      formData.educationLevel === opt.key &&
-                        styles.optionTextSelected,
-                    ]}
-                  >
-                    {opt.label}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-
-            <Text style={styles.label}>رشته تحصیلی</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="رشته تحصیلی"
-              placeholderTextColor="#94a3b8"
-              value={formData.educationField}
-              onChangeText={(text) =>
-                setFormData({ ...formData, educationField: text })
-              }
-            />
-
-            <Text style={styles.label}>موسسه تحصیلی</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="موسسه تحصیلی"
-              placeholderTextColor="#94a3b8"
-              value={formData.educationInstitution}
-              onChangeText={(text) =>
-                setFormData({ ...formData, educationInstitution: text })
-              }
-            />
-
-            <Text style={styles.label}>سال فراغت</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="سال فراغت"
-              placeholderTextColor="#94a3b8"
-              value={formData.graduationYear}
-              onChangeText={(text) =>
-                setFormData({ ...formData, graduationYear: text })
-              }
-              keyboardType="numeric"
-            />
-
-            <Text style={styles.label}>سابقه کار</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="سابقه کار"
-              placeholderTextColor="#94a3b8"
-              value={formData.workExperience}
-              onChangeText={(text) =>
-                setFormData({ ...formData, workExperience: text })
-              }
-            />
-
-            {/* Contract */}
-            <Text style={styles.sectionTitle}>قرارداد</Text>
-
-            <Text style={styles.label}>تاریخ شروع قرارداد</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="YYYY-MM-DD"
-              placeholderTextColor="#94a3b8"
-              value={formData.contractStartDate}
-              onChangeText={(text) =>
-                setFormData({ ...formData, contractStartDate: text })
-              }
-            />
-
-            <Text style={styles.label}>تاریخ پایان قرارداد</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="YYYY-MM-DD"
-              placeholderTextColor="#94a3b8"
-              value={formData.contractEndDate}
-              onChangeText={(text) =>
-                setFormData({ ...formData, contractEndDate: text })
-              }
-            />
-
-            <Text style={styles.label}>نوع قرارداد</Text>
-            <View style={styles.optionsGrid}>
-              {CONTRACT_TYPES.map((opt) => (
-                <TouchableOpacity
-                  key={opt.key}
-                  style={[
-                    styles.optionItem,
-                    formData.contractType === opt.key && styles.optionSelected,
-                  ]}
-                  onPress={() =>
-                    setFormData({ ...formData, contractType: opt.key })
-                  }
-                >
-                  <Text
-                    style={[
-                      styles.optionText,
-                      formData.contractType === opt.key &&
-                        styles.optionTextSelected,
-                    ]}
-                  >
-                    {opt.label}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-
-            <Text style={styles.label}>برنامه کاری</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="برنامه کاری"
-              placeholderTextColor="#94a3b8"
-              value={formData.workSchedule}
-              onChangeText={(text) =>
-                setFormData({ ...formData, workSchedule: text })
-              }
-            />
-
-            <View style={styles.switchRow}>
-              <Text style={styles.label}>دارای قرارداد</Text>
-              <Switch
-                value={formData.hasContract}
-                onValueChange={(value) =>
-                  setFormData({ ...formData, hasContract: value })
-                }
-                trackColor={{ false: "#e2e8f0", true: "#8b5cf6" }}
-              />
-            </View>
 
             {/* Bank */}
             <Text style={styles.sectionTitle}>اطلاعات بانکی</Text>
@@ -895,24 +1041,110 @@ export default function AddStaffScreen() {
                 trackColor={{ false: "#e2e8f0", true: "#8b5cf6" }}
               />
             </View>
+
+            <View style={styles.switchRow}>
+              <Text style={styles.label}>دارای قرارداد</Text>
+              <Switch
+                value={formData.hasContract}
+                onValueChange={(value) =>
+                  setFormData({ ...formData, hasContract: value })
+                }
+                trackColor={{ false: "#e2e8f0", true: "#8b5cf6" }}
+              />
+            </View>
           </>
         )}
 
         {/* Submit */}
-        <TouchableOpacity
-          style={[styles.submitButton, loading && styles.submitDisabled]}
-          onPress={handleSubmit}
-          disabled={loading}
-        >
-          {loading ? (
-            <ActivityIndicator color="#fff" />
-          ) : (
-            <>
-              <Ionicons name="save-outline" size={20} color="#fff" />
-              <Text style={styles.submitText}>ثبت کارمند</Text>
-            </>
-          )}
-        </TouchableOpacity>
+        <View style={styles.buttonRow}>
+          <TouchableOpacity
+            style={[styles.submitButton, loading && styles.submitDisabled]}
+            onPress={handleSubmit}
+            disabled={loading}
+          >
+            {loading ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <>
+                <Ionicons name="save-outline" size={20} color="#fff" />
+                <Text style={styles.submitText}>ثبت کارمند</Text>
+              </>
+            )}
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.resetButton}
+            onPress={() => {
+              setFormData({
+                fullName: "",
+                nameFarsi: "",
+                email: "",
+                phone: "",
+                password: "",
+                staffType: "TEACHER",
+                position: "",
+                department: "",
+                joinDate: "",
+                contractStartDate: "",
+                contractEndDate: "",
+                workSchedule: "MORNING",
+                salary: "",
+                isActive: true,
+                notes: "",
+                specialization: "",
+                experience: "",
+                teacherCode: "",
+                qualification: "",
+                fatherName: "",
+                fatherNameFarsi: "",
+                grandfatherName: "",
+                grandfatherNameFarsi: "",
+                sex: "MALE",
+                maritalStatus: "SINGLE",
+                bloodType: "",
+                civilId: "",
+                civilIdIssueDate: "",
+                civilIdExpiryDate: "",
+                birthDate: "",
+                birthPlace: "",
+                nationality: "افغان",
+                permanentProvince: "",
+                permanentDistrict: "",
+                permanentArea: "",
+                currentProvince: "",
+                currentDistrict: "",
+                currentArea: "",
+                currentHomeNo: "",
+                emergencyContactName: "",
+                emergencyContactPhone: "",
+                emergencyContactRelation: "",
+                educationLevel: "",
+                educationField: "",
+                educationInstitution: "",
+                graduationYear: "",
+                workExperience: "",
+                contractType: "PERMANENT",
+                workShift: "",
+                baseSalary: "",
+                salaryCurrency: "AFN",
+                bankAccountNumber: "",
+                bankName: "",
+                insuranceNumber: "",
+                insuranceProvider: "",
+                hasInsurance: false,
+                hasContract: false,
+                tin: "",
+                paymentType: "0",
+                taxMonth: "",
+                absentDeduction: "",
+                overtimeGuarantee: "",
+                staffsIdNo: "",
+              });
+            }}
+          >
+            <Text style={styles.resetText}>پاک کردن فارم</Text>
+          </TouchableOpacity>
+        </View>
       </View>
     </ScrollView>
   );
@@ -950,6 +1182,14 @@ const styles = StyleSheet.create({
     borderBottomColor: "#f1f5f9",
     paddingBottom: 4,
   },
+  subSectionTitle: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#475569",
+    marginTop: 10,
+    marginBottom: 8,
+    fontFamily: "VazirBold",
+  },
   label: {
     fontSize: 15,
     fontWeight: "600",
@@ -966,19 +1206,74 @@ const styles = StyleSheet.create({
     color: "#1e293b",
     fontFamily: "Vazir",
   },
+  readonlyInput: {
+    backgroundColor: "#e2e8f0",
+    color: "#64748b",
+  },
   textArea: { minHeight: 60 },
-  optionsGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  row: {
+    flexDirection: "row",
+    gap: 10,
+  },
+  halfField: {
+    flex: 1,
+  },
+  thirdField: {
+    flex: 1,
+  },
+  optionsGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6,
+    marginTop: 4,
+  },
   optionItem: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
     backgroundColor: "#f1f5f9",
     borderWidth: 2,
     borderColor: "transparent",
   },
-  optionSelected: { backgroundColor: "#ede9fe", borderColor: "#8b5cf6" },
-  optionText: { fontSize: 14, color: "#64748b", fontFamily: "Vazir" },
-  optionTextSelected: { color: "#8b5cf6", fontWeight: "600" },
+  optionSelected: {
+    backgroundColor: "#ede9fe",
+    borderColor: "#8b5cf6",
+  },
+  optionText: {
+    fontSize: 13,
+    color: "#64748b",
+    fontFamily: "Vazir",
+  },
+  optionTextSelected: {
+    color: "#8b5cf6",
+    fontWeight: "600",
+  },
+  radioGroup: {
+    flexDirection: "row",
+    gap: 8,
+    marginTop: 4,
+  },
+  radioButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: "#f1f5f9",
+    borderWidth: 2,
+    borderColor: "transparent",
+  },
+  radioSelected: {
+    backgroundColor: "#ede9fe",
+    borderColor: "#8b5cf6",
+  },
+  radioText: {
+    fontSize: 14,
+    color: "#64748b",
+    fontFamily: "Vazir",
+  },
+  radioTextSelected: {
+    color: "#8b5cf6",
+    fontWeight: "600",
+  },
   switchRow: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -997,7 +1292,13 @@ const styles = StyleSheet.create({
     color: "#8b5cf6",
     fontFamily: "Vazir",
   },
+  buttonRow: {
+    flexDirection: "row",
+    gap: 10,
+    marginTop: 20,
+  },
   submitButton: {
+    flex: 2,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
@@ -1005,13 +1306,26 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     borderRadius: 12,
     gap: 8,
-    marginTop: 20,
   },
   submitDisabled: { opacity: 0.7 },
   submitText: {
     color: "#fff",
     fontSize: 16,
     fontWeight: "600",
+    fontFamily: "Vazir",
+  },
+  resetButton: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#e2e8f0",
+    paddingVertical: 14,
+    borderRadius: 12,
+  },
+  resetText: {
+    color: "#475569",
+    fontSize: 14,
+    fontWeight: "500",
     fontFamily: "Vazir",
   },
 });

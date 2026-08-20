@@ -48,9 +48,6 @@ export interface UpdateUserData {
   childId?: number;
 }
 
-// src/config/adminUserApi.ts
-// Add these new types and update existing ones
-
 export interface CreateUserData {
   // Basic Info
   fullName: string;
@@ -198,6 +195,23 @@ export interface RoleOption {
   id: string;
   name: string;
   label: string;
+}
+
+// ============ Reset Password Types ============
+export interface ResetPasswordByEmailData {
+  email: string;
+  newPassword: string;
+  confirmPassword: string;
+}
+
+export interface ResetPasswordResponse {
+  success: boolean;
+  message: string;
+  data?: {
+    userId: number;
+    email: string;
+    name: string;
+  };
 }
 
 // ============ API Methods ============
@@ -401,7 +415,62 @@ export const adminUserApi = {
     }
   },
 
-  // Reset user password (ONLY ONE - removed duplicate)
+  // ============ RESET PASSWORD FUNCTIONS ============
+
+  /**
+   * Reset user password by email (Admin only)
+   * This allows an admin to reset any user's password by providing their email
+   */
+  resetPasswordByEmail: async (
+    data: ResetPasswordByEmailData,
+  ): Promise<ResetPasswordResponse> => {
+    try {
+      const token = await AsyncStorage.getItem("auth_token");
+
+      // Validate input
+      if (!data.email) {
+        return { success: false, message: "ایمیل کاربر را وارد کنید" };
+      }
+      if (!data.newPassword || !data.confirmPassword) {
+        return { success: false, message: "لطفاً رمز عبور جدید را وارد کنید" };
+      }
+      if (data.newPassword !== data.confirmPassword) {
+        return {
+          success: false,
+          message: "رمز عبور جدید با تکرار آن مطابقت ندارد",
+        };
+      }
+      if (data.newPassword.length < 6) {
+        return {
+          success: false,
+          message: "رمز عبور باید حداقل ۶ کاراکتر باشد",
+        };
+      }
+
+      const response = await fetch(`${BASE_URL}/admin/users/reset-password`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(data),
+      });
+
+      const result = await response.json();
+      return result;
+    } catch (error) {
+      console.error("Error resetting password by email:", error);
+      return {
+        success: false,
+        message: "خطا در تغییر رمز عبور",
+      };
+    }
+  },
+
+  /**
+   * Reset user password by ID (Admin only) - generates random password
+   * This is the original reset function that generates a new password
+   */
   resetUserPassword: async (
     id: number,
   ): Promise<{ success: boolean; message: string; newPassword?: string }> => {

@@ -12,6 +12,24 @@ export interface Period {
   isBreak: boolean;
 }
 
+// ✅ ADD THIS - TimetableEntry interface for the component
+export interface TimetableEntry {
+  id?: number;
+  classId: number;
+  day: number;
+  period: number;
+  subjectId: number;
+  subject?: string;
+  teacherId?: number;
+  teacher?: string;
+  room?: string;
+  isBreak?: boolean;
+  startTime?: string;
+  endTime?: string;
+  time?: string;
+  academicYear?: string;
+}
+
 export interface ClassOption {
   id: number;
   name: string;

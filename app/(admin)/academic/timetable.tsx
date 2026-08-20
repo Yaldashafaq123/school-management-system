@@ -1,13 +1,14 @@
-// app/(principal)/academic/timetable.tsx - FIXED VERSION
+// app/(admin)/academic/timetable.tsx - FIXED VERSION
 import { useAuth } from "@/contexts/AuthContext";
 import {
-  principalAcademicApi,
-  TimetableEntry,
-} from "@/src/config/principalAcademicApi";
+  adminTimetableApi,
+  ClassOption,
+  Period,
+  SubjectOption,
+} from "@/src/config/adminTimetableApi";
 import { Ionicons } from "@expo/vector-icons";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { router } from "expo-router";
-import { Calendar, Edit2, Trash2 } from "lucide-react-native";
+import { Calendar, Edit2, Trash2, Users } from "lucide-react-native";
 import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
@@ -68,19 +69,17 @@ const getSubjectColor = (subject: string) => {
   return colors[subject] || "#8E8E93";
 };
 
-export default function TimetableScreen() {
+export default function AdminTimetableScreen() {
   const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [classes, setClasses] = useState<any[]>([]);
-  const [subjects, setSubjects] = useState<any[]>([]);
+  const [classes, setClasses] = useState<ClassOption[]>([]);
+  const [subjects, setSubjects] = useState<SubjectOption[]>([]);
   const [selectedClassId, setSelectedClassId] = useState<number | null>(null);
   const [selectedDay, setSelectedDay] = useState<number>(0);
-  const [schedule, setSchedule] = useState<TimetableEntry[]>([]);
+  const [schedule, setSchedule] = useState<Period[]>([]);
   const [showAddModal, setShowAddModal] = useState(false);
-  const [editingPeriod, setEditingPeriod] = useState<TimetableEntry | null>(
-    null,
-  );
+  const [editingPeriod, setEditingPeriod] = useState<Period | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -107,14 +106,8 @@ export default function TimetableScreen() {
       setLoading(true);
       setError(null);
 
-      // Fetch classes
-      const classesResponse = await fetch(
-        `${process.env.EXPO_PUBLIC_API_URL}/principal/classes`,
-        {
-          headers: { Authorization: `Bearer ${await getToken()}` },
-        },
-      );
-      const classesResult = await classesResponse.json();
+      // Fetch classes using adminTimetableApi
+      const classesResult = await adminTimetableApi.getClasses();
 
       if (classesResult.success && classesResult.data) {
         setClasses(classesResult.data);
@@ -125,17 +118,13 @@ export default function TimetableScreen() {
         setError("خطا در بارگذاری صنف‌ها");
       }
 
-      // Fetch subjects
-      const subjectsResponse = await fetch(
-        `${process.env.EXPO_PUBLIC_API_URL}/principal/academic/subjects`,
-        {
-          headers: { Authorization: `Bearer ${await getToken()}` },
-        },
-      );
-      const subjectsResult = await subjectsResponse.json();
+      // Fetch subjects using adminTimetableApi
+      const subjectsResult = await adminTimetableApi.getSubjects();
 
       if (subjectsResult.success && subjectsResult.data) {
-        setSubjects(subjectsResult.data.subjects || []);
+        setSubjects(subjectsResult.data);
+      } else {
+        setError("خطا در بارگذاری مضامین");
       }
     } catch (err) {
       console.error("Error loading data:", err);
@@ -145,22 +134,34 @@ export default function TimetableScreen() {
     }
   };
 
-  const getToken = async () => {
-    const token = await AsyncStorage.getItem("auth_token");
-    return token;
-  };
-
   const loadTimetable = async () => {
     if (!selectedClassId) return;
 
     try {
-      const response = await principalAcademicApi.getTimetable(
+      const response = await adminTimetableApi.getTimetable(
         selectedClassId,
         selectedDay,
       );
+
       if (response.success && response.data) {
-        // ✅ Ensure we're setting the periods array correctly
-        const periods = response.data.periods || response.data || [];
+        // ✅ FIX: Check if response.data is an array or has a periods property
+        let periods: Period[] = [];
+
+        if (Array.isArray(response.data)) {
+          periods = response.data;
+        } else if (
+          response.data.periods &&
+          Array.isArray(response.data.periods)
+        ) {
+          periods = response.data.periods;
+        } else if (response.data.periods) {
+          // If periods exists but is not an array, try to convert
+          periods = Object.values(response.data.periods);
+        } else {
+          // If data is an object with numeric keys, convert to array
+          periods = Object.values(response.data);
+        }
+
         setSchedule(periods);
       } else {
         setSchedule([]);
@@ -202,21 +203,21 @@ export default function TimetableScreen() {
 
     setSubmitting(true);
     try {
-      // Find BREAK subject id
+      // Find BREAK subject id if isBreak is true
       let subjectId = newPeriod.subjectId;
       if (newPeriod.isBreak) {
-        const breakSubject = subjects.find((s) => s.name === "BREAK");
+        const breakSubject = subjects.find((s) => s.isBreak);
         subjectId = breakSubject?.id || 0;
       }
 
-      const response = await principalAcademicApi.saveTimetableEntry({
+      const response = await adminTimetableApi.savePeriod({
         classId: selectedClassId,
         day: selectedDay,
         period: newPeriod.period,
         subjectId: subjectId,
         teacherId: newPeriod.teacherId,
         room: newPeriod.room || "",
-        // startTime and endTime will be auto-calculated
+        isBreak: newPeriod.isBreak,
       });
 
       if (response.success) {
@@ -242,13 +243,13 @@ export default function TimetableScreen() {
     }
   };
 
-  const handleEditPeriod = (period: TimetableEntry) => {
+  const handleEditPeriod = (period: Period) => {
     const subject = subjects.find((s) => s.name === period.subject);
     setEditingPeriod(period);
     setNewPeriod({
       period: period.period || 0,
       subjectId: subject?.id || 0,
-      teacherId: period.teacherId || undefined,
+      teacherId: undefined,
       room: period.room || "",
       isBreak: period.isBreak || false,
     });
@@ -268,8 +269,7 @@ export default function TimetableScreen() {
         style: "destructive",
         onPress: async () => {
           try {
-            const response =
-              await principalAcademicApi.deleteTimetableEntry(periodId);
+            const response = await adminTimetableApi.deletePeriod(periodId);
             if (response.success) {
               Alert.alert(
                 "موفقیت",
@@ -340,7 +340,8 @@ export default function TimetableScreen() {
     );
   }
 
-  const currentSchedule = schedule || [];
+  // ✅ FIX: Ensure schedule is always an array
+  const scheduleArray = Array.isArray(schedule) ? schedule : [];
 
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
@@ -379,7 +380,10 @@ export default function TimetableScreen() {
       >
         {/* Class Selector */}
         <View style={styles.selectorContainer}>
-          <Text style={styles.selectorLabel}>انتخاب صنف</Text>
+          <View style={styles.selectorHeader}>
+            <Users size={20} color="#64748b" />
+            <Text style={styles.selectorLabel}>انتخاب صنف</Text>
+          </View>
           <ScrollView horizontal showsHorizontalScrollIndicator={false}>
             <View style={styles.selectorButtons}>
               {classes.map((cls) => (
@@ -398,7 +402,7 @@ export default function TimetableScreen() {
                         styles.selectorButtonTextActive,
                     ]}
                   >
-                    {cls.name} {cls.section || ""}
+                    {cls.displayName || cls.name}
                   </Text>
                 </TouchableOpacity>
               ))}
@@ -438,18 +442,22 @@ export default function TimetableScreen() {
         <View style={styles.timetableContainer}>
           <View style={styles.timetableHeader}>
             <Text style={styles.timetableTitle}>
-              {classes.find((c) => c.id === selectedClassId)?.name || "صنف"} -{" "}
-              {PERSIAN_DAYS[selectedDay]}
+              {classes.find((c) => c.id === selectedClassId)?.displayName ||
+                classes.find((c) => c.id === selectedClassId)?.name ||
+                "صنف"}{" "}
+              - {PERSIAN_DAYS[selectedDay]}
             </Text>
+            <Text style={styles.periodCount}>{scheduleArray.length} زنگ</Text>
           </View>
 
-          {currentSchedule.length === 0 ? (
+          {scheduleArray.length === 0 ? (
             <View style={styles.emptyTimetable}>
               <Calendar size={48} color="#8E8E93" />
               <Text style={styles.emptyTitle}>برنامه‌ای ثبت نشده</Text>
               <Text style={styles.emptyText}>
                 برای{" "}
-                {classes.find((c) => c.id === selectedClassId)?.name ||
+                {classes.find((c) => c.id === selectedClassId)?.displayName ||
+                  classes.find((c) => c.id === selectedClassId)?.name ||
                   "این صنف"}{" "}
                 در روز {PERSIAN_DAYS[selectedDay]} برنامه‌ای ثبت نشده است
               </Text>
@@ -462,7 +470,7 @@ export default function TimetableScreen() {
             </View>
           ) : (
             <View style={styles.timetableGrid}>
-              {currentSchedule.map((period) => (
+              {scheduleArray.map((period) => (
                 <TouchableOpacity
                   key={period.id || Math.random()}
                   style={[
@@ -473,9 +481,7 @@ export default function TimetableScreen() {
                   onPress={() => handleEditPeriod(period)}
                 >
                   <View style={styles.periodHeader}>
-                    <Text style={styles.periodTime}>
-                      {period.time || period.startTime || ""}
-                    </Text>
+                    <Text style={styles.periodTime}>{period.time || ""}</Text>
                     <View style={styles.periodActions}>
                       <TouchableOpacity
                         style={styles.periodActionButton}
@@ -485,7 +491,7 @@ export default function TimetableScreen() {
                       </TouchableOpacity>
                       <TouchableOpacity
                         style={styles.periodActionButton}
-                        onPress={() => handleDeletePeriod(period.id!)}
+                        onPress={() => handleDeletePeriod(period.id)}
                       >
                         <Trash2 size={14} color="#ef4444" />
                       </TouchableOpacity>
@@ -534,6 +540,16 @@ export default function TimetableScreen() {
             </View>
 
             <ScrollView style={styles.modalBody}>
+              {/* Class Display */}
+              <View style={styles.formGroup}>
+                <Text style={styles.label}>صنف</Text>
+                <Text style={styles.infoText}>
+                  {classes.find((c) => c.id === selectedClassId)?.displayName ||
+                    classes.find((c) => c.id === selectedClassId)?.name ||
+                    ""}
+                </Text>
+              </View>
+
               {/* Period Selection */}
               <View style={styles.formGroup}>
                 <Text style={styles.label}>زنگ</Text>
@@ -571,6 +587,7 @@ export default function TimetableScreen() {
                       ...newPeriod,
                       isBreak: !newPeriod.isBreak,
                       subjectId: 0,
+                      teacherId: undefined,
                     })
                   }
                 >
@@ -595,7 +612,7 @@ export default function TimetableScreen() {
                     <Text style={styles.label}>مضمون</Text>
                     <View style={styles.optionsGrid}>
                       {subjects
-                        .filter((s) => s.name !== "BREAK")
+                        .filter((s) => !s.isBreak)
                         .map((subject) => (
                           <TouchableOpacity
                             key={subject.id}
@@ -690,7 +707,6 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: "700",
     color: "#1e293b",
-    fontFamily: "VazirBold",
   },
   addButton: {
     width: 40,
@@ -742,11 +758,16 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: "#e2e8f0",
   },
+  selectorHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 12,
+  },
   selectorLabel: {
     fontSize: 16,
     fontWeight: "600",
     color: "#1e293b",
-    marginBottom: 12,
   },
   selectorButtons: {
     flexDirection: "row",
@@ -791,6 +812,14 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: "600",
     color: "#1e293b",
+  },
+  periodCount: {
+    fontSize: 14,
+    color: "#64748b",
+    backgroundColor: "#f1f5f9",
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 12,
   },
   emptyTimetable: {
     alignItems: "center",
@@ -930,6 +959,14 @@ const styles = StyleSheet.create({
     fontWeight: "500",
     color: "#1e293b",
     marginBottom: 12,
+  },
+  infoText: {
+    fontSize: 16,
+    color: "#64748b",
+    backgroundColor: "#f1f5f9",
+    padding: 12,
+    borderRadius: 8,
+    textAlign: "right",
   },
   optionsGrid: {
     flexDirection: "row",

@@ -122,6 +122,13 @@ export default function UserDetail() {
   const [formData, setFormData] = useState<Partial<ExtendedUser>>({});
   const [isUpdating, setIsUpdating] = useState(false);
 
+  // Reset Password Modal states
+  const [showResetModal, setShowResetModal] = useState(false);
+  const [resetPassword, setResetPassword] = useState("");
+  const [resetConfirmPassword, setResetConfirmPassword] = useState("");
+  const [resettingPassword, setResettingPassword] = useState(false);
+  const [showResetPassword, setShowResetPassword] = useState(false);
+
   // Modal states
   const [showChildSelector, setShowChildSelector] = useState(false);
   const [availableStudents, setAvailableStudents] = useState<any[]>([]);
@@ -248,7 +255,62 @@ export default function UserDetail() {
     fetchDropdownOptions();
   }, [fetchUserDetail, fetchDropdownOptions]);
 
-  // Search for student by email to add as child to parent
+  // ========== RESET PASSWORD FUNCTIONS ==========
+  const handleOpenResetModal = () => {
+    setResetPassword("");
+    setResetConfirmPassword("");
+    setShowResetModal(true);
+  };
+
+  const handleResetPasswordSubmit = async () => {
+    if (!resetPassword || !resetConfirmPassword) {
+      Alert.alert("خطا", "لطفاً رمز عبور جدید را وارد کنید");
+      return;
+    }
+
+    if (resetPassword !== resetConfirmPassword) {
+      Alert.alert("خطا", "رمز عبور جدید با تکرار آن مطابقت ندارد");
+      return;
+    }
+
+    if (resetPassword.length < 6) {
+      Alert.alert("خطا", "رمز عبور باید حداقل ۶ کاراکتر باشد");
+      return;
+    }
+
+    setResettingPassword(true);
+    try {
+      const response = await adminUserApi.resetPasswordByEmail({
+        email: user?.email || "",
+        newPassword: resetPassword,
+        confirmPassword: resetConfirmPassword,
+      });
+
+      if (response.success) {
+        Alert.alert(
+          "موفقیت",
+          response.message || "رمز عبور با موفقیت تغییر کرد",
+          [{ text: "متوجه شدم" }],
+        );
+        setShowResetModal(false);
+        setResetPassword("");
+        setResetConfirmPassword("");
+        fetchUserDetail(); // Refresh user data
+      } else {
+        Alert.alert("خطا", response.message || "خطا در تغییر رمز عبور");
+      }
+    } catch (error: any) {
+      console.error("Error resetting password:", error);
+      Alert.alert(
+        "خطا",
+        error.response?.data?.message || "خطا در تغییر رمز عبور",
+      );
+    } finally {
+      setResettingPassword(false);
+    }
+  };
+
+  // ========== SEARCH STUDENT ==========
   const handleSearchStudent = async () => {
     if (!searchStudentEmail.trim()) {
       Alert.alert("خطا", "لطفا ایمیل دانش‌آموز را وارد کنید");
@@ -297,6 +359,8 @@ export default function UserDetail() {
       if (response.success) {
         Alert.alert("موفقیت", `${studentName} با موفقیت اضافه شد`);
         fetchUserDetail(); // Refresh user data
+        setShowChildSelector(false);
+        setSearchStudentEmail("");
       } else {
         Alert.alert("خطا", response.message || "خطا در اضافه کردن دانش‌آموز");
       }
@@ -306,6 +370,7 @@ export default function UserDetail() {
     }
   };
 
+  // ========== SAVE USER ==========
   const handleSave = async () => {
     if (!user?.id) return;
 
@@ -412,43 +477,6 @@ export default function UserDetail() {
     );
   };
 
-  const handleResetPassword = async () => {
-    if (!user?.id) return;
-
-    Alert.alert(
-      "بازنشانی رمز عبور",
-      "آیا از بازنشانی رمز عبور این کاربر اطمینان دارید؟ رمز عبور جدید برای کاربر ارسال خواهد شد.",
-      [
-        { text: "لغو", style: "cancel" },
-        {
-          text: "بازنشانی",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              const response = await adminUserApi.resetUserPassword(user.id);
-
-              if (response.success) {
-                Alert.alert(
-                  "موفقیت",
-                  `رمز عبور با موفقیت بازنشانی شد.\nرمز عبور جدید: ${response.newPassword || "پسورد جدید به ایمیل کاربر ارسال شد"}`,
-                  [{ text: "متوجه شدم" }],
-                );
-              } else {
-                Alert.alert(
-                  "خطا",
-                  response.message || "در بازنشانی رمز عبور مشکلی پیش آمده",
-                );
-              }
-            } catch (error) {
-              console.error("Error resetting password:", error);
-              Alert.alert("خطا", "در بازنشانی رمز عبور مشکلی پیش آمده");
-            }
-          },
-        },
-      ],
-    );
-  };
-
   const handleDelete = async () => {
     if (!user?.id) return;
 
@@ -514,8 +542,17 @@ export default function UserDetail() {
         showBack
         rightComponent={
           <View style={styles.headerButtons}>
+            {/* 🆕 Reset Password Button */}
             <TouchableOpacity
-              style={styles.editButton}
+              style={styles.headerActionButton}
+              onPress={handleOpenResetModal}
+            >
+              <Ionicons name="key" size={24} color={Colors.warning} />
+            </TouchableOpacity>
+
+            {/* Edit Button */}
+            <TouchableOpacity
+              style={styles.headerActionButton}
               onPress={() => setEditing(!editing)}
             >
               <Ionicons
@@ -1426,15 +1463,17 @@ export default function UserDetail() {
             منطقه خطر
           </Text>
           <View style={styles.dangerCard}>
+            {/* 🆕 Reset Password Button in Danger Zone */}
             <TouchableOpacity
               style={styles.dangerButton}
-              onPress={handleResetPassword}
+              onPress={handleOpenResetModal}
             >
-              <Ionicons name="refresh" size={20} color={Colors.warning} />
+              <Ionicons name="key" size={20} color={Colors.warning} />
               <Text style={styles.dangerButtonText}>بازنشانی رمز عبور</Text>
             </TouchableOpacity>
+
             <TouchableOpacity
-              style={styles.dangerButton}
+              style={[styles.dangerButton, styles.deleteButton]}
               onPress={handleDelete}
             >
               <Ionicons name="trash" size={20} color={Colors.danger} />
@@ -1442,6 +1481,7 @@ export default function UserDetail() {
                 حذف کاربر
               </Text>
             </TouchableOpacity>
+
             <Text style={styles.dangerWarning}>
               با حذف کاربر، تمام اطلاعات مرتبط با این کاربر نیز حذف خواهد شد.
             </Text>
@@ -1474,6 +1514,115 @@ export default function UserDetail() {
           </View>
         )}
       </ScrollView>
+
+      {/* ========== RESET PASSWORD MODAL ========== */}
+      <Modal
+        visible={showResetModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          setShowResetModal(false);
+          setResetPassword("");
+          setResetConfirmPassword("");
+        }}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>بازنشانی رمز عبور</Text>
+              <TouchableOpacity
+                onPress={() => {
+                  setShowResetModal(false);
+                  setResetPassword("");
+                  setResetConfirmPassword("");
+                }}
+              >
+                <Ionicons name="close" size={24} color={Colors.text} />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.modalSubtitle}>
+              تغییر رمز عبور برای:{" "}
+              <Text style={styles.emailHighlight}>{user?.email}</Text>
+            </Text>
+
+            <View style={styles.resetInputContainer}>
+              <Ionicons
+                name="lock-closed"
+                size={20}
+                color={Colors.textSecondary}
+              />
+              <TextInput
+                style={styles.resetInput}
+                placeholder="رمز عبور جدید"
+                placeholderTextColor={Colors.textSecondary}
+                value={resetPassword}
+                onChangeText={setResetPassword}
+                secureTextEntry={!showResetPassword}
+                textAlign="right"
+              />
+              <TouchableOpacity
+                onPress={() => setShowResetPassword(!showResetPassword)}
+              >
+                <Ionicons
+                  name={showResetPassword ? "eye" : "eye-off"}
+                  size={20}
+                  color={Colors.textSecondary}
+                />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.resetInputContainer}>
+              <Ionicons
+                name="lock-closed"
+                size={20}
+                color={Colors.textSecondary}
+              />
+              <TextInput
+                style={styles.resetInput}
+                placeholder="تکرار رمز عبور جدید"
+                placeholderTextColor={Colors.textSecondary}
+                value={resetConfirmPassword}
+                onChangeText={setResetConfirmPassword}
+                secureTextEntry={!showResetPassword}
+                textAlign="right"
+              />
+            </View>
+
+            <View style={styles.passwordHint}>
+              <Text style={styles.hintText}>
+                • رمز عبور باید حداقل ۶ کاراکتر باشد
+              </Text>
+            </View>
+
+            <View style={styles.resetActions}>
+              <TouchableOpacity
+                style={[styles.resetButton, styles.cancelResetButton]}
+                onPress={() => {
+                  setShowResetModal(false);
+                  setResetPassword("");
+                  setResetConfirmPassword("");
+                }}
+                disabled={resettingPassword}
+              >
+                <Text style={styles.cancelResetText}>لغو</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.resetButton, styles.confirmResetButton]}
+                onPress={handleResetPasswordSubmit}
+                disabled={resettingPassword}
+              >
+                {resettingPassword ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={styles.confirmResetText}>تغییر رمز عبور</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       {/* Modal for adding child to parent */}
       <Modal
@@ -1559,7 +1708,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: 8,
   },
-  editButton: {
+  headerActionButton: {
     width: 40,
     height: 40,
     borderRadius: 20,
@@ -2017,6 +2166,9 @@ const styles = StyleSheet.create({
     gap: 8,
     marginBottom: 12,
   },
+  deleteButton: {
+    backgroundColor: "rgba(239, 68, 68, 0.15)",
+  },
   dangerButtonText: {
     fontSize: 16,
     fontWeight: "500",
@@ -2058,32 +2210,95 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "500",
   },
+  // Reset Password Modal styles
+  resetInputContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: Colors.background,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 14,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    marginBottom: 12,
+  },
+  resetInput: {
+    flex: 1,
+    fontSize: 16,
+    color: Colors.text,
+    marginHorizontal: 8,
+  },
+  resetActions: {
+    flexDirection: "row",
+    gap: 12,
+    marginTop: 8,
+  },
+  resetButton: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 8,
+    alignItems: "center",
+  },
+  cancelResetButton: {
+    backgroundColor: Colors.background,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  cancelResetText: {
+    color: Colors.text,
+    fontSize: 16,
+    fontWeight: "500",
+  },
+  confirmResetButton: {
+    backgroundColor: Colors.warning,
+  },
+  confirmResetText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "bold",
+  },
+  passwordHint: {
+    marginBottom: 12,
+  },
+  hintText: {
+    fontSize: 12,
+    color: Colors.textSecondary,
+  },
+  emailHighlight: {
+    color: Colors.primary,
+    fontWeight: "bold",
+  },
   // Modal styles
   modalOverlay: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.5)",
     justifyContent: "center",
     alignItems: "center",
+    padding: 20,
   },
   modalContent: {
     backgroundColor: Colors.card,
     borderRadius: 16,
-    padding: 20,
-    width: "90%",
+    padding: 24,
+    width: "100%",
     maxWidth: 400,
+  },
+  modalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 12,
   },
   modalTitle: {
     fontSize: 20,
     fontWeight: "bold",
     color: Colors.text,
-    textAlign: "center",
-    marginBottom: 8,
   },
   modalSubtitle: {
     fontSize: 14,
     color: Colors.textSecondary,
-    textAlign: "center",
     marginBottom: 20,
+    lineHeight: 22,
   },
   modalInput: {
     borderWidth: 1,

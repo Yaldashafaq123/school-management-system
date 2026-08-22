@@ -1,4 +1,5 @@
-// app/(principal)/(tabs)/reports.tsx - Class & Student Reports
+// app/(principal)/(tabs)/reports.tsx - Class & Student Reports WITH PROMOTION
+
 import { principalApi } from "@/src/config/principalApi";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
@@ -135,6 +136,17 @@ export default function PrincipalReportsScreen() {
 
   const renderClassList = () => (
     <View>
+      {/* ✅ PROMOTION BUTTON - Added here */}
+      <TouchableOpacity
+        style={styles.promotionButton}
+        onPress={() => router.push("/(principal)/classes/promotion")}
+        activeOpacity={0.8}
+      >
+        <Ionicons name="rocket" size={22} color="#fff" />
+        <Text style={styles.promotionButtonText}>ارتقا صنوف</Text>
+        <Ionicons name="chevron-forward" size={20} color="#fff" style={styles.promotionArrow} />
+      </TouchableOpacity>
+
       <Text style={styles.sectionTitle}>لیست صنوف</Text>
       {classData.map((cls) => (
         <TouchableOpacity
@@ -452,6 +464,32 @@ const styles = StyleSheet.create({
     color: "#1e293b",
     marginBottom: 12,
     fontFamily: "VazirBold",
+  },
+  // ✅ PROMOTION BUTTON STYLES
+  promotionButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#8b5cf6",
+    paddingHorizontal: 20,
+    paddingVertical: 14,
+    borderRadius: 12,
+    marginBottom: 20,
+    elevation: 3,
+    shadowColor: "#8b5cf6",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+  },
+  promotionButtonText: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#fff",
+    fontFamily: "VazirBold",
+    marginLeft: 8,
+    flex: 1,
+  },
+  promotionArrow: {
+    marginLeft: 4,
   },
   classCard: {
     backgroundColor: "#fff",

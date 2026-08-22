@@ -267,7 +267,39 @@ class PrincipalApi {
   async getProfile(): Promise<ApiResponse<PrincipalProfile>> {
     return this.request("/profile");
   }
+  // src/config/principalApi.ts - Add these methods
 
+  // ==================== CLASS PROMOTION ====================
+
+  async getClassPromotionOptions(params?: {
+    academicYearId?: number;
+  }): Promise<ApiResponse<any>> {
+    let url = "/principal/classes/promotion-options";
+    if (params?.academicYearId) {
+      url += `?academicYearId=${params.academicYearId}`;
+    }
+    return this.request(url);
+  }
+
+  async promoteClass(data: {
+    fromClassId: number;
+    toClassId?: number;
+    createNewClass?: boolean;
+    newClassName?: string;
+    newGrade?: string;
+    newSection?: string;
+    academicYearId?: number;
+    notes?: string;
+  }): Promise<ApiResponse<any>> {
+    return this.request("/principal/classes/promote", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async getClassPromotionHistory(classId: number): Promise<ApiResponse<any>> {
+    return this.request(`/principal/classes/${classId}/promotion-history`);
+  }
   async updateProfile(data: {
     fullName?: string;
     phone?: string;

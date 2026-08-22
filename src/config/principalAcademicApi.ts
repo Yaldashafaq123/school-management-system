@@ -90,7 +90,16 @@ class PrincipalAcademicApi {
   ): Promise<T> {
     try {
       const token = await this.getToken();
-      const url = `${BASE_URL}/principal/academic${endpoint}`;
+
+      // ✅ FIX: Correct URL construction
+      const baseUrl = BASE_URL.endsWith("/api") ? BASE_URL : `${BASE_URL}/api`;
+      const url = `${baseUrl}/principal${endpoint}`;
+
+      console.log("🔍 API Request:", {
+        url,
+        method: options.method || "GET",
+        hasToken: !!token,
+      });
 
       const response = await fetch(url, {
         ...options,
@@ -101,82 +110,51 @@ class PrincipalAcademicApi {
         },
       });
 
+      // ✅ Check if response is OK before parsing
       if (!response.ok) {
-        const error = await response
-          .json()
-          .catch(() => ({ message: "Network error" }));
-        throw new Error(error.message || `HTTP ${response.status}`);
+        const text = await response.text();
+        console.error("❌ API Error Response:", {
+          status: response.status,
+          statusText: response.statusText,
+          body: text.substring(0, 200), // First 200 chars
+        });
+
+        // Try to parse as JSON, but if it's HTML, show a clear error
+        try {
+          const errorJson = JSON.parse(text);
+          throw new Error(errorJson.message || `HTTP ${response.status}`);
+        } catch (parseError) {
+          // If it's not JSON (likely HTML), show the status
+          throw new Error(
+            `Server error ${response.status}: ${response.statusText || "Unknown error"}`,
+          );
+        }
       }
 
-      return await response.json();
+      // ✅ Parse JSON response
+      const data = await response.json();
+      console.log("✅ API Success:", {
+        endpoint,
+        success: data.success,
+        dataLength: data.data?.length,
+      });
+
+      return data;
     } catch (error) {
       console.error(`❌ Academic API Error [${endpoint}]:`, error);
       throw error;
     }
   }
-  // src/config/principalAcademicApi.ts - Add these methods
 
-  // ==================== GRADING SYSTEM ====================
-
-  async getGradingSchemes(): Promise<ApiResponse<any[]>> {
-    return this.request("/grading-schemes");
+  // ==================== CLASSES ====================
+  // ✅ This calls /api/principal/classes
+  async getClasses(): Promise<ApiResponse<any[]>> {
+    return this.request("/classes");
   }
 
-  async createGradingScheme(data: {
-    name: string;
-    description?: string;
-    type: string;
-    passingGrade: string;
-    isDefault?: boolean;
-    grades: Array<{
-      grade: string;
-      range: string;
-      points: number;
-      remark: string;
-    }>;
-  }): Promise<ApiResponse<any>> {
-    return this.request("/grading-schemes", {
-      method: "POST",
-      body: JSON.stringify(data),
-    });
-  }
-
-  async updateGradingScheme(
-    id: string,
-    data: {
-      name?: string;
-      description?: string;
-      type?: string;
-      passingGrade?: string;
-      isDefault?: boolean;
-      grades?: Array<{
-        grade: string;
-        range: string;
-        points: number;
-        remark: string;
-      }>;
-    },
-  ): Promise<ApiResponse<any>> {
-    return this.request(`/grading-schemes/${id}`, {
-      method: "PUT",
-      body: JSON.stringify(data),
-    });
-  }
-
-  async deleteGradingScheme(id: string): Promise<ApiResponse<any>> {
-    return this.request(`/grading-schemes/${id}`, {
-      method: "DELETE",
-    });
-  }
-
-  async setDefaultGradingScheme(id: string): Promise<ApiResponse<any>> {
-    return this.request(`/grading-schemes/${id}/default`, {
-      method: "PUT",
-    });
-  }
   // ==================== ACADEMIC YEARS ====================
   async getAcademicYears(): Promise<ApiResponse<AcademicYear[]>> {
-    return this.request("/years");
+    return this.request("/academic/years");
   }
 
   async createAcademicYear(data: {
@@ -185,7 +163,7 @@ class PrincipalAcademicApi {
     endDate: string;
     isActive?: boolean;
   }): Promise<ApiResponse<AcademicYear>> {
-    return this.request("/years", {
+    return this.request("/academic/years", {
       method: "POST",
       body: JSON.stringify(data),
     });
@@ -200,14 +178,14 @@ class PrincipalAcademicApi {
       isActive?: boolean;
     },
   ): Promise<ApiResponse<AcademicYear>> {
-    return this.request(`/years/${id}`, {
+    return this.request(`/academic/years/${id}`, {
       method: "PUT",
       body: JSON.stringify(data),
     });
   }
 
   async deleteAcademicYear(id: number): Promise<ApiResponse<any>> {
-    return this.request(`/years/${id}`, {
+    return this.request(`/academic/years/${id}`, {
       method: "DELETE",
     });
   }
@@ -231,7 +209,7 @@ class PrincipalAcademicApi {
     if (params?.page) query.append("page", params.page.toString());
     if (params?.limit) query.append("limit", params.limit.toString());
     const qs = query.toString();
-    return this.request(`/subjects${qs ? `?${qs}` : ""}`);
+    return this.request(`/academic/subjects${qs ? `?${qs}` : ""}`);
   }
 
   async createSubject(data: {
@@ -239,7 +217,7 @@ class PrincipalAcademicApi {
     description?: string;
     teacherId?: number;
   }): Promise<ApiResponse<Subject>> {
-    return this.request("/subjects", {
+    return this.request("/academic/subjects", {
       method: "POST",
       body: JSON.stringify(data),
     });
@@ -253,14 +231,14 @@ class PrincipalAcademicApi {
       teacherId?: number;
     },
   ): Promise<ApiResponse<Subject>> {
-    return this.request(`/subjects/${id}`, {
+    return this.request(`/academic/subjects/${id}`, {
       method: "PUT",
       body: JSON.stringify(data),
     });
   }
 
   async deleteSubject(id: number): Promise<ApiResponse<any>> {
-    return this.request(`/subjects/${id}`, {
+    return this.request(`/academic/subjects/${id}`, {
       method: "DELETE",
     });
   }
@@ -270,7 +248,7 @@ class PrincipalAcademicApi {
     classId: number;
     teacherId?: number;
   }): Promise<ApiResponse<any>> {
-    return this.request("/subjects/assign", {
+    return this.request("/academic/subjects/assign", {
       method: "POST",
       body: JSON.stringify(data),
     });
@@ -280,13 +258,13 @@ class PrincipalAcademicApi {
     subjectId: number,
     classId: number,
   ): Promise<ApiResponse<any>> {
-    return this.request(`/subjects/${subjectId}/class/${classId}`, {
+    return this.request(`/academic/subjects/${subjectId}/class/${classId}`, {
       method: "DELETE",
     });
   }
 
   async getSubjectsByClass(classId: number): Promise<ApiResponse<any[]>> {
-    return this.request(`/classes/${classId}/subjects`);
+    return this.request(`/academic/classes/${classId}/subjects`);
   }
 
   // ==================== TIMETABLE ====================
@@ -294,7 +272,7 @@ class PrincipalAcademicApi {
     classId: number,
     day: number,
   ): Promise<ApiResponse<{ class: any; day: any; periods: TimetableEntry[] }>> {
-    return this.request(`/timetable/${classId}/${day}`);
+    return this.request(`/academic/timetable/${classId}/${day}`);
   }
 
   async saveTimetableEntry(data: {
@@ -307,14 +285,14 @@ class PrincipalAcademicApi {
     startTime?: string;
     endTime?: string;
   }): Promise<ApiResponse<any>> {
-    return this.request("/timetable", {
+    return this.request("/academic/timetable", {
       method: "POST",
       body: JSON.stringify(data),
     });
   }
 
   async deleteTimetableEntry(id: number): Promise<ApiResponse<any>> {
-    return this.request(`/timetable/${id}`, {
+    return this.request(`/academic/timetable/${id}`, {
       method: "DELETE",
     });
   }
@@ -344,7 +322,7 @@ class PrincipalAcademicApi {
     if (params?.page) query.append("page", params.page.toString());
     if (params?.limit) query.append("limit", params.limit.toString());
     const qs = query.toString();
-    return this.request(`/exams${qs ? `?${qs}` : ""}`);
+    return this.request(`/academic/exams${qs ? `?${qs}` : ""}`);
   }
 
   async createExam(data: {
@@ -363,7 +341,7 @@ class PrincipalAcademicApi {
     academicYearId?: number;
     maxScore?: number;
   }): Promise<ApiResponse<Exam>> {
-    return this.request("/exams", {
+    return this.request("/academic/exams", {
       method: "POST",
       body: JSON.stringify(data),
     });
@@ -388,20 +366,20 @@ class PrincipalAcademicApi {
       maxScore?: number;
     },
   ): Promise<ApiResponse<Exam>> {
-    return this.request(`/exams/${id}`, {
+    return this.request(`/academic/exams/${id}`, {
       method: "PUT",
       body: JSON.stringify(data),
     });
   }
 
   async deleteExam(id: number): Promise<ApiResponse<any>> {
-    return this.request(`/exams/${id}`, {
+    return this.request(`/academic/exams/${id}`, {
       method: "DELETE",
     });
   }
 
   async toggleExamPublish(id: number): Promise<ApiResponse<any>> {
-    return this.request(`/exams/${id}/toggle-publish`, {
+    return this.request(`/academic/exams/${id}/toggle-publish`, {
       method: "PUT",
     });
   }

@@ -1,21 +1,21 @@
 // app/(principal)/students/[id].tsx - FIXED
 import {
-    formatCurrency,
-    getStudentStatusColor,
-    getStudentStatusText,
-    principalApi,
+  formatCurrency,
+  getStudentStatusColor,
+  getStudentStatusText,
+  principalApi,
 } from "@/src/config/principalApi";
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import {
-    ActivityIndicator,
-    RefreshControl,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
 
 // ✅ Define local interface matching the actual data structure

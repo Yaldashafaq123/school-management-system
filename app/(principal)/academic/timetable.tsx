@@ -1,4 +1,4 @@
-// app/(principal)/academic/timetable.tsx - FIXED
+// app/(principal)/academic/timetable.tsx
 
 import {
   principalAcademicApi,
@@ -7,236 +7,706 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
+import { Calendar, Edit2, Trash2, Users } from "lucide-react-native";
 import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
-  FlatList,
+  Alert,
+  Modal,
   RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
-const DAYS = [
+// Persian days mapping
+const PERSIAN_DAYS = [
   "شنبه",
   "یکشنبه",
   "دوشنبه",
   "سه‌شنبه",
   "چهارشنبه",
   "پنجشنبه",
-  "جمعه",
-];
-const PERIODS = [
-  { id: 0, time: "7:30 - 8:15" },
-  { id: 1, time: "8:15 - 9:00" },
-  { id: 2, time: "9:00 - 9:45" },
-  { id: 3, time: "10:00 - 10:45" },
-  { id: 4, time: "10:45 - 11:30" },
-  { id: 5, time: "11:30 - 12:15" },
-  { id: 6, time: "12:15 - 13:00" },
 ];
 
-export default function TimetableScreen() {
+// Time slots for periods
+const timeSlots = [
+  "7:30 - 8:15",
+  "8:15 - 9:00",
+  "9:00 - 9:45",
+  "10:00 - 10:45",
+  "10:45 - 11:30",
+  "11:30 - 12:15",
+  "12:15 - 13:00",
+];
+
+// Color mapping for subjects
+const getSubjectColor = (subject: string) => {
+  if (!subject) return "#8E8E93";
+  const colors: Record<string, string> = {
+    ریاضی: "#007AFF",
+    علوم: "#34C759",
+    انگلیسی: "#FF9500",
+    تاریخ: "#AF52DE",
+    جغرافیا: "#FF2D55",
+    فیزیک: "#5856D6",
+    شیمی: "#FF3B30",
+    بیولوژی: "#5AC8FA",
+    کامپیوتر: "#FFCC00",
+    ورزش: "#4CD964",
+    BREAK: "#8E8E93",
+    تفسیر: "#8B5CF6",
+    کیمیا: "#F59E0B",
+    عقاید: "#EC4899",
+    دری: "#06B6D4",
+    پشتو: "#14B8A6",
+  };
+  return colors[subject] || "#8E8E93";
+};
+
+export default function PrincipalTimetableScreen() {
   const router = useRouter();
+
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [classes, setClasses] = useState<any[]>([]);
-  const [selectedClass, setSelectedClass] = useState<number | null>(null);
-  const [selectedDay, setSelectedDay] = useState(0);
-  const [periods, setPeriods] = useState<TimetableEntry[]>([]);
-  const [classInfo, setClassInfo] = useState<any>(null);
+  const [subjects, setSubjects] = useState<any[]>([]);
+  const [selectedClassId, setSelectedClassId] = useState<number | null>(null);
+  const [selectedDay, setSelectedDay] = useState<number>(0);
+  const [schedule, setSchedule] = useState<TimetableEntry[]>([]);
+  const [error, setError] = useState<string | null>(null);
 
+  // Modal states
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [editingPeriod, setEditingPeriod] = useState<TimetableEntry | null>(
+    null,
+  );
+  const [submitting, setSubmitting] = useState(false);
+
+  const [newPeriod, setNewPeriod] = useState({
+    period: 0,
+    subjectId: 0,
+    room: "",
+    isBreak: false,
+  });
+
+  // Fetch classes on mount
   useEffect(() => {
-    fetchClasses();
+    loadData();
   }, []);
 
+  // Fetch timetable when class or day changes
   useEffect(() => {
-    if (selectedClass !== null) {
-      fetchTimetable();
+    if (selectedClassId !== null) {
+      loadTimetable();
     }
-  }, [selectedClass, selectedDay]);
+  }, [selectedClassId, selectedDay]);
 
-  // ✅ FIX: Use the API client with the correct endpoint
-  const fetchClasses = async () => {
+  const loadData = async () => {
     try {
-      // Use the existing API client or direct fetch with proper URL
-      const response = await fetch(
-        `${process.env.EXPO_PUBLIC_API_URL}/api/principal/classes`,
-        {
-          method: "GET",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${await getToken()}`,
-          },
-        },
-      );
+      setLoading(true);
+      setError(null);
 
-      // ✅ Check if response is OK before parsing JSON
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
+      // Fetch classes
+      const classesResult = await principalAcademicApi.getClasses();
 
-      const result = await response.json();
-      if (result.success) {
-        setClasses(result.data);
-        if (result.data.length > 0) {
-          setSelectedClass(result.data[0].id);
+      if (classesResult.success && classesResult.data) {
+        setClasses(classesResult.data);
+        if (classesResult.data.length > 0 && !selectedClassId) {
+          setSelectedClassId(classesResult.data[0].id);
         }
+      } else {
+        setError("خطا در بارگذاری صنف‌ها");
       }
-    } catch (error) {
-      console.error("Fetch classes error:", error);
+
+      // Fetch subjects for the selected class
+      if (selectedClassId) {
+        await loadSubjects();
+      }
+    } catch (err) {
+      console.error("Error loading data:", err);
+      setError("خطا در ارتباط با سرور");
     } finally {
       setLoading(false);
     }
   };
 
-  const getToken = async () => {
-    const token = await AsyncStorage.getItem("auth_token");
-    return token;
-  };
+  const loadSubjects = async () => {
+    if (!selectedClassId) return;
 
-  const fetchTimetable = async () => {
-    if (selectedClass === null) return;
     try {
-      const response = await principalAcademicApi.getTimetable(
-        selectedClass,
-        selectedDay,
-      );
-      if (response.success) {
-        setPeriods(response.data.periods);
-        setClassInfo(response.data.class);
+      const subjectsRes =
+        await principalAcademicApi.getSubjectsByClass(selectedClassId);
+      if (subjectsRes.success) {
+        setSubjects(subjectsRes.data || []);
       }
     } catch (error) {
-      console.error("Fetch timetable error:", error);
-    } finally {
-      setRefreshing(false);
+      console.error("❌ Fetch subjects error:", error);
     }
   };
 
-  const onRefresh = () => {
-    setRefreshing(true);
-    fetchTimetable();
+  const loadTimetable = async () => {
+    if (!selectedClassId) return;
+
+    try {
+      setError(null);
+      const response = await principalAcademicApi.getTimetable(
+        selectedClassId,
+        selectedDay,
+      );
+
+      if (response.success && response.data) {
+        let periods: TimetableEntry[] = [];
+
+        if (Array.isArray(response.data)) {
+          periods = response.data;
+        } else if (
+          response.data.periods &&
+          Array.isArray(response.data.periods)
+        ) {
+          periods = response.data.periods;
+        } else if (response.data.periods) {
+          periods = Object.values(response.data.periods);
+        } else {
+          periods = Object.values(response.data);
+        }
+
+        setSchedule(periods);
+      } else {
+        setSchedule([]);
+      }
+    } catch (err) {
+      console.error("Error loading timetable:", err);
+      setSchedule([]);
+    }
   };
 
-  const renderPeriod = ({ item }: { item: TimetableEntry }) => (
-    <View style={[styles.periodCard, item.isEmpty && styles.emptyPeriod]}>
-      <Text style={styles.periodTime}>{item.time}</Text>
-      <Text style={[styles.periodSubject, item.isEmpty && styles.emptyText]}>
-        {item.subject}
-      </Text>
-      {!item.isEmpty && (
-        <Text style={styles.periodTeacher}>{item.teacher}</Text>
-      )}
-    </View>
-  );
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    await loadData();
+    await loadTimetable();
+    setRefreshing(false);
+  };
+
+  const handleAddPeriod = async () => {
+    if (!selectedClassId) {
+      Alert.alert("خطا", "لطفاً ابتدا یک صنف را انتخاب کنید");
+      return;
+    }
+
+    if (newPeriod.isBreak) {
+      if (newPeriod.period === undefined || newPeriod.period === null) {
+        Alert.alert("خطا", "لطفاً زنگ را انتخاب کنید");
+        return;
+      }
+    } else {
+      if (newPeriod.period === undefined || newPeriod.period === null) {
+        Alert.alert("خطا", "لطفاً زنگ را انتخاب کنید");
+        return;
+      }
+      if (!newPeriod.subjectId || newPeriod.subjectId === 0) {
+        Alert.alert("خطا", "لطفاً مضمون را انتخاب کنید");
+        return;
+      }
+    }
+
+    setSubmitting(true);
+    try {
+      // Find BREAK subject id if isBreak is true
+      let subjectId = newPeriod.subjectId;
+      if (newPeriod.isBreak) {
+        const breakSubject = subjects.find(
+          (s) => s.isBreak || s.name === "BREAK",
+        );
+        subjectId = breakSubject?.id || 0;
+      }
+
+      const response = await principalAcademicApi.saveTimetableEntry({
+        classId: selectedClassId,
+        day: selectedDay,
+        period: newPeriod.period,
+        subjectId: subjectId,
+        teacherId: undefined, // ✅ No teacher
+        room: newPeriod.room || "",
+      });
+
+      if (response.success) {
+        Alert.alert("موفقیت", response.message || "برنامه با موفقیت ذخیره شد");
+        setShowAddModal(false);
+        setEditingPeriod(null);
+        setNewPeriod({
+          period: 0,
+          subjectId: 0,
+          room: "",
+          isBreak: false,
+        });
+        await loadTimetable();
+      } else {
+        Alert.alert("خطا", response.message || "خطا در ذخیره برنامه");
+      }
+    } catch (err) {
+      console.error("Error saving period:", err);
+      Alert.alert("خطا", "خطا در ذخیره برنامه");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleEditPeriod = (period: TimetableEntry) => {
+    const subject = subjects.find((s) => s.name === period.subject);
+    setEditingPeriod(period);
+    setNewPeriod({
+      period: period.period || 0,
+      subjectId: subject?.id || 0,
+      room: period.room || "",
+      isBreak: period.isBreak || false,
+    });
+    setShowAddModal(true);
+  };
+
+  const handleDeletePeriod = async (periodId: number) => {
+    if (!periodId) {
+      Alert.alert("خطا", "شناسه برنامه نامعتبر است");
+      return;
+    }
+
+    Alert.alert("حذف برنامه", "آیا از حذف این زنگ مطمئن هستید؟", [
+      { text: "لغو", style: "cancel" },
+      {
+        text: "حذف",
+        style: "destructive",
+        onPress: async () => {
+          try {
+            const response =
+              await principalAcademicApi.deleteTimetableEntry(periodId);
+            if (response.success) {
+              Alert.alert(
+                "موفقیت",
+                response.message || "برنامه با موفقیت حذف شد",
+              );
+              await loadTimetable();
+            } else {
+              Alert.alert("خطا", response.message || "خطا در حذف برنامه");
+            }
+          } catch (err) {
+            console.error("Error deleting period:", err);
+            Alert.alert("خطا", "خطا در حذف برنامه");
+          }
+        },
+      },
+    ]);
+  };
 
   if (loading) {
     return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#f59e0b" />
-      </View>
+      <SafeAreaView style={styles.container} edges={["top"]}>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => router.back()}>
+            <Ionicons name="arrow-back" size={24} color="#1e293b" />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>برنامه هفتگی</Text>
+          <TouchableOpacity
+            style={styles.addButton}
+            onPress={() => {
+              setEditingPeriod(null);
+              setNewPeriod({
+                period: 0,
+                subjectId: 0,
+                room: "",
+                isBreak: false,
+              });
+              setShowAddModal(true);
+            }}
+          >
+            <Ionicons name="add" size={24} color="#fff" />
+          </TouchableOpacity>
+        </View>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#f59e0b" />
+          <Text style={styles.loadingText}>در حال بارگذاری...</Text>
+        </View>
+      </SafeAreaView>
     );
   }
 
+  if (error) {
+    return (
+      <SafeAreaView style={styles.container} edges={["top"]}>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => router.back()}>
+            <Ionicons name="arrow-back" size={24} color="#1e293b" />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>برنامه هفتگی</Text>
+        </View>
+        <View style={styles.errorContainer}>
+          <Text style={styles.errorText}>{error}</Text>
+          <TouchableOpacity style={styles.retryButton} onPress={loadData}>
+            <Text style={styles.retryButtonText}>تلاش مجدد</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  const scheduleArray = Array.isArray(schedule) ? schedule : [];
+
   return (
-    <View style={styles.container}>
-      {/* Header */}
+    <SafeAreaView style={styles.container} edges={["top"]}>
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()}>
           <Ionicons name="arrow-back" size={24} color="#1e293b" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>تقسیم اوقات</Text>
-        <TouchableOpacity style={styles.addButton}>
+        <Text style={styles.headerTitle}>برنامه هفتگی</Text>
+        <TouchableOpacity
+          style={styles.addButton}
+          onPress={() => {
+            setEditingPeriod(null);
+            setNewPeriod({
+              period: 0,
+              subjectId: 0,
+              room: "",
+              isBreak: false,
+            });
+            setShowAddModal(true);
+          }}
+        >
           <Ionicons name="add" size={24} color="#fff" />
         </TouchableOpacity>
       </View>
 
-      {/* Class Selector */}
       <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        style={styles.classSelector}
+        style={styles.content}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            colors={["#f59e0b"]}
+          />
+        }
       >
-        {classes.map((cls) => (
-          <TouchableOpacity
-            key={cls.id}
-            style={[
-              styles.classTab,
-              selectedClass === cls.id && styles.classTabActive,
-            ]}
-            onPress={() => setSelectedClass(cls.id)}
-          >
-            <Text
-              style={[
-                styles.classTabText,
-                selectedClass === cls.id && styles.classTabTextActive,
-              ]}
-            >
-              {cls.name} {cls.section}
+        {/* Class Selector */}
+        <View style={styles.selectorContainer}>
+          <View style={styles.selectorHeader}>
+            <Users size={20} color="#64748b" />
+            <Text style={styles.selectorLabel}>انتخاب صنف</Text>
+          </View>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+            <View style={styles.selectorButtons}>
+              {classes.map((cls) => (
+                <TouchableOpacity
+                  key={cls.id}
+                  style={[
+                    styles.selectorButton,
+                    selectedClassId === cls.id && styles.selectorButtonActive,
+                  ]}
+                  onPress={() => {
+                    setSelectedClassId(cls.id);
+                    loadSubjects();
+                  }}
+                >
+                  <Text
+                    style={[
+                      styles.selectorButtonText,
+                      selectedClassId === cls.id &&
+                        styles.selectorButtonTextActive,
+                    ]}
+                  >
+                    {cls.name} {cls.section || ""}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </ScrollView>
+        </View>
+
+        {/* Day Selector */}
+        <View style={styles.selectorContainer}>
+          <Text style={styles.selectorLabel}>انتخاب روز</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+            <View style={styles.selectorButtons}>
+              {PERSIAN_DAYS.map((day, index) => (
+                <TouchableOpacity
+                  key={index}
+                  style={[
+                    styles.selectorButton,
+                    selectedDay === index && styles.selectorButtonActive,
+                  ]}
+                  onPress={() => setSelectedDay(index)}
+                >
+                  <Text
+                    style={[
+                      styles.selectorButtonText,
+                      selectedDay === index && styles.selectorButtonTextActive,
+                    ]}
+                  >
+                    {day}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </ScrollView>
+        </View>
+
+        {/* Timetable Grid */}
+        <View style={styles.timetableContainer}>
+          <View style={styles.timetableHeader}>
+            <Text style={styles.timetableTitle}>
+              {classes.find((c) => c.id === selectedClassId)?.name || "صنف"}{" "}
+              {classes.find((c) => c.id === selectedClassId)?.section || ""} -{" "}
+              {PERSIAN_DAYS[selectedDay]}
             </Text>
-          </TouchableOpacity>
-        ))}
+            <Text style={styles.periodCount}>{scheduleArray.length} زنگ</Text>
+          </View>
+
+          {scheduleArray.length === 0 ? (
+            <View style={styles.emptyTimetable}>
+              <Calendar size={48} color="#8E8E93" />
+              <Text style={styles.emptyTitle}>برنامه‌ای ثبت نشده</Text>
+              <Text style={styles.emptyText}>
+                برای{" "}
+                {classes.find((c) => c.id === selectedClassId)?.name ||
+                  "این صنف"}{" "}
+                در روز {PERSIAN_DAYS[selectedDay]} برنامه‌ای ثبت نشده است
+              </Text>
+              <TouchableOpacity
+                style={styles.emptyButton}
+                onPress={() => setShowAddModal(true)}
+              >
+                <Text style={styles.emptyButtonText}>افزودن برنامه</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <View style={styles.timetableGrid}>
+              {scheduleArray.map((period) => (
+                <TouchableOpacity
+                  key={period.id || Math.random()}
+                  style={[
+                    styles.periodCard,
+                    period.isBreak && styles.breakCard,
+                    { borderLeftColor: getSubjectColor(period.subject || "") },
+                  ]}
+                  onPress={() => handleEditPeriod(period)}
+                >
+                  <View style={styles.periodHeader}>
+                    <Text style={styles.periodTime}>{period.time || ""}</Text>
+                    <View style={styles.periodActions}>
+                      <TouchableOpacity
+                        style={styles.periodActionButton}
+                        onPress={() => handleEditPeriod(period)}
+                      >
+                        <Edit2 size={14} color="#3b82f6" />
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.periodActionButton}
+                        onPress={() => {
+                          if (period.id !== null) {
+                            handleDeletePeriod(period.id);
+                          }
+                        }}
+                      >
+                        <Trash2 size={14} color="#ef4444" />
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                  {period.isBreak ? (
+                    <Text style={styles.breakText}>زنگ تفریح</Text>
+                  ) : (
+                    <>
+                      <Text style={styles.periodSubject}>
+                        {period.subject || "بدون مضمون"}
+                      </Text>
+                      <View style={styles.periodDetails}>
+                        <Text style={styles.periodRoom}>
+                          {period.room || ""}
+                        </Text>
+                      </View>
+                    </>
+                  )}
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
+        </View>
       </ScrollView>
 
-      {/* Day Selector */}
-      <View style={styles.daySelector}>
-        {DAYS.map((day, index) => (
-          <TouchableOpacity
-            key={index}
-            style={[
-              styles.dayTab,
-              selectedDay === index && styles.dayTabActive,
-            ]}
-            onPress={() => setSelectedDay(index)}
-          >
-            <Text
-              style={[
-                styles.dayTabText,
-                selectedDay === index && styles.dayTabTextActive,
-              ]}
-            >
-              {day}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
+      {/* Add/Edit Period Modal - WITHOUT TEACHER */}
+      <Modal
+        visible={showAddModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowAddModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>
+                {editingPeriod ? "ویرایش زنگ" : "افزودن زنگ جدید"}
+              </Text>
+              <TouchableOpacity onPress={() => setShowAddModal(false)}>
+                <Text style={styles.closeButtonText}>✕</Text>
+              </TouchableOpacity>
+            </View>
 
-      {/* Timetable */}
-      {classInfo && (
-        <View style={styles.classInfo}>
-          <Text style={styles.classInfoText}>
-            صنف: {classInfo.name} - {DAYS[selectedDay]}
-          </Text>
-        </View>
-      )}
+            <ScrollView style={styles.modalBody}>
+              {/* Class Display */}
+              <View style={styles.formGroup}>
+                <Text style={styles.label}>صنف</Text>
+                <Text style={styles.infoText}>
+                  {classes.find((c) => c.id === selectedClassId)?.name || ""}
+                  {classes.find((c) => c.id === selectedClassId)?.section || ""}
+                </Text>
+              </View>
 
-      <FlatList
-        data={periods}
-        renderItem={renderPeriod}
-        keyExtractor={(item, index) => item.id?.toString() || index.toString()}
-        contentContainerStyle={styles.listContent}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-        }
-        ListEmptyComponent={
-          <View style={styles.emptyContainer}>
-            <Ionicons name="calendar-outline" size={48} color="#94a3b8" />
-            <Text style={styles.emptyText}>هیچ برنامه‌ای یافت نشد</Text>
+              {/* Day Display */}
+              <View style={styles.formGroup}>
+                <Text style={styles.label}>روز</Text>
+                <Text style={styles.infoText}>{PERSIAN_DAYS[selectedDay]}</Text>
+              </View>
+
+              {/* Period Selection */}
+              <View style={styles.formGroup}>
+                <Text style={styles.label}>زنگ</Text>
+                <View style={styles.optionsGrid}>
+                  {timeSlots.map((slot, index) => (
+                    <TouchableOpacity
+                      key={index}
+                      style={[
+                        styles.optionButton,
+                        newPeriod.period === index && styles.optionButtonActive,
+                      ]}
+                      onPress={() =>
+                        setNewPeriod({ ...newPeriod, period: index })
+                      }
+                    >
+                      <Text
+                        style={[
+                          styles.optionText,
+                          newPeriod.period === index && styles.optionTextActive,
+                        ]}
+                      >
+                        {slot}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+
+              {/* Break Toggle */}
+              <View style={styles.formGroup}>
+                <TouchableOpacity
+                  style={styles.breakToggle}
+                  onPress={() =>
+                    setNewPeriod({
+                      ...newPeriod,
+                      isBreak: !newPeriod.isBreak,
+                      subjectId: 0,
+                    })
+                  }
+                >
+                  <View
+                    style={[
+                      styles.checkbox,
+                      newPeriod.isBreak && styles.checkboxChecked,
+                    ]}
+                  >
+                    {newPeriod.isBreak && (
+                      <Text style={styles.checkmark}>✓</Text>
+                    )}
+                  </View>
+                  <Text style={styles.breakLabel}>زنگ تفریح</Text>
+                </TouchableOpacity>
+              </View>
+
+              {!newPeriod.isBreak && (
+                <>
+                  {/* Subject Selection - WITHOUT TEACHER */}
+                  <View style={styles.formGroup}>
+                    <Text style={styles.label}>مضمون</Text>
+                    <View style={styles.optionsGrid}>
+                      {subjects
+                        .filter((s) => !s.isBreak)
+                        .map((subject) => (
+                          <TouchableOpacity
+                            key={subject.id}
+                            style={[
+                              styles.optionButton,
+                              newPeriod.subjectId === subject.id &&
+                                styles.optionButtonActive,
+                            ]}
+                            onPress={() =>
+                              setNewPeriod({
+                                ...newPeriod,
+                                subjectId: subject.id,
+                              })
+                            }
+                          >
+                            <Text
+                              style={[
+                                styles.optionText,
+                                newPeriod.subjectId === subject.id &&
+                                  styles.optionTextActive,
+                              ]}
+                            >
+                              {subject.name}
+                            </Text>
+                          </TouchableOpacity>
+                        ))}
+                    </View>
+                  </View>
+
+                  {/* Room Input */}
+                  <View style={styles.formGroup}>
+                    <Text style={styles.label}>اطاق</Text>
+                    <TextInput
+                      style={styles.textInput}
+                      value={newPeriod.room}
+                      onChangeText={(text: string) =>
+                        setNewPeriod({ ...newPeriod, room: text })
+                      }
+                      placeholder="مثال: اطاق ۱۰۱"
+                      textAlign="right"
+                    />
+                  </View>
+                </>
+              )}
+            </ScrollView>
+
+            <View style={styles.modalFooter}>
+              <TouchableOpacity
+                style={styles.cancelButton}
+                onPress={() => setShowAddModal(false)}
+              >
+                <Text style={styles.cancelButtonText}>لغو</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.saveButton}
+                onPress={handleAddPeriod}
+                disabled={submitting}
+              >
+                <Text style={styles.saveButtonText}>
+                  {submitting
+                    ? "در حال..."
+                    : editingPeriod
+                      ? "به‌روزرسانی"
+                      : "افزودن"}
+                </Text>
+              </TouchableOpacity>
+            </View>
           </View>
-        }
-      />
-    </View>
+        </View>
+      </Modal>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#f1f5f9" },
-  loadingContainer: {
+  container: {
     flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
     backgroundColor: "#f1f5f9",
   },
   header: {
@@ -253,7 +723,6 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: "700",
     color: "#1e293b",
-    fontFamily: "VazirBold",
   },
   addButton: {
     width: 40,
@@ -263,89 +732,348 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
-  classSelector: {
-    maxHeight: 50,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    backgroundColor: "#fff",
+  content: {
+    flex: 1,
   },
-  classTab: {
-    paddingHorizontal: 16,
-    paddingVertical: 6,
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 16,
+    color: "#64748b",
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 20,
+  },
+  errorText: {
+    fontSize: 16,
+    color: "#ef4444",
+    textAlign: "center",
+    marginBottom: 20,
+  },
+  retryButton: {
+    backgroundColor: "#f59e0b",
+    paddingHorizontal: 24,
+    paddingVertical: 12,
     borderRadius: 8,
-    backgroundColor: "#f1f5f9",
-    marginRight: 8,
   },
-  classTabActive: { backgroundColor: "#f59e0b" },
-  classTabText: { fontSize: 14, color: "#64748b", fontFamily: "Vazir" },
-  classTabTextActive: { color: "#fff" },
-  daySelector: {
-    flexDirection: "row",
-    paddingHorizontal: 8,
-    paddingVertical: 8,
+  retryButtonText: {
+    color: "white",
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  selectorContainer: {
     backgroundColor: "#fff",
+    padding: 16,
     borderBottomWidth: 1,
     borderBottomColor: "#e2e8f0",
   },
-  dayTab: {
-    flex: 1,
-    paddingVertical: 8,
-    alignItems: "center",
-    borderRadius: 8,
-  },
-  dayTabActive: { backgroundColor: "#fef3c7" },
-  dayTabText: { fontSize: 12, color: "#64748b", fontFamily: "Vazir" },
-  dayTabTextActive: { color: "#f59e0b", fontWeight: "600" },
-  classInfo: {
-    padding: 12,
-    backgroundColor: "#fff",
-    borderBottomWidth: 1,
-    borderBottomColor: "#f1f5f9",
-  },
-  classInfoText: {
-    fontSize: 14,
-    color: "#64748b",
-    fontFamily: "Vazir",
-    textAlign: "center",
-  },
-  listContent: { padding: 16, gap: 8 },
-  periodCard: {
+  selectorHeader: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#fff",
-    borderRadius: 12,
-    padding: 12,
-    elevation: 1,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
+    gap: 8,
+    marginBottom: 12,
   },
-  emptyPeriod: {
-    backgroundColor: "#f8fafc",
-    borderStyle: "dashed",
+  selectorLabel: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#1e293b",
+  },
+  selectorButtons: {
+    flexDirection: "row",
+    gap: 8,
+    paddingBottom: 4,
+  },
+  selectorButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: "#f1f5f9",
     borderWidth: 1,
     borderColor: "#e2e8f0",
   },
+  selectorButtonActive: {
+    backgroundColor: "#f59e0b",
+    borderColor: "#f59e0b",
+  },
+  selectorButtonText: {
+    fontSize: 14,
+    color: "#64748b",
+    fontWeight: "500",
+  },
+  selectorButtonTextActive: {
+    color: "#fff",
+  },
+  timetableContainer: {
+    backgroundColor: "#fff",
+    padding: 16,
+    margin: 16,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+  },
+  timetableHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 16,
+  },
+  timetableTitle: {
+    fontSize: 18,
+    fontWeight: "600",
+    color: "#1e293b",
+  },
+  periodCount: {
+    fontSize: 14,
+    color: "#64748b",
+    backgroundColor: "#f1f5f9",
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  emptyTimetable: {
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 40,
+    backgroundColor: "#f8fafc",
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: "#e2e8f0",
+    borderStyle: "dashed",
+  },
+  emptyTitle: {
+    fontSize: 18,
+    fontWeight: "600",
+    color: "#1e293b",
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  emptyText: {
+    fontSize: 14,
+    color: "#64748b",
+    textAlign: "center",
+    marginBottom: 20,
+  },
+  emptyButton: {
+    backgroundColor: "#f59e0b",
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 8,
+  },
+  emptyButtonText: {
+    color: "white",
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  timetableGrid: {
+    gap: 12,
+  },
+  periodCard: {
+    backgroundColor: "#f8fafc",
+    borderRadius: 12,
+    padding: 16,
+    borderLeftWidth: 4,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  breakCard: {
+    backgroundColor: "#f1f5f9",
+  },
+  periodHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 8,
+  },
   periodTime: {
-    width: 80,
-    fontSize: 12,
-    color: "#94a3b8",
-    fontFamily: "Vazir",
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#1e293b",
+  },
+  periodActions: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  periodActionButton: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    backgroundColor: "#fff",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  breakText: {
+    fontSize: 18,
+    fontWeight: "bold",
+    color: "#64748b",
+    textAlign: "center",
   },
   periodSubject: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#1e293b",
+    marginBottom: 4,
+  },
+  periodDetails: {
+    flexDirection: "row",
+    justifyContent: "flex-start",
+    alignItems: "center",
+  },
+  periodRoom: {
+    fontSize: 14,
+    color: "#64748b",
+  },
+  modalOverlay: {
     flex: 1,
-    fontSize: 15,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "flex-end",
+  },
+  modalContent: {
+    backgroundColor: "#fff",
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    maxHeight: "90%",
+  },
+  modalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: "#e2e8f0",
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: "600",
+    color: "#1e293b",
+  },
+  closeButtonText: {
+    fontSize: 20,
+    color: "#64748b",
+  },
+  modalBody: {
+    padding: 20,
+  },
+  formGroup: {
+    marginBottom: 20,
+  },
+  label: {
+    fontSize: 16,
     fontWeight: "500",
     color: "#1e293b",
-    fontFamily: "Vazir",
+    marginBottom: 12,
   },
-  periodTeacher: { fontSize: 12, color: "#64748b", fontFamily: "Vazir" },
-  emptyContainer: { alignItems: "center", paddingVertical: 60 },
-  emptyText: {
-    marginTop: 16,
+  infoText: {
     fontSize: 16,
-    color: "#94a3b8",
-    fontFamily: "Vazir",
+    color: "#64748b",
+    backgroundColor: "#f1f5f9",
+    padding: 12,
+    borderRadius: 8,
+    textAlign: "right",
+  },
+  optionsGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  optionButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    backgroundColor: "#f1f5f9",
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    minWidth: 60,
+    alignItems: "center",
+  },
+  optionButtonActive: {
+    backgroundColor: "#f59e0b",
+    borderColor: "#f59e0b",
+  },
+  optionText: {
+    fontSize: 14,
+    color: "#64748b",
+  },
+  optionTextActive: {
+    color: "white",
+  },
+  breakToggle: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  checkbox: {
+    width: 24,
+    height: 24,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: "#e2e8f0",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  checkboxChecked: {
+    backgroundColor: "#f59e0b",
+    borderColor: "#f59e0b",
+  },
+  checkmark: {
+    color: "white",
+    fontSize: 16,
+    fontWeight: "bold",
+  },
+  breakLabel: {
+    fontSize: 16,
+    color: "#1e293b",
+  },
+  textInput: {
+    backgroundColor: "#f1f5f9",
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    borderRadius: 12,
+    padding: 12,
+    fontSize: 16,
+    color: "#1e293b",
+    textAlign: "right",
+  },
+  modalFooter: {
+    flexDirection: "row",
+    padding: 20,
+    borderTopWidth: 1,
+    borderTopColor: "#e2e8f0",
+    gap: 12,
+  },
+  cancelButton: {
+    flex: 1,
+    padding: 16,
+    borderRadius: 8,
+    backgroundColor: "#f1f5f9",
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    alignItems: "center",
+  },
+  cancelButtonText: {
+    fontSize: 16,
+    fontWeight: "500",
+    color: "#64748b",
+  },
+  saveButton: {
+    flex: 1,
+    padding: 16,
+    borderRadius: 8,
+    backgroundColor: "#f59e0b",
+    alignItems: "center",
+  },
+  saveButtonText: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "white",
   },
 });

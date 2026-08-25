@@ -94,7 +94,7 @@ export default function RecordAttendanceScreen() {
 
       const response = await hrApi.recordAttendance({
         staffId,
-        punchType: isPresent ? "OUT" : "IN",
+        punch: isPresent ? 0 : 1,
         deviceName: "Manual",
       });
 

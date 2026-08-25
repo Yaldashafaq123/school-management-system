@@ -472,7 +472,7 @@ class HRApi {
 
   async recordAttendance(data: {
     staffId: number;
-    punchType?: string;
+    punch?: number;
     deviceName?: string;
   }): Promise<ApiResponse<any>> {
     return this.request("/attendance", {
@@ -492,7 +492,7 @@ class HRApi {
     return this.request(`/attendance/summary${qs ? `?${qs}` : ""}`);
   }
 
-  // ==================== ATTENDANCE REPORTS (NEW) ====================
+  // ==================== ATTENDANCE REPORTS ====================
 
   /**
    * Get attendance report for all staff with filtering
@@ -520,6 +520,7 @@ class HRApi {
 
   /**
    * Get monthly attendance for a specific staff member
+   * ✅ FIXED: Properly formats the URL with query parameters
    */
   async getStaffMonthlyAttendance(
     staffId: number,
@@ -528,13 +529,19 @@ class HRApi {
       year?: number;
     },
   ): Promise<ApiResponse<any>> {
-    const query = new URLSearchParams();
-    if (params?.month) query.append("month", params.month.toString());
-    if (params?.year) query.append("year", params.year.toString());
-    const qs = query.toString();
-    return this.request(
-      `/attendance/staff/${staffId}/monthly${qs ? `?${qs}` : ""}`,
-    );
+    // ✅ Build query string properly
+    const queryParams = new URLSearchParams();
+    if (params?.month) {
+      queryParams.append("month", params.month.toString());
+    }
+    if (params?.year) {
+      queryParams.append("year", params.year.toString());
+    }
+    const queryString = queryParams.toString();
+    const url = `/attendance/staff/${staffId}/monthly${queryString ? `?${queryString}` : ""}`;
+
+    console.log(`📡 Fetching monthly attendance: ${url}`);
+    return this.request(url);
   }
 
   /**

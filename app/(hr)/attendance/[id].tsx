@@ -1,29 +1,49 @@
-// app/(hr)/attendance/[id].tsx - FIXED with proper data handling
+// app/(hr)/attendance/[id].tsx - COMPLETELY REDESIGNED with working month navigation
 import { hrApi } from "@/src/config/hrApi";
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
-    ActivityIndicator,
-    Alert,
-    RefreshControl,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Alert,
+  FlatList,
+  RefreshControl,
+  SafeAreaView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
 
+// ==================== TYPES ====================
+
+type DailyRecord = {
+  time: string;
+  punchType: number;
+  label: string;
+  labelFa: string;
+  device: string;
+};
+
 type DailyAttendance = {
-  date: Date;
+  date: string;
+  dateShamsi: string;
   dayOfWeek: string;
   dayNumber: number;
   isPresent: boolean;
+  isLate: boolean;
+  lateStatus: string;
   recordCount: number;
   firstScan: string | null;
+  firstScanShamsi: string | null;
   lastScan: string | null;
+  lastScanShamsi: string | null;
   punchIn: number;
   punchOut: number;
+  punchBreakdown: Record<string, number>;
+  isFriday: boolean;
+  records: DailyRecord[];
 };
 
 type StaffMonthlyAttendance = {
@@ -37,150 +57,82 @@ type StaffMonthlyAttendance = {
     department: string;
     teacherCode: string;
   };
-  month: number;
-  year: number;
+  shamsiMonth: number;
+  shamsiYear: number;
+  shamsiMonthName: string;
+  gregorianStart: string;
+  gregorianEnd: string;
   summary: {
     totalDays: number;
     presentDays: number;
     absentDays: number;
+    lateDays: number;
+    onTimeDays: number;
+    fridayDays: number;
     attendanceRate: number;
+    workingDays: number;
     totalRecords: number;
+    totalPunchIn: number;
+    totalPunchOut: number;
+    punchSummary: Record<string, number>;
   };
   daily: DailyAttendance[];
 };
 
-// app/(hr)/attendance/[id].tsx - FIXED shamsiToGregorian function
+// ==================== HELPERS ====================
 
-// ==================== SHAMSI CALENDAR HELPERS (from working teacher report) ====================
+function getShamsiMonthName(month: number): string {
+  const names = [
+    "حمل",
+    "ثور",
+    "جوزا",
+    "سرطان",
+    "اسد",
+    "سنبله",
+    "میزان",
+    "عقرب",
+    "قوس",
+    "جدی",
+    "دلو",
+    "حوت",
+  ];
+  return names[month - 1] || `ماه ${month}`;
+}
 
-// ✅ Persian month names in Afghan (Dari)
-const AFGHAN_MONTH_NAMES = [
-  "حمل",
-  "ثور",
-  "جوزا",
-  "سرطان",
-  "اسد",
-  "سنبله",
-  "میزان",
-  "عقرب",
-  "قوس",
-  "جدی",
-  "دلو",
-  "حوت",
-];
+function getStatusColor(
+  isPresent: boolean,
+  isFriday: boolean,
+  isLate: boolean,
+): string {
+  if (isFriday) return "#94a3b8";
+  if (isPresent && isLate) return "#f59e0b";
+  if (isPresent) return "#10b981";
+  return "#ef4444";
+}
 
-// ✅ Days in each Persian month
-const PERSIAN_MONTH_DAYS = [31, 31, 31, 31, 31, 31, 30, 30, 30, 30, 30, 29];
+function getStatusText(
+  isPresent: boolean,
+  isFriday: boolean,
+  isLate: boolean,
+): string {
+  if (isFriday) return "تعطیل";
+  if (isPresent && isLate) return "تأخیر";
+  if (isPresent) return "حاضر";
+  return "غایب";
+}
 
-// ✅ Get current Persian month (rough estimate)
-const getCurrentPersianMonth = (): { month: number; year: number } => {
-  const now = new Date();
-  const gregorianMonth = now.getMonth() + 1;
-  const gregorianDay = now.getDate();
+function getStatusIcon(
+  isPresent: boolean,
+  isFriday: boolean,
+  isLate: boolean,
+): string {
+  if (isFriday) return "calendar-outline";
+  if (isPresent && isLate) return "time-outline";
+  if (isPresent) return "checkmark-circle";
+  return "close-circle";
+}
 
-  let persianMonth = 0;
-  let persianYear = now.getFullYear() - 621;
-
-  if (gregorianMonth === 3 && gregorianDay >= 21) persianMonth = 12;
-  else if (gregorianMonth === 4) persianMonth = 1;
-  else if (gregorianMonth === 5) persianMonth = 2;
-  else if (gregorianMonth === 6) persianMonth = 3;
-  else if (gregorianMonth === 7) persianMonth = 4;
-  else if (gregorianMonth === 8) persianMonth = 5;
-  else if (gregorianMonth === 9) persianMonth = 6;
-  else if (gregorianMonth === 10) persianMonth = 7;
-  else if (gregorianMonth === 11) persianMonth = 8;
-  else if (gregorianMonth === 12) persianMonth = 9;
-  else if (gregorianMonth === 1) persianMonth = 10;
-  else if (gregorianMonth === 2) persianMonth = 11;
-  else if (gregorianMonth === 3 && gregorianDay < 21) persianMonth = 11;
-
-  if (persianMonth === 0) persianMonth = 1;
-
-  return { month: persianMonth, year: persianYear };
-};
-
-// ✅ Get Gregorian months for a Persian month (from working teacher report)
-const getGregorianMonthsForPersian = (
-  persianMonth: number,
-  persianYear: number,
-): { month: number; year: number }[] => {
-  const startDays: Record<number, { month: number; day: number }> = {
-    1: { month: 3, day: 21 },
-    2: { month: 4, day: 21 },
-    3: { month: 5, day: 22 },
-    4: { month: 6, day: 22 },
-    5: { month: 7, day: 23 },
-    6: { month: 8, day: 23 },
-    7: { month: 9, day: 23 },
-    8: { month: 10, day: 23 },
-    9: { month: 11, day: 22 },
-    10: { month: 12, day: 22 },
-    11: { month: 1, day: 21 },
-    12: { month: 2, day: 20 },
-  };
-
-  const gregorianYear = persianYear + 621;
-  const start = startDays[persianMonth];
-  if (!start) return [];
-
-  const result: { month: number; year: number }[] = [];
-  let startMonth = start.month;
-  let startYear = gregorianYear;
-
-  if (startMonth === 1 || startMonth === 2) {
-    startYear = gregorianYear + 1;
-  }
-
-  result.push({ month: startMonth, year: startYear });
-
-  let nextMonth = startMonth + 1;
-  let nextYear = startYear;
-  if (nextMonth > 12) {
-    nextMonth = 1;
-    nextYear = startYear + 1;
-  }
-  result.push({ month: nextMonth, year: nextYear });
-
-  if (start.day > 25) {
-    let thirdMonth = nextMonth + 1;
-    let thirdYear = nextYear;
-    if (thirdMonth > 12) {
-      thirdMonth = 1;
-      thirdYear = nextYear + 1;
-    }
-    result.push({ month: thirdMonth, year: thirdYear });
-  }
-
-  return result.filter(
-    (item, index, self) =>
-      index ===
-      self.findIndex((t) => t.month === item.month && t.year === item.year),
-  );
-};
-
-// ✅ Helper to convert Gregorian to Shamsi using Intl
-const toShamsi = (date: Date): { year: number; month: number; day: number } => {
-  try {
-    const formatter = new Intl.DateTimeFormat("fa-IR-u-ca-persian", {
-      year: "numeric",
-      month: "numeric",
-      day: "numeric",
-    });
-    const parts = formatter.format(date).split("/");
-    return {
-      year: parseInt(parts[0]),
-      month: parseInt(parts[1]),
-      day: parseInt(parts[2]),
-    };
-  } catch (error) {
-    return {
-      year: date.getFullYear() - 621,
-      month: date.getMonth() + 1,
-      day: date.getDate(),
-    };
-  }
-};
+// ==================== COMPONENT ====================
 
 export default function StaffAttendanceDetailScreen() {
   const router = useRouter();
@@ -191,18 +143,35 @@ export default function StaffAttendanceDetailScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [data, setData] = useState<StaffMonthlyAttendance | null>(null);
 
-  // ✅ Use Persian/Shamsi calendar
-  const currentPersian = getCurrentPersianMonth();
-  const [selectedPersianMonth, setSelectedPersianMonth] = useState(
-    currentPersian.month,
+  // ✅ Current Shamsi month/year
+  const getCurrentShamsi = () => {
+    try {
+      const now = new Date();
+      const formatter = new Intl.DateTimeFormat("fa-IR-u-ca-persian", {
+        year: "numeric",
+        month: "numeric",
+      });
+      const parts = formatter.format(now).split("/");
+      return { month: parseInt(parts[1]), year: parseInt(parts[0]) };
+    } catch {
+      return {
+        month: new Date().getMonth() + 1,
+        year: new Date().getFullYear() - 621,
+      };
+    }
+  };
+
+  const currentShamsi = getCurrentShamsi();
+  const [selectedShamsiMonth, setSelectedShamsiMonth] = useState(
+    currentShamsi.month,
   );
-  const [selectedPersianYear, setSelectedPersianYear] = useState(
-    currentPersian.year,
+  const [selectedShamsiYear, setSelectedShamsiYear] = useState(
+    currentShamsi.year,
   );
 
-  const fetchData = async () => {
+  // ✅ Fetch data function - wrapped in useCallback
+  const fetchData = useCallback(async () => {
     if (!id) {
-      console.error("No staff ID provided");
       Alert.alert("خطا", "شناسه کارمند یافت نشد");
       setLoading(false);
       return;
@@ -210,425 +179,380 @@ export default function StaffAttendanceDetailScreen() {
 
     const staffId = parseInt(id);
     if (isNaN(staffId) || staffId <= 0) {
-      console.error("Invalid staff ID:", id);
       Alert.alert("خطا", "شناسه کارمند نامعتبر است");
       setLoading(false);
       return;
     }
 
     try {
-      // ✅ Get Gregorian months for the selected Persian month
-      const gregorianMonths = getGregorianMonthsForPersian(
-        selectedPersianMonth,
-        selectedPersianYear,
-      );
-
-      const afghanMonthName = AFGHAN_MONTH_NAMES[selectedPersianMonth - 1];
+      console.log(`📡 Fetching attendance for staff ${staffId}`);
       console.log(
-        `📡 Persian: ${selectedPersianMonth}/${selectedPersianYear} (${afghanMonthName})`,
+        `📡 Shamsi Month: ${selectedShamsiMonth}/${selectedShamsiYear}`,
       );
-      console.log(`📡 Fetching Gregorian months:`, gregorianMonths);
 
-      // ✅ Fetch data for each Gregorian month
-      let allDaily: DailyAttendance[] = [];
-      let combinedStaff = null;
-      let combinedSummary = {
-        totalDays: 0,
-        presentDays: 0,
-        absentDays: 0,
-        attendanceRate: 0,
-        totalRecords: 0,
-      };
+      const response = await hrApi.getStaffMonthlyAttendance(staffId, {
+        year: selectedShamsiYear,
+        month: selectedShamsiMonth,
+      });
 
-      for (const { month, year } of gregorianMonths) {
-        console.log(`📡 Fetching for month: ${month}/${year}`);
+      console.log("📡 Response received:", response);
 
-        try {
-          const response = await hrApi.getStaffMonthlyAttendance(staffId, {
-            month: month,
-            year: year,
-          });
-
-          console.log(`📡 Response for ${month}/${year}:`, response);
-
-          if (response.success && response.data) {
-            const responseData = response.data;
-
-            // ✅ Get staff info
-            if (responseData.staff) {
-              combinedStaff = responseData.staff;
-            }
-
-            // ✅ Combine daily records - USE ALL DAILY RECORDS FROM THE RESPONSE
-            if (responseData.daily && Array.isArray(responseData.daily)) {
-              allDaily = [...allDaily, ...responseData.daily];
-            }
-
-            // ✅ Combine summary
-            if (responseData.summary) {
-              combinedSummary.totalDays += responseData.summary.totalDays || 0;
-              combinedSummary.presentDays +=
-                responseData.summary.presentDays || 0;
-              combinedSummary.absentDays +=
-                responseData.summary.absentDays || 0;
-              combinedSummary.totalRecords +=
-                responseData.summary.totalRecords || 0;
-            }
-          }
-        } catch (error) {
-          console.error(`❌ Error fetching for ${month}/${year}:`, error);
-        }
-      }
-
-      // ✅ If no daily records, use the first month's data if available
-      if (allDaily.length === 0 && gregorianMonths.length > 0) {
-        // Try to get data from the first month again as fallback
-        try {
-          const { month, year } = gregorianMonths[0];
-          const response = await hrApi.getStaffMonthlyAttendance(staffId, {
-            month: month,
-            year: year,
-          });
-          if (response.success && response.data) {
-            if (response.data.daily) {
-              allDaily = response.data.daily;
-            }
-            if (response.data.staff) {
-              combinedStaff = response.data.staff;
-            }
-            if (response.data.summary) {
-              combinedSummary = response.data.summary;
-            }
-          }
-        } catch (error) {
-          console.error("❌ Fallback error:", error);
-        }
-      }
-
-      // ✅ Calculate attendance rate
-      if (combinedSummary.totalDays > 0) {
-        combinedSummary.attendanceRate = Math.round(
-          (combinedSummary.presentDays / combinedSummary.totalDays) * 100,
-        );
-      }
-
-      // ✅ Set the data directly - no filtering needed since the API returns the right data
-      if (allDaily.length > 0) {
-        setData({
-          staff: combinedStaff || {
-            id: staffId,
-            fullName: "",
-            nameFarsi: "",
-            role: "",
-            staffType: "",
-            position: "",
-            department: "",
-            teacherCode: "",
-          },
-          month: selectedPersianMonth,
-          year: selectedPersianYear,
-          summary: combinedSummary,
-          daily: allDaily,
-        });
+      if (response.success && response.data) {
+        setData(response.data);
       } else {
-        // ✅ Generate default days if no data
-        const daysInMonth = PERSIAN_MONTH_DAYS[selectedPersianMonth - 1] || 30;
-        const defaultDays: DailyAttendance[] = [];
-
-        // Get staff info
-        let staffInfo = combinedStaff;
-        if (!staffInfo) {
-          try {
-            const staffResponse = await hrApi.getStaffById(staffId);
-            if (staffResponse.success && staffResponse.data) {
-              staffInfo = {
-                id: staffResponse.data.id,
-                fullName: staffResponse.data.fullName || "",
-                nameFarsi: staffResponse.data.nameFarsi || "",
-                role: staffResponse.data.role || "",
-                staffType: staffResponse.data.staffType || "",
-                position: staffResponse.data.position || "",
-                department: staffResponse.data.department || "",
-                teacherCode: staffResponse.data.teacherCode || "",
-              };
-            }
-          } catch (error) {
-            console.error("❌ Error fetching staff info:", error);
-          }
-        }
-
-        // Generate days from the selected Persian month
-        const gregorianMonthsForDays = getGregorianMonthsForPersian(
-          selectedPersianMonth,
-          selectedPersianYear,
-        );
-
-        if (gregorianMonthsForDays.length > 0) {
-          const firstMonth = gregorianMonthsForDays[0];
-          const startDate = new Date(firstMonth.year, firstMonth.month - 1, 1);
-
-          for (let i = 0; i < daysInMonth; i++) {
-            const date = new Date(startDate);
-            date.setDate(date.getDate() + i);
-
-            // Skip if date is in a different month (shouldn't happen with correct mapping)
-            const shamsiDate = toShamsi(date);
-            if (shamsiDate.month !== selectedPersianMonth) continue;
-
-            defaultDays.push({
-              date: date,
-              dayOfWeek: date.toLocaleDateString("fa-IR", { weekday: "long" }),
-              dayNumber: i + 1,
-              isPresent: false,
-              recordCount: 0,
-              firstScan: null,
-              lastScan: null,
-              punchIn: 0,
-              punchOut: 0,
-            });
-          }
-        }
-
-        if (defaultDays.length > 0) {
-          setData({
-            staff: staffInfo || {
-              id: staffId,
-              fullName: "",
-              nameFarsi: "",
-              role: "",
-              staffType: "",
-              position: "",
-              department: "",
-              teacherCode: "",
-            },
-            month: selectedPersianMonth,
-            year: selectedPersianYear,
-            summary: {
-              totalDays: defaultDays.length,
-              presentDays: 0,
-              absentDays: defaultDays.length,
-              attendanceRate: 0,
-              totalRecords: 0,
-            },
-            daily: defaultDays,
-          });
-        } else {
-          Alert.alert("خطا", "داده‌ای برای این ماه یافت نشد");
-        }
+        Alert.alert("خطا", response.message || "داده‌ای برای این ماه یافت نشد");
+        // Set empty data to show "no data" state
+        setData(null);
       }
     } catch (error: any) {
       console.error("Fetch data error:", error);
       Alert.alert("خطا", error.message || "خطا در دریافت اطلاعات حضور");
+      setData(null);
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  };
+  }, [id, selectedShamsiMonth, selectedShamsiYear]);
 
+  // ✅ useEffect with proper dependencies
   useEffect(() => {
     if (id) {
+      setLoading(true);
       fetchData();
     }
-  }, [id, selectedPersianMonth, selectedPersianYear]);
+  }, [id, selectedShamsiMonth, selectedShamsiYear, fetchData]);
 
   const onRefresh = () => {
     setRefreshing(true);
     fetchData();
   };
 
+  // ✅ Month navigation functions with logging
   const goToPreviousMonth = () => {
-    let newMonth = selectedPersianMonth - 1;
-    let newYear = selectedPersianYear;
+    let newMonth = selectedShamsiMonth - 1;
+    let newYear = selectedShamsiYear;
     if (newMonth === 0) {
       newMonth = 12;
-      newYear = selectedPersianYear - 1;
+      newYear = selectedShamsiYear - 1;
     }
-    setSelectedPersianMonth(newMonth);
-    setSelectedPersianYear(newYear);
+    console.log(`🔄 Navigating to previous month: ${newMonth}/${newYear}`);
+    setSelectedShamsiMonth(newMonth);
+    setSelectedShamsiYear(newYear);
   };
 
   const goToNextMonth = () => {
-    let newMonth = selectedPersianMonth + 1;
-    let newYear = selectedPersianYear;
+    let newMonth = selectedShamsiMonth + 1;
+    let newYear = selectedShamsiYear;
     if (newMonth === 13) {
       newMonth = 1;
-      newYear = selectedPersianYear + 1;
+      newYear = selectedShamsiYear + 1;
     }
-    setSelectedPersianMonth(newMonth);
-    setSelectedPersianYear(newYear);
+    console.log(`🔄 Navigating to next month: ${newMonth}/${newYear}`);
+    setSelectedShamsiMonth(newMonth);
+    setSelectedShamsiYear(newYear);
   };
 
-  const getDayStatus = (isPresent: boolean) => {
-    return isPresent ? styles.dayPresent : styles.dayAbsent;
+  const renderDayItem = ({ item }: { item: DailyAttendance }) => {
+    const isPresent = item.isPresent || false;
+    const isLate = item.isLate || false;
+    const isFriday = item.isFriday || false;
+    const statusColor = getStatusColor(isPresent, isFriday, isLate);
+    const statusText = getStatusText(isPresent, isFriday, isLate);
+    const statusIcon = getStatusIcon(isPresent, isFriday, isLate);
+
+    const checkInTime = item.firstScan || null;
+    const checkOutTime = item.lastScan || null;
+    const hasRecords = item.records && item.records.length > 0;
+
+    return (
+      <TouchableOpacity
+        style={[styles.dayCard, { borderRightColor: statusColor }]}
+        onPress={() => {
+          if (hasRecords) {
+            let message = `📅 ${item.dateShamsi}\n`;
+            message += `وضعیت: ${statusText}\n`;
+            message += `تعداد ثبت: ${item.recordCount}\n`;
+            if (checkInTime) message += `🟢 ورود: ${checkInTime}\n`;
+            if (checkOutTime) message += `🔴 خروج: ${checkOutTime}\n`;
+            message += `پانچ IN: ${item.punchIn}\n`;
+            message += `پانچ OUT: ${item.punchOut}`;
+            if (
+              item.punchBreakdown &&
+              Object.keys(item.punchBreakdown).length > 0
+            ) {
+              message += "\n\n📊 جزئیات:";
+              Object.entries(item.punchBreakdown).forEach(([label, count]) => {
+                message += `\n  ${label}: ${count}`;
+              });
+            }
+            Alert.alert(
+              `حضور ${item.dayNumber} ${data?.shamsiMonthName}`,
+              message,
+            );
+          } else if (isFriday) {
+            Alert.alert("جمعه", "روز تعطیل");
+          } else {
+            Alert.alert("غایب", "این روز حضور ثبت نشده است");
+          }
+        }}
+      >
+        <View style={styles.dayCardLeft}>
+          <View style={styles.dayNumberContainer}>
+            <Text style={styles.dayNumberText}>{item.dayNumber}</Text>
+          </View>
+          <View style={styles.dayInfo}>
+            <Text style={styles.dayDateText}>{item.dateShamsi}</Text>
+            <Text style={styles.dayWeekdayText}>{item.dayOfWeek}</Text>
+          </View>
+        </View>
+
+        <View style={styles.dayCardCenter}>
+          {hasRecords ? (
+            <View style={styles.punchTimes}>
+              {checkInTime && (
+                <View style={styles.punchTimeRow}>
+                  <Ionicons name="log-in-outline" size={14} color="#10b981" />
+                  <Text style={styles.punchTimeText}>{checkInTime}</Text>
+                </View>
+              )}
+              {checkOutTime && (
+                <View style={styles.punchTimeRow}>
+                  <Ionicons name="log-out-outline" size={14} color="#ef4444" />
+                  <Text style={styles.punchTimeText}>{checkOutTime}</Text>
+                </View>
+              )}
+              {!checkInTime && !checkOutTime && (
+                <Text style={styles.noPunchText}>بدون ثبت</Text>
+              )}
+            </View>
+          ) : (
+            <Text style={styles.noPunchText}>
+              {isFriday ? "روز تعطیل" : "بدون حضور"}
+            </Text>
+          )}
+        </View>
+
+        <View style={styles.dayCardRight}>
+          <View
+            style={[
+              styles.statusBadge,
+              { backgroundColor: statusColor + "15" },
+            ]}
+          >
+            <Ionicons name={statusIcon as any} size={16} color={statusColor} />
+            <Text style={[styles.statusBadgeText, { color: statusColor }]}>
+              {statusText}
+            </Text>
+          </View>
+          {hasRecords && (
+            <View style={styles.recordCountBadge}>
+              <Text style={styles.recordCountText}>{item.recordCount}</Text>
+            </View>
+          )}
+        </View>
+      </TouchableOpacity>
+    );
   };
 
+  // ✅ Show loading state
   if (loading) {
     return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#8b5cf6" />
-        <Text style={styles.loadingText}>در حال بارگذاری...</Text>
-      </View>
+      <SafeAreaView style={styles.safeContainer}>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#8b5cf6" />
+          <Text style={styles.loadingText}>در حال بارگذاری...</Text>
+        </View>
+      </SafeAreaView>
     );
   }
 
+  // ✅ Show error/no data state
   if (!data || !data.daily || data.daily.length === 0) {
+    const monthName = getShamsiMonthName(selectedShamsiMonth);
     return (
-      <View style={styles.errorContainer}>
-        <Ionicons name="alert-circle-outline" size={48} color="#ef4444" />
-        <Text style={styles.errorText}>داده‌ای برای این ماه یافت نشد</Text>
-        <TouchableOpacity
-          style={styles.retryButton}
-          onPress={() => {
-            setLoading(true);
-            fetchData();
-          }}
-        >
-          <Text style={styles.retryButtonText}>تلاش مجدد</Text>
-        </TouchableOpacity>
-      </View>
+      <SafeAreaView style={styles.safeContainer}>
+        <StatusBar barStyle="dark-content" backgroundColor="#f1f5f9" />
+        <View style={styles.container}>
+          {/* Header */}
+          <View style={styles.header}>
+            <TouchableOpacity
+              style={styles.backButton}
+              onPress={() => router.back()}
+            >
+              <Ionicons name="arrow-back" size={24} color="#1e293b" />
+            </TouchableOpacity>
+            <View style={styles.headerCenter}>
+              <Text style={styles.headerTitle}>حضور کارمند</Text>
+              <Text style={styles.headerSubtitle}>کارمند #{id}</Text>
+            </View>
+            <View style={{ width: 24 }} />
+          </View>
+
+          {/* Month Navigator */}
+          <View style={styles.monthNavigator}>
+            <TouchableOpacity
+              style={styles.monthNavButton}
+              onPress={goToPreviousMonth}
+            >
+              <Ionicons name="chevron-back" size={24} color="#64748b" />
+            </TouchableOpacity>
+            <View style={styles.monthCenter}>
+              <Text style={styles.monthText}>
+                {monthName} {selectedShamsiYear}
+              </Text>
+            </View>
+            <TouchableOpacity
+              style={styles.monthNavButton}
+              onPress={goToNextMonth}
+            >
+              <Ionicons name="chevron-forward" size={24} color="#64748b" />
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.errorContainer}>
+            <Ionicons name="calendar-outline" size={48} color="#94a3b8" />
+            <Text style={styles.errorText}>داده‌ای برای این ماه یافت نشد</Text>
+            <Text style={styles.errorSubtext}>
+              {monthName} {selectedShamsiYear}
+            </Text>
+            <TouchableOpacity
+              style={styles.retryButton}
+              onPress={() => {
+                setLoading(true);
+                fetchData();
+              }}
+            >
+              <Text style={styles.retryButtonText}>تلاش مجدد</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </SafeAreaView>
     );
   }
 
-  const { staff, summary, daily } = data;
-  const shamsiMonthName = AFGHAN_MONTH_NAMES[selectedPersianMonth - 1] || "";
+  const { staff, summary, daily, shamsiMonthName } = data;
 
   return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={styles.content}
-      refreshControl={
-        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-      }
-    >
-      {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={() => router.back()}
-        >
-          <Ionicons name="arrow-back" size={24} color="#1e293b" />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>حضور کارمند</Text>
-        <View style={{ width: 24 }} />
-      </View>
+    <SafeAreaView style={styles.safeContainer}>
+      <StatusBar barStyle="dark-content" backgroundColor="#f1f5f9" />
+      <View style={styles.container}>
+        {/* Header */}
+        <View style={styles.header}>
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() => router.back()}
+          >
+            <Ionicons name="arrow-back" size={24} color="#1e293b" />
+          </TouchableOpacity>
+          <View style={styles.headerCenter}>
+            <Text style={styles.headerTitle}>حضور کارمند</Text>
+            <Text style={styles.headerSubtitle}>{staff.fullName}</Text>
+          </View>
+          <View style={{ width: 24 }} />
+        </View>
 
-      {/* Staff Info */}
-      <View style={styles.staffCard}>
-        <View style={styles.avatar}>
-          <Text style={styles.avatarText}>{staff.fullName.charAt(0)}</Text>
+        {/* Staff Summary Card */}
+        <View style={styles.staffSummaryCard}>
+          <View style={styles.staffSummaryRow}>
+            <View style={styles.staffSummaryItem}>
+              <Text style={styles.staffSummaryValue}>
+                {summary.presentDays}
+              </Text>
+              <Text style={styles.staffSummaryLabel}>حضور</Text>
+            </View>
+            <View style={[styles.staffSummaryItem, styles.staffSummaryDivider]}>
+              <Text style={[styles.staffSummaryValue, { color: "#f59e0b" }]}>
+                {summary.lateDays || 0}
+              </Text>
+              <Text style={styles.staffSummaryLabel}>تأخیر</Text>
+            </View>
+            <View style={[styles.staffSummaryItem, styles.staffSummaryDivider]}>
+              <Text style={[styles.staffSummaryValue, { color: "#ef4444" }]}>
+                {summary.absentDays}
+              </Text>
+              <Text style={styles.staffSummaryLabel}>غیبت</Text>
+            </View>
+            <View style={styles.staffSummaryItem}>
+              <Text style={[styles.staffSummaryValue, { color: "#8b5cf6" }]}>
+                {summary.attendanceRate}%
+              </Text>
+              <Text style={styles.staffSummaryLabel}>نرخ حضور</Text>
+            </View>
+          </View>
         </View>
-        <Text style={styles.staffName}>{staff.fullName}</Text>
-        <Text style={styles.staffDetails}>
-          {staff.position || staff.staffType} • {staff.department || "عمومی"}
-        </Text>
-        {staff.teacherCode && (
-          <Text style={styles.staffDetails}>کد: {staff.teacherCode}</Text>
-        )}
-      </View>
 
-      {/* Summary Stats */}
-      <View style={styles.summaryGrid}>
-        <View style={styles.summaryItem}>
-          <Text style={styles.summaryValue}>{summary.presentDays}</Text>
-          <Text style={styles.summaryLabel}>حضور</Text>
+        {/* Month Navigator */}
+        <View style={styles.monthNavigator}>
+          <TouchableOpacity
+            style={styles.monthNavButton}
+            onPress={goToPreviousMonth}
+          >
+            <Ionicons name="chevron-back" size={24} color="#64748b" />
+          </TouchableOpacity>
+          <View style={styles.monthCenter}>
+            <Text style={styles.monthText}>
+              {shamsiMonthName} {selectedShamsiYear}
+            </Text>
+            <Text style={styles.monthSubtext}>
+              {summary.totalDays} روز • {summary.workingDays} روز کاری
+            </Text>
+          </View>
+          <TouchableOpacity
+            style={styles.monthNavButton}
+            onPress={goToNextMonth}
+          >
+            <Ionicons name="chevron-forward" size={24} color="#64748b" />
+          </TouchableOpacity>
         </View>
-        <View style={styles.summaryItem}>
-          <Text style={styles.summaryValue}>{summary.absentDays}</Text>
-          <Text style={styles.summaryLabel}>غیبت</Text>
-        </View>
-        <View style={styles.summaryItem}>
-          <Text style={[styles.summaryValue, { color: "#8b5cf6" }]}>
-            {summary.attendanceRate}%
-          </Text>
-          <Text style={styles.summaryLabel}>نرخ حضور</Text>
-        </View>
-        <View style={styles.summaryItem}>
-          <Text style={styles.summaryValue}>{summary.totalRecords}</Text>
-          <Text style={styles.summaryLabel}>کل ثبت</Text>
-        </View>
-      </View>
 
-      {/* Month Navigator - Shamsi */}
-      <View style={styles.monthNavigator}>
-        <TouchableOpacity onPress={goToPreviousMonth}>
-          <Ionicons name="chevron-back" size={24} color="#64748b" />
-        </TouchableOpacity>
-        <Text style={styles.monthText}>
-          {shamsiMonthName} {selectedPersianYear}
-        </Text>
-        <TouchableOpacity onPress={goToNextMonth}>
-          <Ionicons name="chevron-forward" size={24} color="#64748b" />
-        </TouchableOpacity>
-      </View>
-
-      {/* Day Grid */}
-      <View style={styles.daysGrid}>
-        <View style={styles.dayHeaders}>
-          <Text style={styles.dayHeader}>ش</Text>
-          <Text style={styles.dayHeader}>ی</Text>
-          <Text style={styles.dayHeader}>د</Text>
-          <Text style={styles.dayHeader}>س</Text>
-          <Text style={styles.dayHeader}>چ</Text>
-          <Text style={styles.dayHeader}>پ</Text>
-          <Text style={styles.dayHeader}>ج</Text>
-        </View>
-        <View style={styles.daysContainer}>
-          {daily.map((day, index) => {
-            // Get the day number from the date
-            const dayNumber = new Date(day.date).getDate();
-            const shamsiDate = toShamsi(new Date(day.date));
-            return (
-              <TouchableOpacity
-                key={index}
-                style={[styles.dayCell, getDayStatus(day.isPresent)]}
-                onPress={() => {
-                  if (day.isPresent && day.recordCount > 0) {
-                    Alert.alert(
-                      `حضور ${dayNumber} ${shamsiMonthName} ${shamsiDate.year}`,
-                      `تعداد ثبت: ${day.recordCount}\n` +
-                        `ورود: ${day.firstScan ? new Date(day.firstScan).toLocaleTimeString("fa-IR") : "—"}\n` +
-                        `خروج: ${day.lastScan ? new Date(day.lastScan).toLocaleTimeString("fa-IR") : "—"}\n` +
-                        `پانچ IN: ${day.punchIn}\n` +
-                        `پانچ OUT: ${day.punchOut}`,
-                    );
-                  }
-                }}
-              >
-                <Text
-                  style={[
-                    styles.dayText,
-                    !day.isPresent && styles.dayTextAbsent,
-                  ]}
-                >
-                  {dayNumber}
-                </Text>
-                {day.isPresent && day.recordCount > 0 && (
-                  <View style={styles.dayBadge}>
-                    <Text style={styles.dayBadgeText}>{day.recordCount}</Text>
+        {/* Punch Summary */}
+        {summary.punchSummary &&
+          Object.keys(summary.punchSummary).length > 0 && (
+            <View style={styles.punchSummaryContainer}>
+              <FlatList
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                data={Object.entries(summary.punchSummary)}
+                renderItem={({ item }) => (
+                  <View style={styles.punchSummaryChip}>
+                    <Text style={styles.punchSummaryChipText}>
+                      {item[0]}: {item[1]}
+                    </Text>
                   </View>
                 )}
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-      </View>
+                keyExtractor={(item) => item[0]}
+                contentContainerStyle={styles.punchSummaryRow}
+              />
+            </View>
+          )}
 
-      {/* Legend */}
-      <View style={styles.legend}>
-        <View style={styles.legendItem}>
-          <View style={[styles.legendDot, { backgroundColor: "#10b981" }]} />
-          <Text style={styles.legendText}>حاضر</Text>
-        </View>
-        <View style={styles.legendItem}>
-          <View style={[styles.legendDot, { backgroundColor: "#ef4444" }]} />
-          <Text style={styles.legendText}>غایب</Text>
-        </View>
+        {/* Days List */}
+        <FlatList
+          data={daily}
+          renderItem={renderDayItem}
+          keyExtractor={(item, index) => `${item.date}-${index}`}
+          contentContainerStyle={styles.listContent}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+          }
+          ListEmptyComponent={
+            <View style={styles.emptyContainer}>
+              <Ionicons name="calendar-outline" size={48} color="#94a3b8" />
+              <Text style={styles.emptyText}>هیچ روزی یافت نشد</Text>
+            </View>
+          }
+        />
       </View>
-    </ScrollView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  safeContainer: {
+    flex: 1,
+    backgroundColor: "#f1f5f9",
+    paddingTop: StatusBar.currentHeight || 0,
+  },
   container: {
     flex: 1,
     backgroundColor: "#f1f5f9",
@@ -655,7 +579,13 @@ const styles = StyleSheet.create({
   errorText: {
     marginTop: 12,
     fontSize: 18,
-    color: "#64748b",
+    color: "#1e293b",
+    fontFamily: "Vazir",
+  },
+  errorSubtext: {
+    marginTop: 4,
+    fontSize: 14,
+    color: "#94a3b8",
     fontFamily: "Vazir",
   },
   retryButton: {
@@ -671,89 +601,89 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     fontFamily: "Vazir",
   },
-  content: {
-    padding: 16,
-    paddingBottom: 40,
-  },
   header: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginBottom: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: "#fff",
+    borderBottomWidth: 1,
+    borderBottomColor: "#e2e8f0",
   },
   backButton: {
     padding: 4,
   },
+  headerCenter: {
+    alignItems: "center",
+  },
   headerTitle: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: "700",
     color: "#1e293b",
     fontFamily: "VazirBold",
   },
-  staffCard: {
-    backgroundColor: "#fff",
-    borderRadius: 16,
-    padding: 20,
-    alignItems: "center",
-    marginBottom: 16,
-  },
-  avatar: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: "#ede9fe",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  avatarText: {
-    fontSize: 24,
-    fontWeight: "700",
-    color: "#8b5cf6",
-    fontFamily: "VazirBold",
-  },
-  staffName: {
-    fontSize: 20,
-    fontWeight: "700",
-    color: "#1e293b",
-    marginTop: 8,
-    fontFamily: "VazirBold",
-  },
-  staffDetails: {
-    fontSize: 14,
+  headerSubtitle: {
+    fontSize: 12,
     color: "#64748b",
     fontFamily: "Vazir",
   },
-  summaryGrid: {
-    flexDirection: "row",
+  staffSummaryCard: {
     backgroundColor: "#fff",
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 16,
+    margin: 12,
+    borderRadius: 12,
+    padding: 12,
+    elevation: 2,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
   },
-  summaryItem: {
-    flex: 1,
+  staffSummaryRow: {
+    flexDirection: "row",
+    justifyContent: "space-around",
+  },
+  staffSummaryItem: {
     alignItems: "center",
+    flex: 1,
   },
-  summaryValue: {
+  staffSummaryDivider: {
+    borderLeftWidth: 1,
+    borderRightWidth: 1,
+    borderColor: "#e2e8f0",
+  },
+  staffSummaryValue: {
     fontSize: 20,
     fontWeight: "700",
     color: "#1e293b",
     fontFamily: "VazirBold",
   },
-  summaryLabel: {
-    fontSize: 12,
-    color: "#64748b",
+  staffSummaryLabel: {
+    fontSize: 11,
+    color: "#94a3b8",
     marginTop: 2,
     fontFamily: "Vazir",
   },
   monthNavigator: {
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
+    justifyContent: "space-between",
     backgroundColor: "#fff",
-    borderRadius: 16,
+    marginHorizontal: 12,
+    marginBottom: 12,
+    borderRadius: 12,
     padding: 12,
-    marginBottom: 16,
+    elevation: 2,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+  },
+  monthNavButton: {
+    padding: 8,
+  },
+  monthCenter: {
+    alignItems: "center",
   },
   monthText: {
     fontSize: 16,
@@ -761,86 +691,152 @@ const styles = StyleSheet.create({
     color: "#1e293b",
     fontFamily: "VazirBold",
   },
-  daysGrid: {
-    backgroundColor: "#fff",
-    borderRadius: 16,
-    padding: 12,
-    marginBottom: 16,
-  },
-  dayHeaders: {
-    flexDirection: "row",
-    justifyContent: "space-around",
-    marginBottom: 8,
-  },
-  dayHeader: {
-    fontSize: 14,
+  monthSubtext: {
+    fontSize: 11,
     color: "#94a3b8",
     fontFamily: "Vazir",
-    width: 40,
-    textAlign: "center",
   },
-  daysContainer: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 4,
+  punchSummaryContainer: {
+    backgroundColor: "#fff",
+    marginHorizontal: 12,
+    marginBottom: 12,
+    borderRadius: 12,
+    padding: 8,
+    elevation: 2,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
   },
-  dayCell: {
-    width: 40,
-    height: 40,
+  punchSummaryRow: {
+    paddingHorizontal: 4,
+    gap: 6,
+  },
+  punchSummaryChip: {
+    backgroundColor: "#f8fafc",
+    paddingHorizontal: 10,
+    paddingVertical: 4,
     borderRadius: 8,
-    justifyContent: "center",
-    alignItems: "center",
-    position: "relative",
+    marginRight: 6,
   },
-  dayPresent: {
-    backgroundColor: "#d1fae5",
-  },
-  dayAbsent: {
-    backgroundColor: "#fef2f2",
-  },
-  dayText: {
-    fontSize: 14,
+  punchSummaryChipText: {
+    fontSize: 12,
     color: "#1e293b",
     fontFamily: "Vazir",
   },
-  dayTextAbsent: {
-    color: "#ef4444",
+  listContent: {
+    paddingHorizontal: 12,
+    paddingBottom: 20,
+    gap: 8,
   },
-  dayBadge: {
-    position: "absolute",
-    top: -4,
-    right: -4,
-    backgroundColor: "#8b5cf6",
-    borderRadius: 8,
-    paddingHorizontal: 4,
-    minWidth: 14,
+  dayCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    padding: 12,
+    borderRightWidth: 4,
+    elevation: 2,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 4,
+  },
+  dayCardLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    minWidth: 80,
+  },
+  dayNumberContainer: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "#f1f5f9",
+    justifyContent: "center",
     alignItems: "center",
   },
-  dayBadgeText: {
-    fontSize: 8,
-    color: "#fff",
-    fontWeight: "700",
+  dayNumberText: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#1e293b",
     fontFamily: "VazirBold",
   },
-  legend: {
-    flexDirection: "row",
-    justifyContent: "center",
-    gap: 16,
-    paddingVertical: 8,
+  dayInfo: {
+    gap: 2,
   },
-  legendItem: {
+  dayDateText: {
+    fontSize: 13,
+    color: "#1e293b",
+    fontFamily: "Vazir",
+  },
+  dayWeekdayText: {
+    fontSize: 11,
+    color: "#94a3b8",
+    fontFamily: "Vazir",
+  },
+  dayCardCenter: {
+    flex: 1,
+    paddingHorizontal: 8,
+    minWidth: 80,
+  },
+  punchTimes: {
+    gap: 2,
+  },
+  punchTimeRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
+    gap: 4,
   },
-  legendDot: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
+  punchTimeText: {
+    fontSize: 12,
+    color: "#1e293b",
+    fontFamily: "Vazir",
   },
-  legendText: {
-    fontSize: 13,
+  noPunchText: {
+    fontSize: 12,
+    color: "#94a3b8",
+    fontFamily: "Vazir",
+  },
+  dayCardRight: {
+    alignItems: "flex-end",
+    gap: 4,
+  },
+  statusBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    gap: 4,
+  },
+  statusBadgeText: {
+    fontSize: 11,
+    fontWeight: "600",
+    fontFamily: "Vazir",
+  },
+  recordCountBadge: {
+    backgroundColor: "#f1f5f9",
+    borderRadius: 8,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    minWidth: 18,
+    alignItems: "center",
+  },
+  recordCountText: {
+    fontSize: 10,
     color: "#64748b",
+    fontWeight: "600",
+    fontFamily: "VazirBold",
+  },
+  emptyContainer: {
+    alignItems: "center",
+    paddingVertical: 60,
+  },
+  emptyText: {
+    marginTop: 16,
+    fontSize: 16,
+    color: "#94a3b8",
     fontFamily: "Vazir",
   },
 });

@@ -1,7 +1,9 @@
-// app/(hr)/attendance/[id].tsx - COMPLETELY REDESIGNED with working month navigation
+// app/(hr)/attendance/[id].tsx - WITH PDF GENERATION
 import { hrApi } from "@/src/config/hrApi";
 import { Ionicons } from "@expo/vector-icons";
+import * as Print from "expo-print";
 import { useLocalSearchParams, useRouter } from "expo-router";
+import * as Sharing from "expo-sharing";
 import { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
@@ -132,6 +134,403 @@ function getStatusIcon(
   return "close-circle";
 }
 
+// ==================== PDF GENERATION ====================
+
+function generateStaffAttendancePDF(
+  data: StaffMonthlyAttendance,
+  monthName: string,
+  year: number,
+): string {
+  const { staff, summary, daily } = data;
+
+  // Generate table rows for all days
+  const tableRows = daily
+    .map((day) => {
+      const isPresent = day.isPresent || false;
+      const isLate = day.isLate || false;
+      const isFriday = day.isFriday || false;
+      const statusText = getStatusText(isPresent, isFriday, isLate);
+      const statusColor = getStatusColor(isPresent, isFriday, isLate);
+
+      return `
+        <tr>
+          <td style="padding: 8px 12px; border-bottom: 1px solid #e2e8f0; text-align: center; font-size: 13px; color: #1e293b;">
+            ${day.dayNumber}
+          </td>
+          <td style="padding: 8px 12px; border-bottom: 1px solid #e2e8f0; text-align: right; font-size: 13px; color: #1e293b;">
+            ${day.dateShamsi}
+          </td>
+          <td style="padding: 8px 12px; border-bottom: 1px solid #e2e8f0; text-align: center; font-size: 13px; color: #64748b;">
+            ${day.dayOfWeek}
+          </td>
+          <td style="padding: 8px 12px; border-bottom: 1px solid #e2e8f0; text-align: center;">
+            <span style="display: inline-block; padding: 3px 12px; border-radius: 12px; background-color: ${statusColor}15; color: ${statusColor}; font-size: 12px; font-weight: 600;">
+              ${statusText}
+            </span>
+          </td>
+          <td style="padding: 8px 12px; border-bottom: 1px solid #e2e8f0; text-align: center; font-size: 13px; color: #1e293b;">
+            ${day.firstScan || "—"}
+          </td>
+          <td style="padding: 8px 12px; border-bottom: 1px solid #e2e8f0; text-align: center; font-size: 13px; color: #1e293b;">
+            ${day.lastScan || "—"}
+          </td>
+          <td style="padding: 8px 12px; border-bottom: 1px solid #e2e8f0; text-align: center; font-size: 13px; color: #64748b;">
+            ${day.recordCount || 0}
+          </td>
+        </tr>
+      `;
+    })
+    .join("");
+
+  // Generate punch summary chips
+  const punchSummaryHTML =
+    summary.punchSummary && Object.keys(summary.punchSummary).length > 0
+      ? Object.entries(summary.punchSummary)
+          .map(
+            ([label, count]) => `
+          <span style="display: inline-block; background: #f1f5f9; padding: 4px 12px; border-radius: 8px; font-size: 12px; color: #1e293b; margin: 2px 4px;">
+            ${label}: ${count}
+          </span>
+        `,
+          )
+          .join("")
+      : "—";
+
+  return `
+    <!DOCTYPE html>
+    <html dir="rtl" lang="fa">
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>گزارش حضور کارمند - ${staff.fullName}</title>
+      <style>
+        @import url('https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;600;700&display=swap');
+        
+        * {
+          margin: 0;
+          padding: 0;
+          box-sizing: border-box;
+        }
+        
+        body {
+          font-family: 'Vazirmatn', 'Vazir', sans-serif;
+          background: #f1f5f9;
+          padding: 20px;
+          direction: rtl;
+        }
+        
+        .report-container {
+          max-width: 1200px;
+          margin: 0 auto;
+          background: #ffffff;
+          border-radius: 16px;
+          box-shadow: 0 4px 24px rgba(0, 0, 0, 0.08);
+          overflow: hidden;
+        }
+        
+        /* Header */
+        .report-header {
+          background: linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%);
+          padding: 30px 40px;
+          color: white;
+        }
+        
+        .report-header h1 {
+          font-size: 24px;
+          font-weight: 700;
+          margin-bottom: 4px;
+          letter-spacing: 0.5px;
+        }
+        
+        .report-header .employee-name {
+          font-size: 18px;
+          opacity: 0.95;
+          font-weight: 500;
+        }
+        
+        .report-header .employee-role {
+          font-size: 14px;
+          opacity: 0.85;
+          margin-top: 4px;
+        }
+        
+        .report-header .month-year {
+          font-size: 14px;
+          opacity: 0.85;
+          margin-top: 6px;
+        }
+        
+        /* Summary Cards */
+        .summary-grid {
+          display: grid;
+          grid-template-columns: repeat(6, 1fr);
+          gap: 12px;
+          padding: 20px 40px;
+          background: #f8fafc;
+          border-bottom: 1px solid #e2e8f0;
+        }
+        
+        .summary-card {
+          background: white;
+          border-radius: 10px;
+          padding: 14px;
+          text-align: center;
+          border-right: 3px solid #8b5cf6;
+          box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+        }
+        
+        .summary-card .value {
+          font-size: 22px;
+          font-weight: 700;
+        }
+        
+        .summary-card .label {
+          font-size: 12px;
+          color: #64748b;
+          margin-top: 3px;
+          font-weight: 500;
+        }
+        
+        .summary-card.present { border-right-color: #10b981; }
+        .summary-card.present .value { color: #10b981; }
+        .summary-card.late { border-right-color: #f59e0b; }
+        .summary-card.late .value { color: #f59e0b; }
+        .summary-card.absent { border-right-color: #ef4444; }
+        .summary-card.absent .value { color: #ef4444; }
+        .summary-card.rate { border-right-color: #8b5cf6; }
+        .summary-card.rate .value { color: #8b5cf6; }
+        .summary-card.working { border-right-color: #3b82f6; }
+        .summary-card.working .value { color: #3b82f6; }
+        .summary-card.records { border-right-color: #ec4899; }
+        .summary-card.records .value { color: #ec4899; }
+        
+        /* Punch Summary */
+        .punch-summary-section {
+          padding: 12px 40px;
+          background: #fff;
+          border-bottom: 1px solid #e2e8f0;
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          flex-wrap: wrap;
+        }
+        
+        .punch-summary-label {
+          font-size: 13px;
+          font-weight: 600;
+          color: #1e293b;
+        }
+        
+        /* Table */
+        .table-section {
+          padding: 24px 40px 40px;
+        }
+        
+        .table-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-bottom: 16px;
+        }
+        
+        .table-title {
+          font-size: 18px;
+          font-weight: 600;
+          color: #1e293b;
+        }
+        
+        .table-subtitle {
+          font-size: 13px;
+          color: #94a3b8;
+        }
+        
+        .table-wrapper {
+          overflow-x: auto;
+          border-radius: 12px;
+          border: 1px solid #e2e8f0;
+        }
+        
+        table {
+          width: 100%;
+          border-collapse: collapse;
+          font-family: 'Vazirmatn', 'Vazir', sans-serif;
+        }
+        
+        thead {
+          background: #f1f5f9;
+        }
+        
+        thead th {
+          padding: 12px 12px;
+          text-align: center;
+          font-size: 13px;
+          font-weight: 600;
+          color: #1e293b;
+          border-bottom: 2px solid #e2e8f0;
+          white-space: nowrap;
+        }
+        
+        thead th:first-child {
+          text-align: center;
+        }
+        
+        tbody tr:hover {
+          background: #f8fafc;
+        }
+        
+        tbody tr:last-child td {
+          border-bottom: none;
+        }
+        
+        tbody td {
+          padding: 8px 12px;
+          border-bottom: 1px solid #e2e8f0;
+          font-size: 13px;
+          color: #1e293b;
+        }
+        
+        tbody td:first-child {
+          text-align: center;
+          font-weight: 500;
+        }
+        
+        /* Footer */
+        .report-footer {
+          padding: 16px 40px;
+          border-top: 1px solid #e2e8f0;
+          display: flex;
+          justify-content: space-between;
+          font-size: 12px;
+          color: #94a3b8;
+          background: #f8fafc;
+        }
+        
+        /* Print Styles */
+        @media print {
+          body {
+            background: white;
+            padding: 0;
+          }
+          .report-container {
+            box-shadow: none;
+            border-radius: 0;
+          }
+          thead {
+            display: table-header-group;
+          }
+          tbody tr {
+            page-break-inside: avoid;
+          }
+        }
+        
+        @media (max-width: 768px) {
+          .summary-grid {
+            grid-template-columns: repeat(3, 1fr);
+            padding: 16px;
+          }
+          .report-header {
+            padding: 20px;
+          }
+          .report-header h1 {
+            font-size: 20px;
+          }
+          .table-section {
+            padding: 16px;
+          }
+          .punch-summary-section {
+            padding: 8px 16px;
+          }
+          .report-footer {
+            flex-direction: column;
+            gap: 6px;
+            text-align: center;
+            padding: 12px 16px;
+          }
+        }
+      </style>
+    </head>
+    <body>
+      <div class="report-container">
+        <!-- Header -->
+        <div class="report-header">
+          <h1>📋 گزارش حضور کارمند</h1>
+          <div class="employee-name">${staff.fullName}</div>
+          <div class="employee-role">${staff.role || staff.position || staff.department || "کارمند"}</div>
+          <div class="month-year">📅 ${monthName} ${year}</div>
+        </div>
+        
+        <!-- Summary Cards -->
+        <div class="summary-grid">
+          <div class="summary-card present">
+            <div class="value">${summary.presentDays}</div>
+            <div class="label">✅ حضور</div>
+          </div>
+          <div class="summary-card late">
+            <div class="value">${summary.lateDays || 0}</div>
+            <div class="label">⏰ تأخیر</div>
+          </div>
+          <div class="summary-card absent">
+            <div class="value">${summary.absentDays}</div>
+            <div class="label">❌ غیبت</div>
+          </div>
+          <div class="summary-card rate">
+            <div class="value">${summary.attendanceRate}%</div>
+            <div class="label">📊 نرخ حضور</div>
+          </div>
+          <div class="summary-card working">
+            <div class="value">${summary.workingDays}</div>
+            <div class="label">📅 روز کاری</div>
+          </div>
+          <div class="summary-card records">
+            <div class="value">${summary.totalRecords}</div>
+            <div class="label">📌 ثبت‌ها</div>
+          </div>
+        </div>
+        
+        <!-- Punch Summary -->
+        <div class="punch-summary-section">
+          <span class="punch-summary-label">📊 جزئیات ثبت‌ها:</span>
+          ${punchSummaryHTML}
+        </div>
+        
+        <!-- Table Section -->
+        <div class="table-section">
+          <div class="table-header">
+            <div class="table-title">📅 روزهای حضور و غیاب</div>
+            <div class="table-subtitle">${daily.length} روز • ${summary.totalRecords} ثبت</div>
+          </div>
+          
+          <div class="table-wrapper">
+            <table>
+              <thead>
+                <tr>
+                  <th>روز</th>
+                  <th>تاریخ</th>
+                  <th>روز هفته</th>
+                  <th>وضعیت</th>
+                  <th>ورود</th>
+                  <th>خروج</th>
+                  <th>تعداد ثبت</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${tableRows}
+              </tbody>
+            </table>
+          </div>
+        </div>
+        
+        <!-- Footer -->
+        <div class="report-footer">
+          <span>📄 تاریخ تولید: ${new Date().toLocaleString("fa-IR")}</span>
+          <span>نسخه PDF • سیستم حضور و غیاب</span>
+        </div>
+      </div>
+    </body>
+    </html>
+  `;
+}
+
 // ==================== COMPONENT ====================
 
 export default function StaffAttendanceDetailScreen() {
@@ -142,6 +541,7 @@ export default function StaffAttendanceDetailScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [data, setData] = useState<StaffMonthlyAttendance | null>(null);
+  const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
 
   // ✅ Current Shamsi month/year
   const getCurrentShamsi = () => {
@@ -201,7 +601,6 @@ export default function StaffAttendanceDetailScreen() {
         setData(response.data);
       } else {
         Alert.alert("خطا", response.message || "داده‌ای برای این ماه یافت نشد");
-        // Set empty data to show "no data" state
         setData(null);
       }
     } catch (error: any) {
@@ -227,7 +626,50 @@ export default function StaffAttendanceDetailScreen() {
     fetchData();
   };
 
-  // ✅ Month navigation functions with logging
+  // ✅ Generate PDF
+  const generatePDF = async () => {
+    if (!data) {
+      Alert.alert("اطلاعات", "داده‌ای برای تولید PDF وجود ندارد");
+      return;
+    }
+
+    setIsGeneratingPDF(true);
+
+    try {
+      const monthName =
+        data.shamsiMonthName || getShamsiMonthName(selectedShamsiMonth);
+      const html = generateStaffAttendancePDF(
+        data,
+        monthName,
+        selectedShamsiYear,
+      );
+
+      const { uri } = await Print.printToFileAsync({
+        html,
+        base64: false,
+        width: 1200,
+      });
+
+      if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(uri, {
+          mimeType: "application/pdf",
+          dialogTitle: `گزارش حضور - ${data.staff.fullName}`,
+          UTI: "com.adobe.pdf",
+        });
+      } else {
+        Alert.alert("موفق", `PDF در مسیر زیر ذخیره شد:\n${uri}`, [
+          { text: "باشه" },
+        ]);
+      }
+    } catch (error) {
+      console.error("PDF generation error:", error);
+      Alert.alert("خطا", "خطا در تولید فایل PDF");
+    } finally {
+      setIsGeneratingPDF(false);
+    }
+  };
+
+  // ✅ Month navigation functions
   const goToPreviousMonth = () => {
     let newMonth = selectedShamsiMonth - 1;
     let newYear = selectedShamsiYear;
@@ -448,7 +890,18 @@ export default function StaffAttendanceDetailScreen() {
             <Text style={styles.headerTitle}>حضور کارمند</Text>
             <Text style={styles.headerSubtitle}>{staff.fullName}</Text>
           </View>
-          <View style={{ width: 24 }} />
+          {/* PDF Button */}
+          <TouchableOpacity
+            style={styles.pdfButton}
+            onPress={generatePDF}
+            disabled={isGeneratingPDF}
+          >
+            {isGeneratingPDF ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <Ionicons name="document-text-outline" size={22} color="#fff" />
+            )}
+          </TouchableOpacity>
         </View>
 
         {/* Staff Summary Card */}
@@ -616,6 +1069,7 @@ const styles = StyleSheet.create({
   },
   headerCenter: {
     alignItems: "center",
+    flex: 1,
   },
   headerTitle: {
     fontSize: 16,
@@ -627,6 +1081,14 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: "#64748b",
     fontFamily: "Vazir",
+  },
+  pdfButton: {
+    backgroundColor: "#dc2626",
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: "center",
+    alignItems: "center",
   },
   staffSummaryCard: {
     backgroundColor: "#fff",

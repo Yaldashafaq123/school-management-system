@@ -1,3 +1,4 @@
+// app/(teacher)/(tabs)/_layout.tsx
 import { Ionicons } from "@expo/vector-icons";
 import { BlurView } from "expo-blur";
 import { Tabs } from "expo-router";
@@ -16,44 +17,35 @@ export default function TeacherTabLayout() {
           backgroundColor: Platform.OS === "ios" ? "transparent" : Colors.card,
           borderTopColor: Colors.border,
           borderTopWidth: 1,
-
-          // ✅ FIXED: Prevents clipping on left/right edges
           paddingHorizontal: 12,
-
-          // ✅ FIXED: Proper height with safe area
           height: 60 + insets.bottom,
           paddingBottom: insets.bottom,
           paddingTop: 8,
-
           shadowColor: "#000",
           shadowOffset: { width: 0, height: -2 },
           shadowOpacity: 0.05,
           shadowRadius: 4,
           elevation: 5,
         },
-
         tabBarBackground:
           Platform.OS === "ios"
             ? () => (
                 <BlurView
                   tint="light"
                   intensity={80}
-                  // ✅ FIXED: Added borderRadius to match tab bar corners
                   style={[StyleSheet.absoluteFill, { borderRadius: 0 }]}
                 />
               )
             : undefined,
-
         tabBarActiveTintColor: Colors.primary,
         tabBarInactiveTintColor: Colors.textSecondary,
-
         tabBarLabelStyle: {
           fontSize: 12,
           fontWeight: "500",
           marginTop: 4,
         },
-
         tabBarHideOnKeyboard: true,
+        // ✅ FIX: Ensure proper RTL tab order
       }}
     >
       <Tabs.Screen

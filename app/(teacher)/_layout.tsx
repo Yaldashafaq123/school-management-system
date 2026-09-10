@@ -19,8 +19,37 @@ export default function TeacherLayout() {
   }
 
   return (
-    <Stack screenOptions={{ headerShown: false }}>
+    <Stack
+      screenOptions={{
+        headerShown: false,
+        // ✅ FIX: Ensure proper RTL support in Stack navigator
+        animation: "slide_from_right",
+        gestureDirection: "horizontal",
+      }}
+    >
       <Stack.Screen name="(tabs)" />
+      {/* ✅ FIX: Add modal screens here if needed */}
+      <Stack.Screen
+        name="attendance/take"
+        options={{
+          presentation: "modal",
+          headerShown: false,
+        }}
+      />
+      <Stack.Screen
+        name="attendance/report"
+        options={{
+          presentation: "modal",
+          headerShown: false,
+        }}
+      />
+      <Stack.Screen
+        name="WeeklyAssessment/WeeklyAssessmentListScreen"
+        options={{
+          presentation: "modal",
+          headerShown: false,
+        }}
+      />
     </Stack>
   );
 }

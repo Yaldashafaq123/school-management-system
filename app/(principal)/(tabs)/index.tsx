@@ -40,6 +40,7 @@ export default function PrincipalDashboardScreen() {
   const [dashboard, setDashboard] = useState<PrincipalDashboard | null>(null);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/immutability
     fetchDashboard();
   }, []);
 
@@ -104,6 +105,13 @@ export default function PrincipalDashboardScreen() {
       description: "تنظیم مقیاس نمرات و معیار قبولی",
       icon: Percent,
       route: "./academic/grading-system",
+      color: "#AF52DE",
+    },
+    {
+      title: " گزارشات و تحلیل‌ها",
+      description: "تنظیم مقیاس نمرات و معیار قبولی معارف",
+      icon: Percent,
+      route: "./reports/index",
       color: "#AF52DE",
     },
   ];
@@ -227,7 +235,7 @@ export default function PrincipalDashboardScreen() {
 
         <TouchableOpacity
           style={styles.quickActionCard}
-          onPress={() => router.push("./reports")}
+          onPress={() => router.push("./report")}
         >
           <View
             style={[styles.quickActionIcon, { backgroundColor: "#ede9fe" }]}

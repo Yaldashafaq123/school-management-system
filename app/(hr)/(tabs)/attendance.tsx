@@ -1,4 +1,4 @@
-// app/(hr)/(tabs)/attendance.tsx - WITH PROPER TABLE PDF REPORT
+// app/(hr)/(tabs)/attendance.tsx - WITH DRIVER FILTER
 import { hrApi } from "@/src/config/hrApi";
 import { Ionicons } from "@expo/vector-icons";
 import * as Print from "expo-print";
@@ -13,7 +13,7 @@ import {
   StyleSheet,
   Text,
   TouchableOpacity,
-  View
+  View,
 } from "react-native";
 
 // ==================== PUNCH TYPE HELPERS ====================
@@ -43,6 +43,21 @@ const PUNCH_ICONS: Record<number, string> = {
   3: "enter-outline",
   4: "timer-outline",
   5: "timer-outline",
+};
+
+// ✅ DRIVER FILTER - Roles to exclude from attendance
+const EXCLUDED_ROLES = ["DRIVER", "STUDENT", "PARENT"];
+
+// ✅ Check if a role should be excluded from attendance
+const isExcludedFromAttendance = (role: string): boolean => {
+  return EXCLUDED_ROLES.includes(role.toUpperCase());
+};
+
+// ✅ Filter out excluded roles from attendance data
+const filterAttendanceData = (
+  data: TodayAttendanceRecord[],
+): TodayAttendanceRecord[] => {
+  return data.filter((item) => !isExcludedFromAttendance(item.role));
 };
 
 function getPunchColor(punchType: number | null | undefined): string {
@@ -121,6 +136,9 @@ type AttendanceSummary = {
   total: number;
   totalPunches: number;
   onTime: number;
+  // ✅ Track excluded count for transparency
+  excludedCount?: number;
+  excludedRoles?: string[];
 };
 
 type TodayAttendanceData = {
@@ -152,6 +170,7 @@ function generateTableReportHTML(
   summary: AttendanceSummary,
   dateShamsi: string,
   schoolStartTime: string,
+  excludedCount: number = 0,
 ): string {
   const getStatusPersian = (status: string) => {
     switch (status) {
@@ -203,13 +222,13 @@ function generateTableReportHTML(
       case "HR":
         return "منابع بشری";
       case "PRINCIPAL":
-        return "مدیر مکتب";
+        return "سر معلم یا معاون تدریسی مکتب";
       default:
         return role;
     }
   };
 
-  // Generate table rows for ALL data
+  // Generate table rows for ALL data (excluding drivers already filtered)
   const tableRows = attendanceData
     .map(
       (item) => `
@@ -243,6 +262,18 @@ function generateTableReportHTML(
   `,
     )
     .join("");
+
+  // ✅ Show excluded note if there are excluded staff
+  const excludedNote =
+    excludedCount > 0
+      ? `
+    <div style="padding: 8px 40px; background: #fef2f2; border-bottom: 1px solid #fecaca; text-align: center;">
+      <span style="font-size: 13px; color: #dc2626;">
+        ⚠️ ${excludedCount} کارمند (راننده) از گزارش حضور و غیاب حذف شده‌اند
+      </span>
+    </div>
+  `
+      : "";
 
   return `
     <!DOCTYPE html>
@@ -341,6 +372,10 @@ function generateTableReportHTML(
           font-size: 12px;
           color: #94a3b8;
         }
+        
+        /* Excluded note */
+        ${excludedNote ? ".excluded-note { padding: 8px 40px; background: #fef2f2; border-bottom: 1px solid #fecaca; text-align: center; }" : ""}
+        .excluded-note-text { font-size: 13px; color: #dc2626; }
         
         /* Summary Cards */
         .summary-grid {
@@ -562,6 +597,8 @@ function generateTableReportHTML(
           <span class="subtext">(تأخیر بعد از ${schoolStartTime})</span>
         </div>
         
+        ${excludedNote}
+        
         <!-- Summary Cards -->
         <div class="summary-grid">
           <div class="summary-card present">
@@ -596,6 +633,16 @@ function generateTableReportHTML(
             <div class="breakdown-dot" style="background: #f59e0b;"></div>
             <span>تأخیر: ${summary.late} نفر</span>
           </div>
+          ${
+            excludedCount > 0
+              ? `
+          <div class="breakdown-item">
+            <div class="breakdown-dot" style="background: #dc2626;"></div>
+            <span>حذف شده: ${excludedCount} نفر (راننده)</span>
+          </div>
+          `
+              : ""
+          }
         </div>
         
         <!-- Table Section -->
@@ -644,6 +691,9 @@ export default function AttendanceScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [attendance, setAttendance] = useState<TodayAttendanceRecord[]>([]);
+  const [rawAttendance, setRawAttendance] = useState<TodayAttendanceRecord[]>(
+    [],
+  );
   const [summary, setSummary] = useState<AttendanceSummary>({
     present: 0,
     absent: 0,
@@ -653,15 +703,43 @@ export default function AttendanceScreen() {
     total: 0,
     totalPunches: 0,
     onTime: 0,
+    excludedCount: 0,
+    excludedRoles: [],
   });
   const [selectedDate] = useState(new Date());
   const [dateShamsi, setDateShamsi] = useState("");
   const [schoolStartTime, setSchoolStartTime] = useState("07:30");
   const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
+  // ✅ Track if filter is active
+  const [filterActive, setFilterActive] = useState(true);
 
   useEffect(() => {
     fetchAttendance();
   }, []);
+
+  // ✅ Helper to calculate summary from filtered data
+  const calculateSummary = (
+    data: TodayAttendanceRecord[],
+  ): AttendanceSummary => {
+    return {
+      present: data.filter((s) => s.status === "present").length,
+      late: data.filter((s) => s.status === "late").length,
+      absent: data.filter((s) => s.status === "absent").length,
+      checkedIn: data.filter((s) => s.hasCheckIn).length,
+      checkedOut: data.filter((s) => s.hasCheckOut).length,
+      total: data.length,
+      totalPunches: data.reduce((sum, s) => sum + s.totalPunches, 0),
+      onTime: data.filter((s) => s.isOnTime).length,
+    };
+  };
+
+  // ✅ Apply filter to attendance data
+  const applyFilter = (data: TodayAttendanceRecord[]) => {
+    if (filterActive) {
+      return filterAttendanceData(data);
+    }
+    return data;
+  };
 
   const fetchAttendance = async () => {
     try {
@@ -669,17 +747,28 @@ export default function AttendanceScreen() {
 
       if (response.success && response.data) {
         const data = response.data as unknown as TodayAttendanceData;
+        const rawData = data.attendance || [];
 
-        setAttendance(data.attendance || []);
+        // Store raw data
+        setRawAttendance(rawData);
+
+        // Apply filter
+        const filteredData = applyFilter(rawData);
+        setAttendance(filteredData);
+
+        // ✅ Calculate excluded count
+        const excludedCount = rawData.length - filteredData.length;
+        const excludedRoles = rawData
+          .filter((item) => isExcludedFromAttendance(item.role))
+          .map((item) => item.role);
+
+        // Calculate summary from filtered data
+        const filteredSummary = calculateSummary(filteredData);
+
         setSummary({
-          present: data.summary?.present || 0,
-          absent: data.summary?.absent || 0,
-          late: data.summary?.late || 0,
-          checkedIn: data.summary?.checkedIn || 0,
-          checkedOut: data.summary?.checkedOut || 0,
-          total: data.summary?.total || 0,
-          totalPunches: data.summary?.totalPunches || 0,
-          onTime: data.summary?.onTime || 0,
+          ...filteredSummary,
+          excludedCount,
+          excludedRoles: [...new Set(excludedRoles)],
         });
 
         if (data.schoolStartTime) {
@@ -707,6 +796,35 @@ export default function AttendanceScreen() {
     fetchAttendance();
   };
 
+  // ✅ Toggle filter
+  const toggleFilter = () => {
+    const newState = !filterActive;
+    setFilterActive(newState);
+
+    if (newState) {
+      // Apply filter
+      const filtered = filterAttendanceData(rawAttendance);
+      setAttendance(filtered);
+      const newSummary = calculateSummary(filtered);
+      setSummary({
+        ...newSummary,
+        excludedCount: rawAttendance.length - filtered.length,
+        excludedRoles: rawAttendance
+          .filter((item) => isExcludedFromAttendance(item.role))
+          .map((item) => item.role),
+      });
+    } else {
+      // Show all data
+      setAttendance(rawAttendance);
+      const newSummary = calculateSummary(rawAttendance);
+      setSummary({
+        ...newSummary,
+        excludedCount: 0,
+        excludedRoles: [],
+      });
+    }
+  };
+
   // Generate PDF with ALL data in table format
   const generatePDF = async () => {
     if (attendance.length === 0) {
@@ -722,6 +840,7 @@ export default function AttendanceScreen() {
         summary,
         dateShamsi || formatShamsiDate(getAfghanistanDate(new Date())),
         schoolStartTime,
+        summary.excludedCount || 0,
       );
 
       // Generate PDF
@@ -784,16 +903,30 @@ export default function AttendanceScreen() {
       statusBgColor = "#d1fae5";
     }
 
+    // ✅ Check if this item is from excluded role
+    const isExcluded = isExcludedFromAttendance(item.role);
+
     return (
-      <View style={[styles.card, item.status === "late" && styles.cardLate]}>
+      <View
+        style={[
+          styles.card,
+          item.status === "late" && styles.cardLate,
+          isExcluded && styles.cardExcluded,
+        ]}
+      >
         <View style={styles.cardLeft}>
           <View
-            style={[styles.avatar, item.status === "late" && styles.avatarLate]}
+            style={[
+              styles.avatar,
+              item.status === "late" && styles.avatarLate,
+              isExcluded && styles.avatarExcluded,
+            ]}
           >
             <Text
               style={[
                 styles.avatarText,
                 item.status === "late" && styles.avatarTextLate,
+                isExcluded && styles.avatarTextExcluded,
               ]}
             >
               {item.name.charAt(0)}
@@ -812,8 +945,16 @@ export default function AttendanceScreen() {
                       ? "منابع بشری"
                       : item.role === "PRINCIPAL"
                         ? "مدیر مکتب"
-                        : item.role}
+                        : item.role === "DRIVER"
+                          ? "راننده 🚗"
+                          : item.role}
             </Text>
+            {isExcluded && (
+              <View style={styles.excludedBadge}>
+                <Ionicons name="eye-off-outline" size={12} color="#dc2626" />
+                <Text style={styles.excludedBadgeText}>حذف شده</Text>
+              </View>
+            )}
             {lastPunch && (
               <View style={styles.punchInfo}>
                 <Ionicons
@@ -899,6 +1040,47 @@ export default function AttendanceScreen() {
         </Text>
       </View>
 
+      {/* ✅ Filter Toggle and Info */}
+      <View style={styles.filterRow}>
+        <TouchableOpacity
+          style={[
+            styles.filterButton,
+            filterActive
+              ? styles.filterButtonActive
+              : styles.filterButtonInactive,
+          ]}
+          onPress={toggleFilter}
+        >
+          <Ionicons
+            name={filterActive ? "eye-off-outline" : "eye-outline"}
+            size={16}
+            color={filterActive ? "#fff" : "#64748b"}
+          />
+          <Text
+            style={[
+              styles.filterButtonText,
+              filterActive
+                ? styles.filterButtonTextActive
+                : styles.filterButtonTextInactive,
+            ]}
+          >
+            {filterActive ? "حذف راننده‌ها" : "نمایش همه"}
+          </Text>
+        </TouchableOpacity>
+        {summary.excludedCount && summary.excludedCount > 0 && (
+          <View style={styles.excludedInfo}>
+            <Ionicons
+              name="information-circle-outline"
+              size={14}
+              color="#dc2626"
+            />
+            <Text style={styles.excludedInfoText}>
+              {summary.excludedCount} راننده حذف شده
+            </Text>
+          </View>
+        )}
+      </View>
+
       {/* Summary Cards - with LATE */}
       <View style={styles.summaryGrid}>
         <View style={[styles.summaryCard, { borderLeftColor: "#10b981" }]}>
@@ -937,6 +1119,16 @@ export default function AttendanceScreen() {
           <View style={[styles.breakdownDot, { backgroundColor: "#f59e0b" }]} />
           <Text style={styles.breakdownText}>تأخیر: {summary.late}</Text>
         </View>
+        {summary.excludedCount && summary.excludedCount > 0 && (
+          <View style={styles.breakdownItem}>
+            <View
+              style={[styles.breakdownDot, { backgroundColor: "#dc2626" }]}
+            />
+            <Text style={[styles.breakdownText, { color: "#dc2626" }]}>
+              حذف شده: {summary.excludedCount}
+            </Text>
+          </View>
+        )}
       </View>
 
       {/* Quick Action Buttons */}
@@ -981,11 +1173,14 @@ export default function AttendanceScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* Attendance List */}
+      {/* List Header */}
       <View style={styles.listHeader}>
         <Text style={styles.listTitle}>لیست حضور و غیاب</Text>
         <Text style={styles.listSubtitle}>
           {summary.total} کارمند • {summary.totalPunches} ثبت
+          {summary.excludedCount &&
+            summary.excludedCount > 0 &&
+            ` • ${summary.excludedCount} حذف شده`}
         </Text>
       </View>
 
@@ -1087,6 +1282,51 @@ const styles = StyleSheet.create({
     color: "#94a3b8",
     fontFamily: "Vazir",
   },
+  // ✅ Filter Row
+  filterRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    backgroundColor: "#fff",
+    borderBottomWidth: 1,
+    borderBottomColor: "#e2e8f0",
+  },
+  filterButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    gap: 6,
+  },
+  filterButtonActive: {
+    backgroundColor: "#dc2626",
+  },
+  filterButtonInactive: {
+    backgroundColor: "#f1f5f9",
+  },
+  filterButtonText: {
+    fontSize: 12,
+    fontFamily: "Vazir",
+  },
+  filterButtonTextActive: {
+    color: "#fff",
+  },
+  filterButtonTextInactive: {
+    color: "#64748b",
+  },
+  excludedInfo: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  excludedInfoText: {
+    fontSize: 12,
+    color: "#dc2626",
+    fontFamily: "Vazir",
+  },
   summaryGrid: {
     flexDirection: "row",
     gap: 10,
@@ -1122,6 +1362,7 @@ const styles = StyleSheet.create({
     gap: 20,
     paddingHorizontal: 12,
     paddingBottom: 8,
+    flexWrap: "wrap",
   },
   breakdownItem: {
     flexDirection: "row",
@@ -1202,6 +1443,10 @@ const styles = StyleSheet.create({
     borderLeftWidth: 4,
     borderLeftColor: "#f59e0b",
   },
+  cardExcluded: {
+    opacity: 0.4,
+    backgroundColor: "#fef2f2",
+  },
   cardLeft: {
     flexDirection: "row",
     alignItems: "center",
@@ -1224,6 +1469,9 @@ const styles = StyleSheet.create({
   avatarLate: {
     backgroundColor: "#fef3c7",
   },
+  avatarExcluded: {
+    backgroundColor: "#fef2f2",
+  },
   avatarText: {
     fontSize: 16,
     fontWeight: "700",
@@ -1232,6 +1480,9 @@ const styles = StyleSheet.create({
   },
   avatarTextLate: {
     color: "#f59e0b",
+  },
+  avatarTextExcluded: {
+    color: "#dc2626",
   },
   staffName: {
     fontSize: 14,
@@ -1306,6 +1557,17 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: "#94a3b8",
     marginTop: 4,
+    fontFamily: "Vazir",
+  },
+  excludedBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 2,
+    marginTop: 1,
+  },
+  excludedBadgeText: {
+    fontSize: 10,
+    color: "#dc2626",
     fontFamily: "Vazir",
   },
 });

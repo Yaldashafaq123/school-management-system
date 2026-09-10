@@ -7,7 +7,6 @@
     "icon": "./assets/images/APP.png",
     "scheme": "farsielearning",
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.yaldashafaq.farsielearning",
@@ -22,7 +21,6 @@
         "backgroundImage": "./assets/images/APP.png",
         "monochromeImage": "./assets/images/APP.png"
       },
-      "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
       "package": "com.yaldashafaq.farsielearning"
     },
@@ -51,7 +49,9 @@
       "expo-secure-store",
       "expo-sharing",
       "expo-status-bar",
-      "expo-asset"
+      "expo-asset",
+      "expo-audio",
+      "expo-video"
     ],
     "experiments": {
       "typedRoutes": true,

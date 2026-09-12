@@ -1,9 +1,9 @@
-// app/(student)/lesson/[id].tsx - FULLY FIXED WITH PLAY BUTTON OVERLAY
+// app/(student)/lesson/[id].tsx - FULLY FIXED (expo-video)
 import { Colors } from "@/constants/Colors";
 import { studentApi } from "@/src/config/studentApi";
 import { Ionicons } from "@expo/vector-icons";
-import { ResizeMode, Video } from "expo-av";
 import { useLocalSearchParams, useRouter } from "expo-router";
+import { useVideoPlayer, VideoView } from "expo-video";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -86,7 +86,6 @@ export default function LessonDetailScreen() {
   const [lesson, setLesson] = useState<LessonDetail | null>(null);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
-  const [isPlaying, setIsPlaying] = useState(false);
   const [showQuizModal, setShowQuizModal] = useState(false);
   const [currentQuiz, setCurrentQuiz] = useState<Quiz | null>(null);
   const [selectedAnswer, setSelectedAnswer] = useState<number | null>(null);
@@ -103,7 +102,6 @@ export default function LessonDetailScreen() {
   const [userStartedVideo, setUserStartedVideo] = useState(false);
   const [videoReady, setVideoReady] = useState(false);
 
-  const videoRef = useRef<Video>(null);
   const youtubePlayerRef = useRef<any>(null);
   const progressSaveInterval = useRef<ReturnType<typeof setInterval> | null>(
     null,
@@ -111,6 +109,46 @@ export default function LessonDetailScreen() {
   const lastSavedPosition = useRef(0);
   const isSeeking = useRef(false);
 
+  // ---------------------------------------------------------------------------
+  // Video source resolution
+  // ---------------------------------------------------------------------------
+  const extractYouTubeId = (url: string): string | null => {
+    if (!url) return null;
+    const patterns = [
+      /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([^&\n?#]+)/,
+      /youtube\.com\/shorts\/([^&\n?#]+)/,
+      /youtube\.com\/live\/([^&\n?#]+)/,
+    ];
+    for (const pattern of patterns) {
+      const match = url.match(pattern);
+      if (match && match[1]) return match[1];
+    }
+    return null;
+  };
+
+  const getVideoSource = (url: string) => {
+    if (!url) return null;
+    if (url.includes("youtube.com") || url.includes("youtu.be")) {
+      const videoId = extractYouTubeId(url);
+      if (videoId) return { type: "youtube", videoId };
+    }
+    if (url.match(/\.(mp4|mov|m4v|webm)$/i)) {
+      return { type: "video", uri: url };
+    }
+    return null;
+  };
+
+  const videoSource = lesson?.videoUrl ? getVideoSource(lesson.videoUrl) : null;
+  const isYouTube = videoSource?.type === "youtube";
+  const isDirectVideo = videoSource?.type === "video";
+  const directVideoUri =
+    isDirectVideo && videoSource && "uri" in videoSource
+      ? videoSource.uri
+      : null;
+
+  // ---------------------------------------------------------------------------
+  // Load lesson detail (declared FIRST so everything else can reference it)
+  // ---------------------------------------------------------------------------
   const loadLessonDetail = useCallback(async () => {
     try {
       setLoading(true);
@@ -131,12 +169,9 @@ export default function LessonDetailScreen() {
     }
   }, [id]);
 
-  useEffect(() => {
-    if (id) {
-      loadLessonDetail();
-    }
-  }, [id, loadLessonDetail]);
-
+  // ---------------------------------------------------------------------------
+  // Save progress
+  // ---------------------------------------------------------------------------
   const handleSaveProgress = useCallback(
     async (position: number) => {
       try {
@@ -149,7 +184,48 @@ export default function LessonDetailScreen() {
     [id],
   );
 
-  // Save progress periodically
+  // ---------------------------------------------------------------------------
+  // handleComplete (declared BEFORE effects that call it)
+  // ---------------------------------------------------------------------------
+  const handleComplete = useCallback(async () => {
+    if (lesson?.isCompleted) return;
+    try {
+      const response = (await studentApi.completeLesson(
+        Number(id),
+        currentTime,
+      )) as ApiResponse<any>;
+      if (response.success) {
+        Alert.alert("موفقیت", "درس با موفقیت تکمیل شد!");
+        loadLessonDetail();
+      }
+    } catch (err) {
+      console.error("Error completing lesson:", err);
+    }
+  }, [lesson?.isCompleted, id, currentTime, loadLessonDetail]);
+
+  // ---------------------------------------------------------------------------
+  // expo-video player — source + initial position set in the setup callback
+  // (allowed by the immutability rule because it runs inside the hook)
+  // ---------------------------------------------------------------------------
+  const player = useVideoPlayer(directVideoUri, (p) => {
+    p.loop = false;
+    if (lesson?.lastPosition && lesson.lastPosition > 0) {
+      p.currentTime = lesson.lastPosition;
+    }
+  });
+
+  // ---------------------------------------------------------------------------
+  // Load lesson on mount / id change
+  // ---------------------------------------------------------------------------
+  useEffect(() => {
+    if (!id) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    loadLessonDetail();
+  }, [id, loadLessonDetail]);
+
+  // ---------------------------------------------------------------------------
+  // Periodic progress save
+  // ---------------------------------------------------------------------------
   useEffect(() => {
     progressSaveInterval.current = setInterval(() => {
       if (
@@ -166,120 +242,82 @@ export default function LessonDetailScreen() {
         clearInterval(progressSaveInterval.current);
         progressSaveInterval.current = null;
       }
-      if (currentTime > 0) {
-        handleSaveProgress(currentTime);
-      }
+      if (currentTime > 0) handleSaveProgress(currentTime);
     };
   }, [currentTime, handleSaveProgress]);
 
-  const handlePlaybackStatusUpdate = (status: any) => {
-    if (status.isLoaded) {
+  // ---------------------------------------------------------------------------
+  // expo-video event listeners
+  // ---------------------------------------------------------------------------
+  useEffect(() => {
+    if (!player || !isDirectVideo) return;
+
+    const timeSub = player.addListener("timeUpdate", (payload) => {
       if (!isSeeking.current) {
-        setCurrentTime(status.positionMillis / 1000);
+        setCurrentTime(payload.currentTime);
       }
-      setDuration(status.durationMillis / 1000);
+      const d = player.duration || 0;
+      setDuration(d);
 
-      if (!lesson?.isCompleted && status.durationMillis > 0) {
-        const progress = status.positionMillis / status.durationMillis;
-        if (progress >= 0.9) {
-          handleComplete();
-        }
+      if (!lesson?.isCompleted && d > 0 && payload.currentTime / d >= 0.9) {
+        handleComplete();
       }
-    }
-  };
+    });
 
-  const onYouTubeStateChange = useCallback((state: string) => {
-    console.log("YouTube state:", state);
-    if (state === "ended") {
+    const statusSub = player.addListener("statusChange", (payload) => {
+      if (payload.status === "readyToPlay") {
+        setVideoReady(true);
+        setVideoError(false);
+      } else if (payload.status === "error") {
+        setVideoError(true);
+      }
+    });
+
+    const endSub = player.addListener("playToEnd", () => {
       handleComplete();
-    } else if (state === "playing") {
-      setIsPlaying(true);
-      setVideoReady(true);
-    } else if (state === "paused") {
-      setIsPlaying(false);
-    } else if (state === "buffering") {
-      console.log("Buffering...");
-    } else if (state === "unstarted") {
-      setVideoReady(false);
-    }
-  }, []);
+    });
+
+    return () => {
+      timeSub.remove();
+      statusSub.remove();
+      endSub.remove();
+    };
+  }, [player, isDirectVideo, lesson?.isCompleted, handleComplete]);
+
+  // ---------------------------------------------------------------------------
+  // YouTube handlers
+  // ---------------------------------------------------------------------------
+  const onYouTubeStateChange = useCallback(
+    (state: string) => {
+      if (state === "ended") handleComplete();
+      else if (state === "playing") setVideoReady(true);
+      else if (state === "unstarted") setVideoReady(false);
+    },
+    [handleComplete],
+  );
 
   const onYouTubeProgress = useCallback(
     (progress: { currentTime: number; duration: number }) => {
       if (!isSeeking.current && videoReady) {
         setCurrentTime(progress.currentTime);
         setDuration(progress.duration);
-
-        if (!lesson?.isCompleted && progress.duration > 0) {
-          const watchProgress = progress.currentTime / progress.duration;
-          if (watchProgress >= 0.9) {
-            handleComplete();
-          }
+        if (
+          !lesson?.isCompleted &&
+          progress.duration > 0 &&
+          progress.currentTime / progress.duration >= 0.9
+        ) {
+          handleComplete();
         }
       }
     },
-    [lesson?.isCompleted, videoReady],
+    [lesson?.isCompleted, videoReady, handleComplete],
   );
 
-  const handleComplete = useCallback(async () => {
-    if (lesson?.isCompleted) return;
-
-    try {
-      const response = (await studentApi.completeLesson(
-        Number(id),
-        currentTime,
-      )) as ApiResponse<any>;
-      if (response.success) {
-        Alert.alert("موفقیت", "درس با موفقیت تکمیل شد!");
-        loadLessonDetail();
-      }
-    } catch (err) {
-      console.error("Error completing lesson:", err);
-    }
-  }, [lesson?.isCompleted, id, currentTime, loadLessonDetail]);
-
-  const extractYouTubeId = (url: string): string | null => {
-    if (!url) return null;
-
-    const patterns = [
-      /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([^&\n?#]+)/,
-      /youtube\.com\/shorts\/([^&\n?#]+)/,
-      /youtube\.com\/live\/([^&\n?#]+)/,
-    ];
-
-    for (const pattern of patterns) {
-      const match = url.match(pattern);
-      if (match && match[1]) {
-        return match[1];
-      }
-    }
-    return null;
-  };
-
-  const getVideoSource = (url: string) => {
-    if (!url) return null;
-
-    if (url.includes("youtube.com") || url.includes("youtu.be")) {
-      const videoId = extractYouTubeId(url);
-      if (videoId) {
-        return { type: "youtube", videoId };
-      }
-    }
-
-    if (url.match(/\.(mp4|mov|m4v|webm)$/i)) {
-      return { type: "video", uri: url };
-    }
-
-    return null;
-  };
-
-  const videoSource = lesson?.videoUrl ? getVideoSource(lesson.videoUrl) : null;
-  const isYouTube = videoSource?.type === "youtube";
-  const isDirectVideo = videoSource?.type === "video";
-
+  // ---------------------------------------------------------------------------
+  // Quiz handlers
+  // ---------------------------------------------------------------------------
   const handleQuizSubmit = useCallback(async () => {
     if (selectedAnswer === null || !currentQuiz) return;
-
     try {
       const response = (await studentApi.submitQuizAnswer(
         Number(id),
@@ -308,9 +346,11 @@ export default function LessonDetailScreen() {
     }
   }, [selectedAnswer, currentQuiz, id, loadLessonDetail]);
 
+  // ---------------------------------------------------------------------------
+  // Comment handlers
+  // ---------------------------------------------------------------------------
   const handleAddComment = useCallback(async () => {
     if (!newComment.trim()) return;
-
     setSubmitting(true);
     try {
       const response = (await studentApi.addLessonComment(
@@ -343,11 +383,16 @@ export default function LessonDetailScreen() {
     if (!seconds || isNaN(seconds)) return "00:00";
     const mins = Math.floor(seconds / 60);
     const secs = Math.floor(seconds % 60);
-    return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
+    return `${mins.toString().padStart(2, "0")}:${secs
+      .toString()
+      .padStart(2, "0")}`;
   };
 
   const progressPercentage = duration > 0 ? (currentTime / duration) * 100 : 0;
 
+  // ---------------------------------------------------------------------------
+  // Render
+  // ---------------------------------------------------------------------------
   if (loading) {
     return (
       <SafeAreaView style={styles.container}>
@@ -379,9 +424,9 @@ export default function LessonDetailScreen() {
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        {/* Video Player with Play Button Overlay */}
+        {/* Video Player */}
         <View style={styles.videoContainer}>
-          {isYouTube && videoSource?.videoId ? (
+          {isYouTube && videoSource && "videoId" in videoSource ? (
             <View style={styles.videoWrapper}>
               {!userStartedVideo && (
                 <TouchableOpacity
@@ -420,17 +465,13 @@ export default function LessonDetailScreen() {
               />
             </View>
           ) : isDirectVideo && !videoError ? (
-            <Video
-              ref={videoRef}
-              source={{ uri: videoSource.uri }}
+            <VideoView
               style={styles.video}
-              resizeMode={ResizeMode.CONTAIN}
-              shouldPlay={false}
-              isLooping={false}
-              useNativeControls={true}
-              onPlaybackStatusUpdate={handlePlaybackStatusUpdate}
-              onError={() => setVideoError(true)}
-              positionMillis={currentTime * 1000}
+              player={player}
+              nativeControls
+              contentFit="contain"
+              fullscreenOptions={{ enable: true }}
+              allowsPictureInPicture
             />
           ) : (
             <View style={[styles.videoContainer, styles.noVideoContainer]}>
@@ -447,7 +488,7 @@ export default function LessonDetailScreen() {
             </View>
           )}
 
-          {/* Custom Progress Bar - for direct videos only */}
+          {/* Custom Progress Bar - direct video only */}
           {isDirectVideo && !videoError && (
             <View style={styles.progressBarContainer}>
               <View style={styles.progressBarBackground}>
@@ -509,7 +550,6 @@ export default function LessonDetailScreen() {
             )}
           </View>
 
-          {/* Course Progress */}
           <View style={styles.courseProgressContainer}>
             <View style={styles.progressHeader}>
               <Text style={styles.progressTitle}>پیشرفت دوره</Text>
@@ -527,7 +567,6 @@ export default function LessonDetailScreen() {
             </View>
           </View>
 
-          {/* Tabs */}
           <View style={styles.tabsContainer}>
             {(["overview", "resources", "comments"] as const).map((tab) => (
               <TouchableOpacity
@@ -550,7 +589,6 @@ export default function LessonDetailScreen() {
             ))}
           </View>
 
-          {/* Tab Content */}
           <View style={styles.tabContent}>
             {activeTab === "overview" && (
               <View>
@@ -823,23 +861,10 @@ export default function LessonDetailScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: Colors.background,
-  },
-  content: {
-    flex: 1,
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  loadingText: {
-    marginTop: 16,
-    fontSize: 16,
-    color: Colors.textSecondary,
-  },
+  container: { flex: 1, backgroundColor: Colors.background },
+  content: { flex: 1 },
+  loadingContainer: { flex: 1, justifyContent: "center", alignItems: "center" },
+  loadingText: { marginTop: 16, fontSize: 16, color: Colors.textSecondary },
   errorContainer: {
     flex: 1,
     justifyContent: "center",
@@ -858,25 +883,14 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderRadius: 8,
   },
-  backButtonText: {
-    color: "#fff",
-    fontSize: 16,
-    fontWeight: "bold",
-  },
+  backButtonText: { color: "#fff", fontSize: 16, fontWeight: "bold" },
   videoContainer: {
     width: "100%",
     height: width * 0.56,
     backgroundColor: "#000",
   },
-  videoWrapper: {
-    flex: 1,
-    position: "relative",
-  },
-  video: {
-    flex: 1,
-    width: "100%",
-    height: "100%",
-  },
+  videoWrapper: { flex: 1, position: "relative" },
+  video: { flex: 1, width: "100%", height: "100%" },
   playOverlay: {
     position: "absolute",
     top: 0,
@@ -889,9 +903,7 @@ const styles = StyleSheet.create({
     zIndex: 10,
     borderRadius: 8,
   },
-  playButtonContainer: {
-    marginBottom: 12,
-  },
+  playButtonContainer: { marginBottom: 12 },
   playText: {
     color: "#fff",
     fontSize: 16,
@@ -913,19 +925,13 @@ const styles = StyleSheet.create({
     borderRadius: 1.5,
     overflow: "hidden",
   },
-  progressBarFill: {
-    height: "100%",
-    backgroundColor: Colors.primary,
-  },
+  progressBarFill: { height: "100%", backgroundColor: Colors.primary },
   timeLabels: {
     flexDirection: "row",
     justifyContent: "space-between",
     marginTop: 4,
   },
-  timeText: {
-    fontSize: 11,
-    color: "#fff",
-  },
+  timeText: { fontSize: 11, color: "#fff" },
   noVideoContainer: {
     flex: 1,
     justifyContent: "center",
@@ -937,9 +943,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: Colors.textSecondary,
   },
-  infoContainer: {
-    padding: 16,
-  },
+  infoContainer: { padding: 16 },
   lessonTitle: {
     fontSize: 20,
     fontWeight: "bold",
@@ -953,15 +957,8 @@ const styles = StyleSheet.create({
     gap: 12,
     marginBottom: 16,
   },
-  metaItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-  },
-  metaText: {
-    fontSize: 13,
-    color: Colors.textSecondary,
-  },
+  metaItem: { flexDirection: "row", alignItems: "center", gap: 4 },
+  metaText: { fontSize: 13, color: Colors.textSecondary },
   completedBadge: {
     flexDirection: "row",
     alignItems: "center",
@@ -971,10 +968,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     gap: 4,
   },
-  completedText: {
-    fontSize: 11,
-    color: Colors.success,
-  },
+  completedText: { fontSize: 11, color: Colors.success },
   courseProgressContainer: {
     backgroundColor: Colors.card,
     padding: 12,
@@ -988,10 +982,7 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     marginBottom: 8,
   },
-  progressTitle: {
-    fontSize: 13,
-    color: Colors.textSecondary,
-  },
+  progressTitle: { fontSize: 13, color: Colors.textSecondary },
   progressPercentage: {
     fontSize: 13,
     fontWeight: "bold",
@@ -1016,34 +1007,18 @@ const styles = StyleSheet.create({
     borderColor: Colors.border,
     marginBottom: 16,
   },
-  tab: {
-    flex: 1,
-    paddingVertical: 12,
-    alignItems: "center",
-  },
-  activeTab: {
-    backgroundColor: Colors.primary,
-    borderRadius: 8,
-  },
-  tabText: {
-    fontSize: 14,
-    color: Colors.text,
-  },
-  activeTabText: {
-    color: "#fff",
-  },
-  tabContent: {
-    minHeight: 200,
-  },
+  tab: { flex: 1, paddingVertical: 12, alignItems: "center" },
+  activeTab: { backgroundColor: Colors.primary, borderRadius: 8 },
+  tabText: { fontSize: 14, color: Colors.text },
+  activeTabText: { color: "#fff" },
+  tabContent: { minHeight: 200 },
   description: {
     fontSize: 14,
     color: Colors.text,
     lineHeight: 22,
     marginBottom: 20,
   },
-  quizzesSection: {
-    marginTop: 8,
-  },
+  quizzesSection: { marginTop: 8 },
   sectionTitle: {
     fontSize: 16,
     fontWeight: "bold",
@@ -1061,24 +1036,15 @@ const styles = StyleSheet.create({
     gap: 12,
     marginBottom: 8,
   },
-  quizInfo: {
-    flex: 1,
-  },
+  quizInfo: { flex: 1 },
   quizTitle: {
     fontSize: 14,
     fontWeight: "600",
     color: Colors.text,
     marginBottom: 2,
   },
-  quizQuestion: {
-    fontSize: 12,
-    color: Colors.textSecondary,
-  },
-  emptyState: {
-    alignItems: "center",
-    justifyContent: "center",
-    padding: 40,
-  },
+  quizQuestion: { fontSize: 12, color: Colors.textSecondary },
+  emptyState: { alignItems: "center", justifyContent: "center", padding: 40 },
   emptyStateText: {
     marginTop: 12,
     fontSize: 14,
@@ -1103,23 +1069,10 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
-  attachmentInfo: {
-    flex: 1,
-  },
-  attachmentTitle: {
-    fontSize: 14,
-    fontWeight: "500",
-    color: Colors.text,
-  },
-  attachmentSize: {
-    fontSize: 11,
-    color: Colors.textSecondary,
-  },
-  addCommentContainer: {
-    flexDirection: "row",
-    gap: 12,
-    marginBottom: 16,
-  },
+  attachmentInfo: { flex: 1 },
+  attachmentTitle: { fontSize: 14, fontWeight: "500", color: Colors.text },
+  attachmentSize: { fontSize: 11, color: Colors.textSecondary },
+  addCommentContainer: { flexDirection: "row", gap: 12, marginBottom: 16 },
   commentInput: {
     flex: 1,
     backgroundColor: Colors.card,
@@ -1139,28 +1092,11 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     justifyContent: "center",
   },
-  submitButtonDisabled: {
-    opacity: 0.5,
-  },
-  submitButtonText: {
-    color: "#fff",
-    fontSize: 14,
-    fontWeight: "bold",
-  },
-  commentCard: {
-    flexDirection: "row",
-    gap: 12,
-    marginBottom: 16,
-  },
-  commentAvatar: {
-    width: 40,
-    alignItems: "center",
-  },
-  avatarImage: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-  },
+  submitButtonDisabled: { opacity: 0.5 },
+  submitButtonText: { color: "#fff", fontSize: 14, fontWeight: "bold" },
+  commentCard: { flexDirection: "row", gap: 12, marginBottom: 16 },
+  commentAvatar: { width: 40, alignItems: "center" },
+  avatarImage: { width: 40, height: 40, borderRadius: 20 },
   commentContent: {
     flex: 1,
     backgroundColor: Colors.card,
@@ -1175,15 +1111,8 @@ const styles = StyleSheet.create({
     color: Colors.text,
     marginBottom: 4,
   },
-  commentText: {
-    fontSize: 13,
-    color: Colors.text,
-    marginBottom: 6,
-  },
-  commentDate: {
-    fontSize: 11,
-    color: Colors.textSecondary,
-  },
+  commentText: { fontSize: 13, color: Colors.text, marginBottom: 6 },
+  commentDate: { fontSize: 11, color: Colors.textSecondary },
   navigationContainer: {
     flexDirection: "row",
     gap: 12,
@@ -1206,16 +1135,8 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.primary,
     borderColor: Colors.primary,
   },
-  navButtonText: {
-    fontSize: 14,
-    fontWeight: "500",
-    color: Colors.text,
-  },
-  navButtonTextPrimary: {
-    fontSize: 14,
-    fontWeight: "500",
-    color: "#fff",
-  },
+  navButtonText: { fontSize: 14, fontWeight: "500", color: Colors.text },
+  navButtonTextPrimary: { fontSize: 14, fontWeight: "500", color: "#fff" },
   modalOverlay: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.5)",
@@ -1237,15 +1158,8 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: Colors.border,
   },
-  modalTitle: {
-    fontSize: 18,
-    fontWeight: "bold",
-    color: Colors.text,
-  },
-  modalBody: {
-    padding: 16,
-    maxHeight: 400,
-  },
+  modalTitle: { fontSize: 18, fontWeight: "bold", color: Colors.text },
+  modalBody: { padding: 16, maxHeight: 400 },
   quizQuestionText: {
     fontSize: 18,
     fontWeight: "bold",
@@ -1283,28 +1197,15 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     backgroundColor: Colors.primary,
   },
-  quizOptionText: {
-    flex: 1,
-    fontSize: 14,
-    color: Colors.text,
-  },
+  quizOptionText: { flex: 1, fontSize: 14, color: Colors.text },
   modalSubmitButton: {
     backgroundColor: Colors.primary,
     padding: 16,
     alignItems: "center",
   },
-  modalSubmitButtonDisabled: {
-    opacity: 0.5,
-  },
-  modalSubmitButtonText: {
-    color: "#fff",
-    fontSize: 16,
-    fontWeight: "bold",
-  },
-  quizResultContainer: {
-    padding: 40,
-    alignItems: "center",
-  },
+  modalSubmitButtonDisabled: { opacity: 0.5 },
+  modalSubmitButtonText: { color: "#fff", fontSize: 16, fontWeight: "bold" },
+  quizResultContainer: { padding: 40, alignItems: "center" },
   quizResultText: {
     fontSize: 18,
     fontWeight: "bold",

@@ -1,4 +1,5 @@
-// app/(principal)/students/[id].tsx - FIXED
+// app/(principal)/students/[id].tsx
+import DisciplineReportForm from "@/components/discipline/DisciplineReportForm";
 import {
   formatCurrency,
   getStudentStatusColor,
@@ -31,7 +32,7 @@ interface StudentDetailType {
     id: number;
     name: string;
     section: string;
-    status?: string; // ✅ Added status as optional
+    status?: string;
     Teacher: {
       id: number;
       User: {
@@ -67,12 +68,13 @@ export default function StudentDetailScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [student, setStudent] = useState<StudentDetailType | null>(null);
 
-  // ✅ Define fetchStudent as a separate function
+  // ✅ State جدید برای مودال نظم و انضباط
+  const [showDisciplineModal, setShowDisciplineModal] = useState(false);
+
   const fetchStudent = async () => {
     try {
       const response = await principalApi.getStudentById(Number(id));
       if (response.success) {
-        // ✅ Map the response to our local type
         const data = response.data;
         setStudent({
           id: data.id,
@@ -107,9 +109,9 @@ export default function StudentDetailScreen() {
     }
   };
 
-  // ✅ Add fetchStudent to dependency array
   useEffect(() => {
     if (id) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       fetchStudent();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -137,149 +139,199 @@ export default function StudentDetailScreen() {
     );
   }
 
-  // Get status from student or from class
   const studentStatus = student.status || student.Class?.status || "ACTIVE";
 
   return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={styles.content}
-      refreshControl={
-        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-      }
-    >
-      {/* Header */}
-      <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
-        <Ionicons name="arrow-back" size={24} color="#1e293b" />
-      </TouchableOpacity>
+    <>
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={styles.content}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        }
+      >
+        {/* Header */}
+        <TouchableOpacity
+          style={styles.backButton}
+          onPress={() => router.back()}
+        >
+          <Ionicons name="arrow-back" size={24} color="#1e293b" />
+        </TouchableOpacity>
 
-      {/* Profile Card */}
-      <View style={styles.profileCard}>
-        <View style={styles.avatarContainer}>
-          <Text style={styles.avatarText}>
-            {student.User.fullName.charAt(0)}
-          </Text>
-        </View>
-        <Text style={styles.studentName}>{student.User.fullName}</Text>
-        <Text style={styles.classInfo}>
-          {student.Class?.name || "بدون صنف"} {student.Class?.section || ""}
-        </Text>
-        <View style={styles.statusBadge}>
-          <Text
-            style={[
-              styles.statusText,
-              { color: getStudentStatusColor(studentStatus) },
-            ]}
-          >
-            {getStudentStatusText(studentStatus)}
-          </Text>
-        </View>
-      </View>
-
-      {/* Contact Info */}
-      <View style={styles.infoCard}>
-        <Text style={styles.sectionTitle}>اطلاعات تماس</Text>
-        <View style={styles.infoRow}>
-          <Ionicons name="mail-outline" size={20} color="#64748b" />
-          <Text style={styles.infoText}>{student.User.email}</Text>
-        </View>
-        <View style={styles.infoRow}>
-          <Ionicons name="call-outline" size={20} color="#64748b" />
-          <Text style={styles.infoText}>
-            {student.User.phone || "ثبت نشده"}
-          </Text>
-        </View>
-        {student.studentNumber && (
-          <View style={styles.infoRow}>
-            <Ionicons name="card-outline" size={20} color="#64748b" />
-            <Text style={styles.infoText}>
-              شماره شاگرد: {student.studentNumber}
+        {/* Profile Card */}
+        <View style={styles.profileCard}>
+          <View style={styles.avatarContainer}>
+            <Text style={styles.avatarText}>
+              {student.User.fullName.charAt(0)}
             </Text>
           </View>
-        )}
-      </View>
-
-      {/* Fee Summary */}
-      {student.feeSummary && (
-        <View style={styles.infoCard}>
-          <Text style={styles.sectionTitle}>خلاصه فیس</Text>
-          <View style={styles.feeGrid}>
-            <View style={styles.feeItem}>
-              <Text style={styles.feeLabel}>کل فیس</Text>
-              <Text style={styles.feeValue}>
-                {formatCurrency(student.feeSummary.totalFees || 0)}
-              </Text>
-            </View>
-            <View style={styles.feeItem}>
-              <Text style={styles.feeLabel}>پرداخت شده</Text>
-              <Text style={[styles.feeValue, { color: "#10b981" }]}>
-                {formatCurrency(student.feeSummary.totalPaid || 0)}
-              </Text>
-            </View>
-            <View style={styles.feeItem}>
-              <Text style={styles.feeLabel}>باقیمانده</Text>
-              <Text
-                style={[
-                  styles.feeValue,
-                  {
-                    color:
-                      student.feeSummary.totalBalance > 0
-                        ? "#ef4444"
-                        : "#10b981",
-                  },
-                ]}
-              >
-                {formatCurrency(student.feeSummary.totalBalance || 0)}
-              </Text>
-            </View>
-            <View style={styles.feeItem}>
-              <Text style={styles.feeLabel}>نرخ وصول</Text>
-              <Text style={[styles.feeValue, { color: "#8b5cf6" }]}>
-                {student.feeSummary.collectionRate || 0}%
-              </Text>
-            </View>
+          <Text style={styles.studentName}>{student.User.fullName}</Text>
+          <Text style={styles.classInfo}>
+            {student.Class?.name || "بدون صنف"} {student.Class?.section || ""}
+          </Text>
+          <View style={styles.statusBadge}>
+            <Text
+              style={[
+                styles.statusText,
+                { color: getStudentStatusColor(studentStatus) },
+              ]}
+            >
+              {getStudentStatusText(studentStatus)}
+            </Text>
           </View>
         </View>
-      )}
 
-      {/* Parents */}
-      {student.ParentStudent && student.ParentStudent.length > 0 && (
+        {/* Contact Info */}
         <View style={styles.infoCard}>
-          <Text style={styles.sectionTitle}>والدین</Text>
-          {student.ParentStudent.map((ps: any, index: number) => (
-            <View key={ps.Parent?.id || index} style={styles.parentItem}>
-              <Text style={styles.parentName}>
-                {ps.Parent?.User?.fullName || "نامشخص"}
-              </Text>
-              <Text style={styles.parentPhone}>
-                {ps.Parent?.User?.phone || ""}
-              </Text>
-              <Text style={styles.parentRelation}>
-                {ps.Parent?.relationship || "والد"}
+          <Text style={styles.sectionTitle}>اطلاعات تماس</Text>
+          <View style={styles.infoRow}>
+            <Ionicons name="mail-outline" size={20} color="#64748b" />
+            <Text style={styles.infoText}>{student.User.email}</Text>
+          </View>
+          <View style={styles.infoRow}>
+            <Ionicons name="call-outline" size={20} color="#64748b" />
+            <Text style={styles.infoText}>
+              {student.User.phone || "ثبت نشده"}
+            </Text>
+          </View>
+          {student.studentNumber && (
+            <View style={styles.infoRow}>
+              <Ionicons name="card-outline" size={20} color="#64748b" />
+              <Text style={styles.infoText}>
+                شماره شاگرد: {student.studentNumber}
               </Text>
             </View>
-          ))}
+          )}
         </View>
-      )}
 
-      {/* Actions */}
-      <View style={styles.actionContainer}>
-        <TouchableOpacity
-          style={[styles.actionButton, { backgroundColor: "#3b82f6" }]}
-          onPress={() => router.push(`./${id}/edit` as any)}
-        >
-          <Ionicons name="create-outline" size={20} color="#fff" />
-          <Text style={styles.actionText}>ویرایش اطلاعات</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.actionButton, { backgroundColor: "#8b5cf6" }]}
-          onPress={() => router.push(`./${id}/promote` as any)}
-        >
-          <Ionicons name="arrow-up-outline" size={20} color="#fff" />
-          <Text style={styles.actionText}>ارتقا صنف</Text>
-        </TouchableOpacity>
-      </View>
-    </ScrollView>
+        {/* ============================================ */}
+        {/* ✅ دکمه‌های اقدام اصلی */}
+        {/* ============================================ */}
+        <View style={styles.infoCard}>
+          <Text style={styles.sectionTitle}>اقدامات</Text>
+
+          {/* درج تخلف */}
+          <TouchableOpacity
+            style={[styles.bigActionButton, { backgroundColor: "#ef4444" }]}
+            onPress={() => setShowDisciplineModal(true)}
+          >
+            <Ionicons name="warning" size={22} color="#fff" />
+            <Text style={styles.bigActionText}>درج مورد انضباطی</Text>
+          </TouchableOpacity>
+
+          {/* گزارش کامل */}
+          <TouchableOpacity
+            style={[
+              styles.bigActionButton,
+              { backgroundColor: "#3b82f6", marginTop: 10 },
+            ]}
+            onPress={() => router.push(`./${id}/discipline-report` as any)}
+          >
+            <Ionicons name="stats-chart" size={22} color="#fff" />
+            <Text style={styles.bigActionText}>گزارش کامل انضباطی</Text>
+          </TouchableOpacity>
+        </View>
+        {/* Fee Summary */}
+        {student.feeSummary && (
+          <View style={styles.infoCard}>
+            <Text style={styles.sectionTitle}>خلاصه فیس</Text>
+            <View style={styles.feeGrid}>
+              <View style={styles.feeItem}>
+                <Text style={styles.feeLabel}>کل فیس</Text>
+                <Text style={styles.feeValue}>
+                  {formatCurrency(student.feeSummary.totalFees || 0)}
+                </Text>
+              </View>
+              <View style={styles.feeItem}>
+                <Text style={styles.feeLabel}>پرداخت شده</Text>
+                <Text style={[styles.feeValue, { color: "#10b981" }]}>
+                  {formatCurrency(student.feeSummary.totalPaid || 0)}
+                </Text>
+              </View>
+              <View style={styles.feeItem}>
+                <Text style={styles.feeLabel}>باقیمانده</Text>
+                <Text
+                  style={[
+                    styles.feeValue,
+                    {
+                      color:
+                        student.feeSummary.totalBalance > 0
+                          ? "#ef4444"
+                          : "#10b981",
+                    },
+                  ]}
+                >
+                  {formatCurrency(student.feeSummary.totalBalance || 0)}
+                </Text>
+              </View>
+              <View style={styles.feeItem}>
+                <Text style={styles.feeLabel}>نرخ وصول</Text>
+                <Text style={[styles.feeValue, { color: "#8b5cf6" }]}>
+                  {student.feeSummary.collectionRate || 0}%
+                </Text>
+              </View>
+            </View>
+          </View>
+        )}
+
+        {/* Parents */}
+        {student.ParentStudent && student.ParentStudent.length > 0 && (
+          <View style={styles.infoCard}>
+            <Text style={styles.sectionTitle}>والدین</Text>
+            {student.ParentStudent.map((ps: any, index: number) => (
+              <View key={ps.Parent?.id || index} style={styles.parentItem}>
+                <Text style={styles.parentName}>
+                  {ps.Parent?.User?.fullName || "نامشخص"}
+                </Text>
+                <Text style={styles.parentPhone}>
+                  {ps.Parent?.User?.phone || ""}
+                </Text>
+                <Text style={styles.parentRelation}>
+                  {ps.Parent?.relationship || "والد"}
+                </Text>
+              </View>
+            ))}
+          </View>
+        )}
+
+        {/* Actions */}
+        <View style={styles.actionContainer}>
+          <TouchableOpacity
+            style={[styles.actionButton, { backgroundColor: "#3b82f6" }]}
+            onPress={() => router.push(`./${id}/edit` as any)}
+          >
+            <Ionicons name="create-outline" size={20} color="#fff" />
+            <Text style={styles.actionText}>ویرایش اطلاعات</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.actionButton, { backgroundColor: "#8b5cf6" }]}
+            onPress={() => router.push(`./${id}/promote` as any)}
+          >
+            <Ionicons name="arrow-up-outline" size={20} color="#fff" />
+            <Text style={styles.actionText}>ارتقا صنف</Text>
+          </TouchableOpacity>
+        </View>
+      </ScrollView>
+
+      {/* ============================================ */}
+      {/* ✅ مودال ثبت مورد انضباطی */}
+      {/* ============================================ */}
+      <DisciplineReportForm
+        visible={showDisciplineModal}
+        onClose={() => setShowDisciplineModal(false)}
+        studentId={student.id}
+        studentName={student.User.fullName}
+        className={
+          student.Class
+            ? `${student.Class.name}${student.Class.section ? ` - ${student.Class.section}` : ""}`
+            : undefined
+        }
+        onSuccess={() => {
+          // رفرش اطلاعات شاگرد (اختیاری)
+          fetchStudent();
+        }}
+      />
+    </>
   );
 }
 
@@ -459,5 +511,22 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: "600",
     fontFamily: "Vazir",
+  },
+
+  // ✅ استایل جدید برای دکمه بزرگ انضباطی
+  bigActionButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 16,
+    borderRadius: 12,
+    gap: 10,
+    marginTop: 4,
+  },
+  bigActionText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "700",
+    fontFamily: "VazirBold",
   },
 });

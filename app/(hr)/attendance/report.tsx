@@ -1,8 +1,8 @@
-// app/(hr)/attendance/index.tsx - Attendance Report Screen with SafeArea
+// app/(hr)/attendance/index.tsx - Attendance Report Screen with Infinite Scroll
 import { hrApi } from "@/src/config/hrApi";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -61,14 +61,24 @@ type AttendanceResponse = {
 export default function AttendanceReportScreen() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const [data, setData] = useState<AttendanceResponse | null>(null);
+  const [staffList, setStaffList] = useState<AttendanceReport[]>([]);
+  const [summary, setSummary] = useState<Summary | null>(null);
+  const [pagination, setPagination] = useState({
+    page: 1,
+    total: 0,
+    totalPages: 1,
+    limit: 20,
+  });
   const [search, setSearch] = useState("");
   const [selectedStaffType, setSelectedStaffType] = useState("all");
-  const [startDate, setStartDate] = useState("");
-  const [endDate, setEndDate] = useState("");
-  const [page, setPage] = useState(1);
   const [showFilters, setShowFilters] = useState(false);
+
+  // Prevents duplicate loadMore calls while a request is in-flight
+  const isLoadingMoreRef = useRef(false);
+  // Tracks the current page so loadMore always uses fresh value
+  const pageRef = useRef(1);
 
   const staffTypes = [
     "all",
@@ -90,61 +100,122 @@ export default function AttendanceReportScreen() {
     "OTHER",
   ];
 
+  // ---------------------------------------------------------------------------
+  // Core fetch — supports both "replace" (page 1) and "append" (page > 1)
+  // ---------------------------------------------------------------------------
+  const fetchReport = useCallback(
+    async (pageNum: number = 1, append: boolean = false) => {
+      // Guard against duplicate loadMore requests
+      if (append) {
+        if (isLoadingMoreRef.current) return;
+        isLoadingMoreRef.current = true;
+        setLoadingMore(true);
+      }
+
+      try {
+        const params: any = {
+          page: pageNum,
+          limit: pagination.limit,
+        };
+
+        if (selectedStaffType !== "all") params.staffType = selectedStaffType;
+        if (search) params.search = search;
+
+        const response = await hrApi.getAttendanceReport(params);
+
+        if (response.success && response.data) {
+          const incoming: AttendanceReport[] = response.data.report || [];
+
+          if (append) {
+            // ✅ APPEND — keep existing items, add new ones
+            setStaffList((prev) => {
+              // Dedupe by staffId in case backend returns overlapping pages
+              const existingIds = new Set(prev.map((s) => s.staffId));
+              const merged = [
+                ...prev,
+                ...incoming.filter((s) => !existingIds.has(s.staffId)),
+              ];
+              return merged;
+            });
+          } else {
+            // ✅ REPLACE — fresh load (page 1 / refresh / filter change)
+            setStaffList(incoming);
+          }
+
+          setSummary(response.data.summary);
+          setPagination(response.data.pagination);
+          pageRef.current = response.data.pagination.page;
+        }
+      } catch (error) {
+        console.error("Fetch report error:", error);
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
+        if (append) {
+          isLoadingMoreRef.current = false;
+          setLoadingMore(false);
+        }
+      }
+    },
+    [selectedStaffType, search, pagination.limit],
+  );
+
+  // ---------------------------------------------------------------------------
+  // Initial load
+  // ---------------------------------------------------------------------------
   useEffect(() => {
-    fetchReport();
+    fetchReport(1, false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const fetchReport = async (pageNum: number = 1) => {
-    try {
-      const params: any = {
-        page: pageNum,
-        limit: 20,
-      };
-
-      if (selectedStaffType !== "all") params.staffType = selectedStaffType;
-      if (startDate) params.startDate = startDate;
-      if (endDate) params.endDate = endDate;
-      if (search) params.search = search;
-
-      const response = await hrApi.getAttendanceReport(params);
-      if (response.success) {
-        setData(response.data);
-      }
-    } catch (error) {
-      console.error("Fetch report error:", error);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  };
-
-  const onRefresh = () => {
+  // ---------------------------------------------------------------------------
+  // Refresh — reset to page 1
+  // ---------------------------------------------------------------------------
+  const onRefresh = useCallback(() => {
     setRefreshing(true);
-    setPage(1);
-    fetchReport(1);
-  };
+    pageRef.current = 1;
+    fetchReport(1, false);
+  }, [fetchReport]);
 
-  const handleSearch = () => {
-    setPage(1);
-    fetchReport(1);
-  };
+  // ---------------------------------------------------------------------------
+  // Search — reset to page 1
+  // ---------------------------------------------------------------------------
+  const handleSearch = useCallback(() => {
+    pageRef.current = 1;
+    setLoading(true);
+    fetchReport(1, false);
+  }, [fetchReport]);
 
-  const applyFilters = () => {
-    setPage(1);
-    fetchReport(1);
-  };
+  // ---------------------------------------------------------------------------
+  // Apply filters — reset to page 1
+  // ---------------------------------------------------------------------------
+  const applyFilters = useCallback(() => {
+    pageRef.current = 1;
+    setLoading(true);
+    fetchReport(1, false);
+  }, [fetchReport]);
 
-  const loadMore = () => {
-    if (data && page < data.pagination.totalPages && !loading) {
-      const nextPage = page + 1;
-      setPage(nextPage);
-      fetchReport(nextPage);
-    }
-  };
+  // ---------------------------------------------------------------------------
+  // Infinite scroll — load next page and APPEND
+  // ---------------------------------------------------------------------------
+  const loadMore = useCallback(() => {
+    if (isLoadingMoreRef.current) return;
+    if (loading || refreshing || loadingMore) return;
 
+    const currentPage = pageRef.current;
+    const totalPages = pagination.totalPages || 1;
+
+    if (currentPage >= totalPages) return;
+
+    const nextPage = currentPage + 1;
+    fetchReport(nextPage, true);
+  }, [loading, refreshing, loadingMore, pagination.totalPages, fetchReport]);
+
+  // ---------------------------------------------------------------------------
+  // Render helpers
+  // ---------------------------------------------------------------------------
   const renderSummary = () => {
-    if (!data) return null;
-    const { summary } = data;
+    if (!summary) return null;
 
     return (
       <ScrollView
@@ -232,7 +303,30 @@ export default function AttendanceReportScreen() {
     );
   };
 
-  if (loading && !data) {
+  const renderFooter = () => {
+    if (loadingMore) {
+      return (
+        <View style={styles.footerContainer}>
+          <ActivityIndicator size="small" color="#8b5cf6" />
+          <Text style={styles.footerText}>در حال بارگذاری...</Text>
+        </View>
+      );
+    }
+    // End-of-list indicator
+    if (
+      staffList.length > 0 &&
+      pageRef.current >= (pagination.totalPages || 1)
+    ) {
+      return (
+        <View style={styles.footerContainer}>
+          <Text style={styles.footerText}>پایان لیست</Text>
+        </View>
+      );
+    }
+    return null;
+  };
+
+  if (loading && staffList.length === 0) {
     return (
       <SafeAreaView style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#8b5cf6" />
@@ -279,7 +373,7 @@ export default function AttendanceReportScreen() {
           />
         </TouchableOpacity>
 
-        {/* Filters */}
+        {/* Filters (no date fields) */}
         {showFilters && (
           <View style={styles.filtersContainer}>
             <TextInput
@@ -289,6 +383,7 @@ export default function AttendanceReportScreen() {
               value={search}
               onChangeText={setSearch}
               onSubmitEditing={handleSearch}
+              returnKeyType="search"
             />
 
             <View style={styles.filterRow}>
@@ -323,29 +418,6 @@ export default function AttendanceReportScreen() {
               </View>
             </View>
 
-            <View style={styles.filterRow}>
-              <View style={styles.halfField}>
-                <Text style={styles.filterLabel}>تاریخ شروع</Text>
-                <TextInput
-                  style={styles.filterInput}
-                  placeholder="YYYY-MM-DD"
-                  placeholderTextColor="#94a3b8"
-                  value={startDate}
-                  onChangeText={setStartDate}
-                />
-              </View>
-              <View style={styles.halfField}>
-                <Text style={styles.filterLabel}>تاریخ پایان</Text>
-                <TextInput
-                  style={styles.filterInput}
-                  placeholder="YYYY-MM-DD"
-                  placeholderTextColor="#94a3b8"
-                  value={endDate}
-                  onChangeText={setEndDate}
-                />
-              </View>
-            </View>
-
             <TouchableOpacity style={styles.applyButton} onPress={applyFilters}>
               <Text style={styles.applyButtonText}>اعمال فیلترها</Text>
             </TouchableOpacity>
@@ -354,26 +426,32 @@ export default function AttendanceReportScreen() {
 
         {/* Staff List */}
         <FlatList
-          data={data?.report || []}
+          data={staffList}
           renderItem={renderItem}
           keyExtractor={(item) => item.staffId.toString()}
           contentContainerStyle={styles.listContent}
           refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              colors={["#8b5cf6"]}
+              tintColor="#8b5cf6"
+            />
           }
           onEndReached={loadMore}
           onEndReachedThreshold={0.5}
-          ListFooterComponent={
-            loading && data ? (
-              <ActivityIndicator style={{ padding: 16 }} color="#8b5cf6" />
-            ) : null
-          }
+          ListFooterComponent={renderFooter}
           ListEmptyComponent={
             <View style={styles.emptyContainer}>
               <Ionicons name="people-outline" size={48} color="#94a3b8" />
               <Text style={styles.emptyText}>هیچ داده‌ای یافت نشد</Text>
             </View>
           }
+          // Performance tweaks for large lists
+          initialNumToRender={10}
+          maxToRenderPerBatch={10}
+          windowSize={7}
+          removeClippedSubviews={true}
         />
       </View>
     </SafeAreaView>
@@ -420,6 +498,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderBottomWidth: 1,
     borderBottomColor: "#e2e8f0",
+    flexGrow: 0,
   },
   summaryContainer: {
     flexDirection: "row",
@@ -511,9 +590,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: "#1e293b",
     fontFamily: "Vazir",
-  },
-  halfField: {
-    flex: 1,
   },
   applyButton: {
     backgroundColor: "#8b5cf6",
@@ -617,6 +693,18 @@ const styles = StyleSheet.create({
   emptyText: {
     marginTop: 16,
     fontSize: 16,
+    color: "#94a3b8",
+    fontFamily: "Vazir",
+  },
+  footerContainer: {
+    paddingVertical: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    flexDirection: "row",
+    gap: 8,
+  },
+  footerText: {
+    fontSize: 13,
     color: "#94a3b8",
     fontFamily: "Vazir",
   },

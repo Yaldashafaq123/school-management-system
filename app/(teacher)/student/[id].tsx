@@ -1,3 +1,5 @@
+/* eslint-disable react-hooks/set-state-in-effect */
+import DisciplineReportForm from "@/components/discipline/DisciplineReportForm";
 import { Header } from "@/components/Header";
 import { Colors } from "@/constants/Colors";
 import { useAuth } from "@/contexts/AuthContext";
@@ -27,7 +29,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 export default function StudentDetail() {
   const { id } = useLocalSearchParams();
   const { user } = useAuth();
-
+  const [showDisciplineModal, setShowDisciplineModal] = useState(false);
   const [student, setStudent] = useState<StudentDetailType | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -49,14 +51,12 @@ export default function StudentDetail() {
       setLoading(true);
       setError(null);
 
-      // Validate id exists
       if (!id) {
         setError("شناسه دانش‌آموز یافت نشد");
         setStudent(null);
         return;
       }
 
-      // ✅ FIXED: Use teacherStudentApi instead of studentApi
       const response = await teacherStudentApi.getStudentById(Number(id));
 
       if (response.success && response.data) {
@@ -94,7 +94,6 @@ export default function StudentDetail() {
     if (!student) return;
 
     try {
-      // ✅ FIXED: Use teacherStudentApi instead of studentApi
       const response = await teacherStudentApi.updateStudent(
         Number(id),
         editData,
@@ -140,7 +139,6 @@ export default function StudentDetail() {
     }
 
     try {
-      // ✅ FIXED: Use teacherStudentApi instead of studentApi
       const response = await teacherStudentApi.markAttendance(Number(id), {
         date: selectedAttendanceDate,
         status: selectedAttendanceStatus,
@@ -193,7 +191,6 @@ export default function StudentDetail() {
     );
   };
 
-  // Show loading state
   if (loading) {
     return (
       <SafeAreaView style={styles.container}>
@@ -206,7 +203,6 @@ export default function StudentDetail() {
     );
   }
 
-  // Show error/empty state with retry button - This handles all error cases
   if (!student || error) {
     return (
       <SafeAreaView style={styles.container}>
@@ -233,7 +229,6 @@ export default function StudentDetail() {
     );
   }
 
-  // Safely render student data - all data access is now safe because student is guaranteed to exist
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
       <Header
@@ -347,14 +342,18 @@ export default function StudentDetail() {
               <Text style={styles.quickActionText}>حضور و غیاب</Text>
             </TouchableOpacity>
           )}
-
-          <TouchableOpacity style={styles.quickAction}>
-            <Ionicons name="document-text" size={24} color={Colors.warning} />
-            <Text style={styles.quickActionText}>کارنامه</Text>
-          </TouchableOpacity>
+          {(isTeacher || isAdmin) && (
+            <TouchableOpacity
+              style={styles.quickAction}
+              onPress={() => setShowDisciplineModal(true)}
+            >
+              <Ionicons name="warning" size={24} color={Colors.danger} />
+              <Text style={styles.quickActionText}>درج مورد انضباطی</Text>
+            </TouchableOpacity>
+          )}
         </View>
 
-        {/* Personal Information - Check for existence of any data before rendering section */}
+        {/* Personal Information */}
         {(student.birth_date ||
           student.address ||
           student.parent ||
@@ -418,7 +417,7 @@ export default function StudentDetail() {
           </View>
         )}
 
-        {/* Courses - Safely check if courses exist and have length */}
+        {/* Courses */}
         {student.courses &&
           Array.isArray(student.courses) &&
           student.courses.length > 0 && (
@@ -460,7 +459,7 @@ export default function StudentDetail() {
             </View>
           )}
 
-        {/* Attendance - Safely check if attendance exists and has length */}
+        {/* Attendance */}
         {student.attendance &&
           Array.isArray(student.attendance) &&
           student.attendance.length > 0 && (
@@ -490,7 +489,7 @@ export default function StudentDetail() {
             </View>
           )}
 
-        {/* Performance - Safely check if performance exists */}
+        {/* Performance */}
         {student.performance && (
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
@@ -553,7 +552,7 @@ export default function StudentDetail() {
           </View>
         )}
 
-        {/* Notes - Safely check if notes exist */}
+        {/* Notes */}
         {student.notes && (
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
@@ -600,11 +599,12 @@ export default function StudentDetail() {
           </View>
         )}
 
-        {/* Spacing */}
         <View style={styles.spacer} />
       </ScrollView>
 
+      {/* =============================== */}
       {/* Attendance Modal */}
+      {/* =============================== */}
       <Modal
         visible={showAttendanceModal}
         transparent
@@ -681,6 +681,25 @@ export default function StudentDetail() {
           </View>
         </View>
       </Modal>
+
+      {/* =============================== */}
+      {/* ✅ Discipline Report Modal */}
+      {/* =============================== */}
+      <DisciplineReportForm
+        visible={showDisciplineModal}
+        onClose={() => setShowDisciplineModal(false)}
+        studentId={student?.id}
+        studentName={student?.fullName}
+        className={
+          student?.class
+            ? `${student.class.name}${student.class.section ? ` - ${student.class.section}` : ""}`
+            : undefined
+        }
+        onSuccess={() => {
+          // رفرش پروفایل شاگرد بعد از ثبت موفق (اختیاری)
+          fetchStudentDetails();
+        }}
+      />
     </SafeAreaView>
   );
 }

@@ -1,10 +1,11 @@
-// app/(hr)/(tabs)/attendance.tsx - WITH DRIVER FILTER
+// app/(hr)/(tabs)/attendance.tsx
+// ✅ FULLY FIXED: date navigation, driver filter, PDF, Shamsi header
 import { hrApi } from "@/src/config/hrApi";
 import { Ionicons } from "@expo/vector-icons";
 import * as Print from "expo-print";
 import { router } from "expo-router";
 import * as Sharing from "expo-sharing";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -17,15 +18,6 @@ import {
 } from "react-native";
 
 // ==================== PUNCH TYPE HELPERS ====================
-
-const PUNCH_LABELS: Record<number, string> = {
-  0: "ورود",
-  1: "خروج",
-  2: "خروج وقت استراحت",
-  3: "ورود بعد از استراحت",
-  4: "ورود اضافه کار",
-  5: "خروج اضافه کار",
-};
 
 const PUNCH_COLORS: Record<number, string> = {
   0: "#10b981",
@@ -48,12 +40,10 @@ const PUNCH_ICONS: Record<number, string> = {
 // ✅ DRIVER FILTER - Roles to exclude from attendance
 const EXCLUDED_ROLES = ["DRIVER", "STUDENT", "PARENT"];
 
-// ✅ Check if a role should be excluded from attendance
 const isExcludedFromAttendance = (role: string): boolean => {
   return EXCLUDED_ROLES.includes(role.toUpperCase());
 };
 
-// ✅ Filter out excluded roles from attendance data
 const filterAttendanceData = (
   data: TodayAttendanceRecord[],
 ): TodayAttendanceRecord[] => {
@@ -88,6 +78,20 @@ function formatShamsiDate(date: Date): string {
   } catch {
     return date.toLocaleDateString("fa-IR");
   }
+}
+
+// ✅ Format date as YYYY-MM-DD in Afghanistan timezone
+function formatDateKey(date: Date): string {
+  const afghanDate = getAfghanistanDate(date);
+  const year = afghanDate.getFullYear();
+  const month = String(afghanDate.getMonth() + 1).padStart(2, "0");
+  const day = String(afghanDate.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+// ✅ Check if two dates are the same day (Afghanistan timezone)
+function isSameDay(a: Date, b: Date): boolean {
+  return formatDateKey(a) === formatDateKey(b);
 }
 
 // ==================== TYPES ====================
@@ -136,7 +140,6 @@ type AttendanceSummary = {
   total: number;
   totalPunches: number;
   onTime: number;
-  // ✅ Track excluded count for transparency
   excludedCount?: number;
   excludedRoles?: string[];
 };
@@ -163,7 +166,7 @@ type TodayAttendanceData = {
   attendance: TodayAttendanceRecord[];
 };
 
-// ==================== PDF GENERATION - TABLE REPORT ====================
+// ==================== PDF GENERATION ====================
 
 function generateTableReportHTML(
   attendanceData: TodayAttendanceRecord[],
@@ -228,7 +231,6 @@ function generateTableReportHTML(
     }
   };
 
-  // Generate table rows for ALL data (excluding drivers already filtered)
   const tableRows = attendanceData
     .map(
       (item) => `
@@ -263,7 +265,6 @@ function generateTableReportHTML(
     )
     .join("");
 
-  // ✅ Show excluded note if there are excluded staff
   const excludedNote =
     excludedCount > 0
       ? `
@@ -284,20 +285,13 @@ function generateTableReportHTML(
       <title>گزارش حضور و غیاب - ${dateShamsi}</title>
       <style>
         @import url('https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;600;700&display=swap');
-        
-        * {
-          margin: 0;
-          padding: 0;
-          box-sizing: border-box;
-        }
-        
+        * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
           font-family: 'Vazirmatn', 'Vazir', sans-serif;
           background: #f1f5f9;
           padding: 20px;
           direction: rtl;
         }
-        
         .report-container {
           max-width: 1200px;
           margin: 0 auto;
@@ -306,34 +300,14 @@ function generateTableReportHTML(
           box-shadow: 0 4px 24px rgba(0, 0, 0, 0.08);
           overflow: hidden;
         }
-        
-        /* Header */
         .report-header {
           background: linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%);
           padding: 30px 40px;
           color: white;
         }
-        
-        .report-header h1 {
-          font-size: 26px;
-          font-weight: 700;
-          margin-bottom: 6px;
-          letter-spacing: 0.5px;
-        }
-        
-        .report-header .subtitle {
-          font-size: 15px;
-          opacity: 0.9;
-          font-weight: 400;
-        }
-        
-        .report-header .date {
-          font-size: 14px;
-          opacity: 0.85;
-          margin-top: 6px;
-        }
-        
-        /* Scanner Status */
+        .report-header h1 { font-size: 26px; font-weight: 700; margin-bottom: 6px; }
+        .report-header .subtitle { font-size: 15px; opacity: 0.9; font-weight: 400; }
+        .report-header .date { font-size: 14px; opacity: 0.85; margin-top: 6px; }
         .scanner-status {
           display: flex;
           align-items: center;
@@ -342,21 +316,8 @@ function generateTableReportHTML(
           border-bottom: 1px solid #dcfce7;
           gap: 8px;
         }
-        
-        .scanner-dot {
-          width: 8px;
-          height: 8px;
-          border-radius: 50%;
-          background: #10b981;
-        }
-        
-        .scanner-text {
-          flex: 1;
-          font-size: 14px;
-          color: #10b981;
-        }
-        
-        /* School Time Info */
+        .scanner-dot { width: 8px; height: 8px; border-radius: 50%; background: #10b981; }
+        .scanner-text { flex: 1; font-size: 14px; color: #10b981; }
         .school-time-info {
           display: flex;
           align-items: center;
@@ -367,17 +328,8 @@ function generateTableReportHTML(
           font-size: 14px;
           color: #1e293b;
         }
-        
-        .school-time-info .subtext {
-          font-size: 12px;
-          color: #94a3b8;
-        }
-        
-        /* Excluded note */
-        ${excludedNote ? ".excluded-note { padding: 8px 40px; background: #fef2f2; border-bottom: 1px solid #fecaca; text-align: center; }" : ""}
+        .school-time-info .subtext { font-size: 12px; color: #94a3b8; }
         .excluded-note-text { font-size: 13px; color: #dc2626; }
-        
-        /* Summary Cards */
         .summary-grid {
           display: grid;
           grid-template-columns: repeat(5, 1fr);
@@ -386,7 +338,6 @@ function generateTableReportHTML(
           background: #f8fafc;
           border-bottom: 1px solid #e2e8f0;
         }
-        
         .summary-card {
           background: white;
           border-radius: 12px;
@@ -395,19 +346,8 @@ function generateTableReportHTML(
           border-right: 4px solid #8b5cf6;
           box-shadow: 0 1px 3px rgba(0,0,0,0.06);
         }
-        
-        .summary-card .value {
-          font-size: 26px;
-          font-weight: 700;
-        }
-        
-        .summary-card .label {
-          font-size: 13px;
-          color: #64748b;
-          margin-top: 4px;
-          font-weight: 500;
-        }
-        
+        .summary-card .value { font-size: 26px; font-weight: 700; }
+        .summary-card .label { font-size: 13px; color: #64748b; margin-top: 4px; font-weight: 500; }
         .summary-card.present { border-right-color: #10b981; }
         .summary-card.present .value { color: #10b981; }
         .summary-card.late { border-right-color: #f59e0b; }
@@ -418,8 +358,6 @@ function generateTableReportHTML(
         .summary-card.total .value { color: #8b5cf6; }
         .summary-card.punches { border-right-color: #3b82f6; }
         .summary-card.punches .value { color: #3b82f6; }
-        
-        /* Breakdown */
         .breakdown-row {
           display: flex;
           justify-content: center;
@@ -428,60 +366,28 @@ function generateTableReportHTML(
           background: #f8fafc;
           border-bottom: 1px solid #e2e8f0;
         }
-        
-        .breakdown-item {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          font-size: 13px;
-          color: #64748b;
-        }
-        
-        .breakdown-dot {
-          width: 10px;
-          height: 10px;
-          border-radius: 50%;
-        }
-        
-        /* Table Section */
-        .table-section {
-          padding: 24px 40px 40px;
-        }
-        
+        .breakdown-item { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #64748b; }
+        .breakdown-dot { width: 10px; height: 10px; border-radius: 50%; }
+        .table-section { padding: 24px 40px 40px; }
         .table-header {
           display: flex;
           justify-content: space-between;
           align-items: center;
           margin-bottom: 16px;
         }
-        
-        .table-title {
-          font-size: 18px;
-          font-weight: 600;
-          color: #1e293b;
-        }
-        
-        .table-subtitle {
-          font-size: 13px;
-          color: #94a3b8;
-        }
-        
+        .table-title { font-size: 18px; font-weight: 600; color: #1e293b; }
+        .table-subtitle { font-size: 13px; color: #94a3b8; }
         .table-wrapper {
           overflow-x: auto;
           border-radius: 12px;
           border: 1px solid #e2e8f0;
         }
-        
         table {
           width: 100%;
           border-collapse: collapse;
           font-family: 'Vazirmatn', 'Vazir', sans-serif;
         }
-        
-        thead {
-          background: #f1f5f9;
-        }
-        
+        thead { background: #f1f5f9; }
         thead th {
           padding: 14px 12px;
           text-align: center;
@@ -491,32 +397,16 @@ function generateTableReportHTML(
           border-bottom: 2px solid #e2e8f0;
           white-space: nowrap;
         }
-        
-        thead th:first-child {
-          text-align: right;
-        }
-        
-        tbody tr:hover {
-          background: #f8fafc;
-        }
-        
-        tbody tr:last-child td {
-          border-bottom: none;
-        }
-        
+        thead th:first-child { text-align: right; }
+        tbody tr:hover { background: #f8fafc; }
+        tbody tr:last-child td { border-bottom: none; }
         tbody td {
           padding: 10px 12px;
           border-bottom: 1px solid #e2e8f0;
           font-size: 14px;
           color: #1e293b;
         }
-        
-        tbody td:first-child {
-          text-align: right;
-          font-weight: 500;
-        }
-        
-        /* Footer */
+        tbody td:first-child { text-align: right; font-weight: 500; }
         .report-footer {
           padding: 16px 40px;
           border-top: 1px solid #e2e8f0;
@@ -526,45 +416,19 @@ function generateTableReportHTML(
           color: #94a3b8;
           background: #f8fafc;
         }
-        
-        /* Print Styles */
         @media print {
-          body {
-            background: white;
-            padding: 0;
-          }
-          .report-container {
-            box-shadow: none;
-            border-radius: 0;
-          }
-          .no-print {
-            display: none !important;
-          }
-          thead {
-            display: table-header-group;
-          }
-          tbody tr {
-            page-break-inside: avoid;
-          }
+          body { background: white; padding: 0; }
+          .report-container { box-shadow: none; border-radius: 0; }
+          .no-print { display: none !important; }
+          thead { display: table-header-group; }
+          tbody tr { page-break-inside: avoid; }
         }
-        
         @media (max-width: 768px) {
-          .summary-grid {
-            grid-template-columns: repeat(2, 1fr);
-            padding: 16px;
-          }
-          .report-header {
-            padding: 20px;
-          }
-          .report-header h1 {
-            font-size: 20px;
-          }
-          .table-section {
-            padding: 16px;
-          }
-          .scanner-status, .school-time-info, .breakdown-row {
-            padding: 8px 16px;
-          }
+          .summary-grid { grid-template-columns: repeat(2, 1fr); padding: 16px; }
+          .report-header { padding: 20px; }
+          .report-header h1 { font-size: 20px; }
+          .table-section { padding: 16px; }
+          .scanner-status, .school-time-info, .breakdown-row { padding: 8px 16px; }
           .report-footer {
             flex-direction: column;
             gap: 6px;
@@ -576,30 +440,22 @@ function generateTableReportHTML(
     </head>
     <body>
       <div class="report-container">
-        <!-- Header -->
         <div class="report-header">
           <h1>📋 گزارش حضور و غیاب</h1>
           <div class="subtitle">خلاصه وضعیت حضور کارمندان</div>
           <div class="date">📅 ${dateShamsi}</div>
         </div>
-        
-        <!-- Scanner Status -->
         <div class="scanner-status">
           <div class="scanner-dot"></div>
           <div class="scanner-text">دستگاه حضور و غیاب متصل است</div>
           <span style="color: #10b981; font-size: 18px;">✓</span>
         </div>
-        
-        <!-- School Time Info -->
         <div class="school-time-info">
           <span>⏰</span>
           <span><strong>ساعت شروع کار:</strong> ${schoolStartTime}</span>
           <span class="subtext">(تأخیر بعد از ${schoolStartTime})</span>
         </div>
-        
         ${excludedNote}
-        
-        <!-- Summary Cards -->
         <div class="summary-grid">
           <div class="summary-card present">
             <div class="value">${summary.present}</div>
@@ -622,8 +478,6 @@ function generateTableReportHTML(
             <div class="label">📌 ثبت‌ها</div>
           </div>
         </div>
-        
-        <!-- Breakdown -->
         <div class="breakdown-row">
           <div class="breakdown-item">
             <div class="breakdown-dot" style="background: #10b981;"></div>
@@ -644,14 +498,11 @@ function generateTableReportHTML(
               : ""
           }
         </div>
-        
-        <!-- Table Section -->
         <div class="table-section">
           <div class="table-header">
             <div class="table-title">📊 لیست حضور و غیاب</div>
             <div class="table-subtitle">${summary.total} کارمند • ${summary.totalPunches} ثبت</div>
           </div>
-          
           <div class="table-wrapper">
             <table>
               <thead>
@@ -671,8 +522,6 @@ function generateTableReportHTML(
             </table>
           </div>
         </div>
-        
-        <!-- Footer -->
         <div class="report-footer">
           <span class="generated-at">📄 تاریخ تولید: ${new Date().toLocaleString(
             "fa-IR",
@@ -706,126 +555,215 @@ export default function AttendanceScreen() {
     excludedCount: 0,
     excludedRoles: [],
   });
-  const [selectedDate] = useState(new Date());
-  const [dateShamsi, setDateShamsi] = useState("");
-  const [schoolStartTime, setSchoolStartTime] = useState("07:30");
+
+  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+  const [dateShamsi, setDateShamsi] = useState<string>("");
+  const [schoolStartTime, setSchoolStartTime] = useState<string>("07:30");
   const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
-  // ✅ Track if filter is active
   const [filterActive, setFilterActive] = useState(true);
 
-  useEffect(() => {
-    fetchAttendance();
-  }, []);
+  const isToday = isSameDay(selectedDate, new Date());
 
   // ✅ Helper to calculate summary from filtered data
-  const calculateSummary = (
-    data: TodayAttendanceRecord[],
-  ): AttendanceSummary => {
-    return {
-      present: data.filter((s) => s.status === "present").length,
-      late: data.filter((s) => s.status === "late").length,
-      absent: data.filter((s) => s.status === "absent").length,
-      checkedIn: data.filter((s) => s.hasCheckIn).length,
-      checkedOut: data.filter((s) => s.hasCheckOut).length,
-      total: data.length,
-      totalPunches: data.reduce((sum, s) => sum + s.totalPunches, 0),
-      onTime: data.filter((s) => s.isOnTime).length,
-    };
-  };
+  const calculateSummary = useCallback(
+    (data: TodayAttendanceRecord[]): AttendanceSummary => {
+      return {
+        present: data.filter((s) => s.status === "present").length,
+        late: data.filter((s) => s.status === "late").length,
+        absent: data.filter((s) => s.status === "absent").length,
+        checkedIn: data.filter((s) => s.hasCheckIn).length,
+        checkedOut: data.filter((s) => s.hasCheckOut).length,
+        total: data.length,
+        totalPunches: data.reduce((sum, s) => sum + s.totalPunches, 0),
+        onTime: data.filter((s) => s.isOnTime).length,
+      };
+    },
+    [],
+  );
 
   // ✅ Apply filter to attendance data
-  const applyFilter = (data: TodayAttendanceRecord[]) => {
-    if (filterActive) {
-      return filterAttendanceData(data);
-    }
-    return data;
-  };
-
-  const fetchAttendance = async () => {
-    try {
-      const response = await hrApi.getTodayAttendance();
-
-      if (response.success && response.data) {
-        const data = response.data as unknown as TodayAttendanceData;
-        const rawData = data.attendance || [];
-
-        // Store raw data
-        setRawAttendance(rawData);
-
-        // Apply filter
-        const filteredData = applyFilter(rawData);
-        setAttendance(filteredData);
-
-        // ✅ Calculate excluded count
-        const excludedCount = rawData.length - filteredData.length;
-        const excludedRoles = rawData
-          .filter((item) => isExcludedFromAttendance(item.role))
-          .map((item) => item.role);
-
-        // Calculate summary from filtered data
-        const filteredSummary = calculateSummary(filteredData);
-
-        setSummary({
-          ...filteredSummary,
-          excludedCount,
-          excludedRoles: [...new Set(excludedRoles)],
-        });
-
-        if (data.schoolStartTime) {
-          setSchoolStartTime(data.schoolStartTime);
-        }
-
-        if (data.dateShamsi) {
-          setDateShamsi(data.dateShamsi);
-        } else {
-          const afghanDate = getAfghanistanDate(new Date());
-          setDateShamsi(formatShamsiDate(afghanDate));
-        }
+  const applyFilter = useCallback(
+    (data: TodayAttendanceRecord[]) => {
+      if (filterActive) {
+        return filterAttendanceData(data);
       }
-    } catch (error) {
-      console.error("Fetch attendance error:", error);
-      Alert.alert("خطا", "خطا در دریافت اطلاعات حضور و غیاب");
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  };
+      return data;
+    },
+    [filterActive],
+  );
+
+  // ✅ Build the summary block that combines filtered summary + excluded info
+  const buildFullSummary = useCallback(
+    (
+      rawData: TodayAttendanceRecord[],
+      filteredData: TodayAttendanceRecord[],
+    ): AttendanceSummary => {
+      const excludedCount = rawData.length - filteredData.length;
+      const excludedRoles = rawData
+        .filter((item) => isExcludedFromAttendance(item.role))
+        .map((item) => item.role);
+
+      return {
+        ...calculateSummary(filteredData),
+        excludedCount,
+        excludedRoles: [...new Set(excludedRoles)],
+      };
+    },
+    [calculateSummary],
+  );
+
+  // ==================== FETCH ====================
+
+  const fetchAttendance = useCallback(
+    async (date: Date) => {
+      try {
+        const dateKey = formatDateKey(date);
+        const todayKey = formatDateKey(new Date());
+
+        let response: any;
+
+        if (typeof (hrApi as any).getAttendanceByDate === "function") {
+          // ✅ Date-aware endpoint available — use it for every date
+          response = await (hrApi as any).getAttendanceByDate(dateKey);
+        } else if (dateKey === todayKey) {
+          // ✅ Fallback only makes sense for today
+          response = await hrApi.getTodayAttendance();
+        } else {
+          // ❌ Endpoint missing — show empty but still display the Shamsi date
+          setRawAttendance([]);
+          setAttendance([]);
+          setSummary({
+            present: 0,
+            absent: 0,
+            late: 0,
+            checkedIn: 0,
+            checkedOut: 0,
+            total: 0,
+            totalPunches: 0,
+            onTime: 0,
+            excludedCount: 0,
+            excludedRoles: [],
+          });
+          setDateShamsi(formatShamsiDate(getAfghanistanDate(date)));
+          setLoading(false);
+          setRefreshing(false);
+          Alert.alert(
+            "اطلاعات",
+            "برای مشاهده تاریخ‌های گذشته، لطفاً endpoint مربوطه را در hrApi اضافه کنید.",
+          );
+          return;
+        }
+
+        if (response?.success && response?.data) {
+          const data = response.data as unknown as TodayAttendanceData;
+          const rawData = data.attendance || [];
+
+          setRawAttendance(rawData);
+
+          const filteredData = applyFilter(rawData);
+          setAttendance(filteredData);
+          setSummary(buildFullSummary(rawData, filteredData));
+
+          if (data.schoolStartTime) {
+            setSchoolStartTime(data.schoolStartTime);
+          }
+
+          // ✅ Always show the Shamsi label for the date the user picked
+          setDateShamsi(formatShamsiDate(getAfghanistanDate(date)));
+        } else {
+          // Empty but valid response — still show the date
+          setRawAttendance([]);
+          setAttendance([]);
+          setSummary({
+            present: 0,
+            absent: 0,
+            late: 0,
+            checkedIn: 0,
+            checkedOut: 0,
+            total: 0,
+            totalPunches: 0,
+            onTime: 0,
+            excludedCount: 0,
+            excludedRoles: [],
+          });
+          setDateShamsi(formatShamsiDate(getAfghanistanDate(date)));
+        }
+      } catch (error: any) {
+        console.error("Fetch attendance error:", error);
+        // Keep the header in sync even on error
+        setDateShamsi(formatShamsiDate(getAfghanistanDate(date)));
+        Alert.alert(
+          "خطا",
+          error?.message
+            ? `خطا در دریافت اطلاعات: ${error.message}`
+            : "خطا در دریافت اطلاعات حضور و غیاب",
+        );
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
+      }
+    },
+    [applyFilter, buildFullSummary],
+  );
+
+  // ✅ Initial load
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    fetchAttendance(selectedDate);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const onRefresh = () => {
     setRefreshing(true);
-    fetchAttendance();
+    fetchAttendance(selectedDate);
   };
 
-  // ✅ Toggle filter
+  // ==================== DATE NAVIGATION ====================
+
+  const changeDate = (daysOffset: number) => {
+    const newDate = new Date(selectedDate);
+    newDate.setDate(newDate.getDate() + daysOffset);
+
+    // Block future dates
+    const today = new Date();
+    today.setHours(23, 59, 59, 999);
+    if (newDate.getTime() > today.getTime()) return;
+
+    setSelectedDate(newDate);
+    setLoading(true);
+    fetchAttendance(newDate);
+  };
+
+  const goToToday = () => {
+    if (isToday) return;
+    const now = new Date();
+    setSelectedDate(now);
+    setLoading(true);
+    fetchAttendance(now);
+  };
+
+  // ==================== FILTER TOGGLE ====================
+
   const toggleFilter = () => {
     const newState = !filterActive;
     setFilterActive(newState);
 
     if (newState) {
-      // Apply filter
       const filtered = filterAttendanceData(rawAttendance);
       setAttendance(filtered);
-      const newSummary = calculateSummary(filtered);
-      setSummary({
-        ...newSummary,
-        excludedCount: rawAttendance.length - filtered.length,
-        excludedRoles: rawAttendance
-          .filter((item) => isExcludedFromAttendance(item.role))
-          .map((item) => item.role),
-      });
+      setSummary(buildFullSummary(rawAttendance, filtered));
     } else {
-      // Show all data
       setAttendance(rawAttendance);
-      const newSummary = calculateSummary(rawAttendance);
       setSummary({
-        ...newSummary,
+        ...calculateSummary(rawAttendance),
         excludedCount: 0,
         excludedRoles: [],
       });
     }
   };
 
-  // Generate PDF with ALL data in table format
+  // ==================== PDF ====================
+
   const generatePDF = async () => {
     if (attendance.length === 0) {
       Alert.alert("اطلاعات", "هیچ داده‌ای برای تولید PDF وجود ندارد");
@@ -838,19 +776,17 @@ export default function AttendanceScreen() {
       const html = generateTableReportHTML(
         attendance,
         summary,
-        dateShamsi || formatShamsiDate(getAfghanistanDate(new Date())),
+        dateShamsi || formatShamsiDate(getAfghanistanDate(selectedDate)),
         schoolStartTime,
         summary.excludedCount || 0,
       );
 
-      // Generate PDF
       const { uri } = await Print.printToFileAsync({
         html,
         base64: false,
         width: 1200,
       });
 
-      // Share the PDF
       if (await Sharing.isAvailableAsync()) {
         await Sharing.shareAsync(uri, {
           mimeType: "application/pdf",
@@ -869,6 +805,8 @@ export default function AttendanceScreen() {
       setIsGeneratingPDF(false);
     }
   };
+
+  // ==================== RENDER ITEM ====================
 
   const renderItem = ({ item }: { item: TodayAttendanceRecord }) => {
     const lastPunch = item.lastPunch;
@@ -903,7 +841,6 @@ export default function AttendanceScreen() {
       statusBgColor = "#d1fae5";
     }
 
-    // ✅ Check if this item is from excluded role
     const isExcluded = isExcludedFromAttendance(item.role);
 
     return (
@@ -998,6 +935,8 @@ export default function AttendanceScreen() {
     );
   };
 
+  // ==================== RENDER ====================
+
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
@@ -1007,18 +946,42 @@ export default function AttendanceScreen() {
     );
   }
 
+  const forwardDisabled = isToday;
+  const hasExcluded = (summary.excludedCount ?? 0) > 0;
+
   return (
     <View style={styles.container}>
       {/* Date Header with Navigation */}
       <View style={styles.dateHeader}>
-        <TouchableOpacity>
+        <TouchableOpacity
+          onPress={() => changeDate(-1)}
+          style={styles.navButton}
+        >
           <Ionicons name="chevron-back" size={24} color="#1e293b" />
         </TouchableOpacity>
-        <Text style={styles.dateText}>
-          {dateShamsi || formatShamsiDate(getAfghanistanDate(selectedDate))}
-        </Text>
-        <TouchableOpacity>
-          <Ionicons name="chevron-forward" size={24} color="#1e293b" />
+
+        <TouchableOpacity onPress={goToToday} style={styles.dateTextWrapper}>
+          <Text style={styles.dateText}>
+            {dateShamsi || formatShamsiDate(getAfghanistanDate(selectedDate))}
+          </Text>
+          {!isToday && (
+            <Text style={styles.dateHintText}>برای امروز ضربه بزنید</Text>
+          )}
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          onPress={() => changeDate(1)}
+          style={[
+            styles.navButton,
+            forwardDisabled && styles.navButtonDisabled,
+          ]}
+          disabled={forwardDisabled}
+        >
+          <Ionicons
+            name="chevron-forward"
+            size={24}
+            color={forwardDisabled ? "#cbd5e1" : "#1e293b"}
+          />
         </TouchableOpacity>
       </View>
 
@@ -1029,7 +992,7 @@ export default function AttendanceScreen() {
         <Ionicons name="checkmark-circle" size={20} color="#10b981" />
       </View>
 
-      {/* ⏰ School Start Time Info */}
+      {/* School Start Time Info */}
       <View style={styles.schoolTimeInfo}>
         <Ionicons name="time-outline" size={16} color="#64748b" />
         <Text style={styles.schoolTimeText}>
@@ -1040,7 +1003,7 @@ export default function AttendanceScreen() {
         </Text>
       </View>
 
-      {/* ✅ Filter Toggle and Info */}
+      {/* Filter Toggle */}
       <View style={styles.filterRow}>
         <TouchableOpacity
           style={[
@@ -1067,7 +1030,7 @@ export default function AttendanceScreen() {
             {filterActive ? "حذف راننده‌ها" : "نمایش همه"}
           </Text>
         </TouchableOpacity>
-        {summary.excludedCount && summary.excludedCount > 0 && (
+        {hasExcluded && (
           <View style={styles.excludedInfo}>
             <Ionicons
               name="information-circle-outline"
@@ -1081,7 +1044,7 @@ export default function AttendanceScreen() {
         )}
       </View>
 
-      {/* Summary Cards - with LATE */}
+      {/* Summary Cards */}
       <View style={styles.summaryGrid}>
         <View style={[styles.summaryCard, { borderLeftColor: "#10b981" }]}>
           <Text style={[styles.summaryValue, { color: "#10b981" }]}>
@@ -1109,7 +1072,7 @@ export default function AttendanceScreen() {
         </View>
       </View>
 
-      {/* ✅ On Time / Late Breakdown */}
+      {/* Breakdown */}
       <View style={styles.breakdownRow}>
         <View style={styles.breakdownItem}>
           <View style={[styles.breakdownDot, { backgroundColor: "#10b981" }]} />
@@ -1119,7 +1082,7 @@ export default function AttendanceScreen() {
           <View style={[styles.breakdownDot, { backgroundColor: "#f59e0b" }]} />
           <Text style={styles.breakdownText}>تأخیر: {summary.late}</Text>
         </View>
-        {summary.excludedCount && summary.excludedCount > 0 && (
+        {hasExcluded && (
           <View style={styles.breakdownItem}>
             <View
               style={[styles.breakdownDot, { backgroundColor: "#dc2626" }]}
@@ -1131,7 +1094,7 @@ export default function AttendanceScreen() {
         )}
       </View>
 
-      {/* Quick Action Buttons */}
+      {/* Action Buttons */}
       <View style={styles.actionRow}>
         <TouchableOpacity
           style={[styles.actionButton, { backgroundColor: "#10b981" }]}
@@ -1152,7 +1115,6 @@ export default function AttendanceScreen() {
           <Ionicons name="add-circle-outline" size={18} color="#fff" />
           <Text style={styles.actionButtonText}>ثبت دستی</Text>
         </TouchableOpacity>
-        {/* PDF Download Button */}
         <TouchableOpacity
           style={[
             styles.actionButton,
@@ -1178,9 +1140,7 @@ export default function AttendanceScreen() {
         <Text style={styles.listTitle}>لیست حضور و غیاب</Text>
         <Text style={styles.listSubtitle}>
           {summary.total} کارمند • {summary.totalPunches} ثبت
-          {summary.excludedCount &&
-            summary.excludedCount > 0 &&
-            ` • ${summary.excludedCount} حذف شده`}
+          {hasExcluded && ` • ${summary.excludedCount} حذف شده`}
         </Text>
       </View>
 
@@ -1197,7 +1157,8 @@ export default function AttendanceScreen() {
             <Ionicons name="time-outline" size={48} color="#94a3b8" />
             <Text style={styles.emptyText}>هیچ رکورد حضوری یافت نشد</Text>
             <Text style={styles.emptySubtext}>
-              امروز {formatShamsiDate(getAfghanistanDate(new Date()))}
+              {isToday ? "امروز" : ""}{" "}
+              {formatShamsiDate(getAfghanistanDate(selectedDate))}
             </Text>
           </View>
         }
@@ -1206,11 +1167,10 @@ export default function AttendanceScreen() {
   );
 }
 
+// ==================== STYLES ====================
+
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#f1f5f9",
-  },
+  container: { flex: 1, backgroundColor: "#f1f5f9" },
   loadingContainer: {
     flex: 1,
     justifyContent: "center",
@@ -1233,11 +1193,28 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: "#e2e8f0",
   },
+  navButton: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  navButtonDisabled: { opacity: 0.4 },
+  dateTextWrapper: {
+    flex: 1,
+    alignItems: "center",
+    paddingVertical: 2,
+  },
   dateText: {
     fontSize: 16,
     fontWeight: "600",
     color: "#1e293b",
     fontFamily: "VazirBold",
+  },
+  dateHintText: {
+    fontSize: 10,
+    color: "#8b5cf6",
+    fontFamily: "Vazir",
+    marginTop: 2,
   },
   scannerStatus: {
     flexDirection: "row",
@@ -1282,7 +1259,6 @@ const styles = StyleSheet.create({
     color: "#94a3b8",
     fontFamily: "Vazir",
   },
-  // ✅ Filter Row
   filterRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -1301,22 +1277,11 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     gap: 6,
   },
-  filterButtonActive: {
-    backgroundColor: "#dc2626",
-  },
-  filterButtonInactive: {
-    backgroundColor: "#f1f5f9",
-  },
-  filterButtonText: {
-    fontSize: 12,
-    fontFamily: "Vazir",
-  },
-  filterButtonTextActive: {
-    color: "#fff",
-  },
-  filterButtonTextInactive: {
-    color: "#64748b",
-  },
+  filterButtonActive: { backgroundColor: "#dc2626" },
+  filterButtonInactive: { backgroundColor: "#f1f5f9" },
+  filterButtonText: { fontSize: 12, fontFamily: "Vazir" },
+  filterButtonTextActive: { color: "#fff" },
+  filterButtonTextInactive: { color: "#64748b" },
   excludedInfo: {
     flexDirection: "row",
     alignItems: "center",
@@ -1369,11 +1334,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 6,
   },
-  breakdownDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-  },
+  breakdownDot: { width: 10, height: 10, borderRadius: 5 },
   breakdownText: {
     fontSize: 12,
     color: "#64748b",
@@ -1394,9 +1355,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     gap: 6,
   },
-  actionButtonDisabled: {
-    opacity: 0.7,
-  },
+  actionButtonDisabled: { opacity: 0.7 },
   actionButtonText: {
     color: "#fff",
     fontSize: 14,
@@ -1439,14 +1398,8 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.08,
     shadowRadius: 4,
   },
-  cardLate: {
-    borderLeftWidth: 4,
-    borderLeftColor: "#f59e0b",
-  },
-  cardExcluded: {
-    opacity: 0.4,
-    backgroundColor: "#fef2f2",
-  },
+  cardLate: { borderLeftWidth: 4, borderLeftColor: "#f59e0b" },
+  cardExcluded: { opacity: 0.4, backgroundColor: "#fef2f2" },
   cardLeft: {
     flexDirection: "row",
     alignItems: "center",
@@ -1466,24 +1419,16 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
-  avatarLate: {
-    backgroundColor: "#fef3c7",
-  },
-  avatarExcluded: {
-    backgroundColor: "#fef2f2",
-  },
+  avatarLate: { backgroundColor: "#fef3c7" },
+  avatarExcluded: { backgroundColor: "#fef2f2" },
   avatarText: {
     fontSize: 16,
     fontWeight: "700",
     color: "#8b5cf6",
     fontFamily: "VazirBold",
   },
-  avatarTextLate: {
-    color: "#f59e0b",
-  },
-  avatarTextExcluded: {
-    color: "#dc2626",
-  },
+  avatarTextLate: { color: "#f59e0b" },
+  avatarTextExcluded: { color: "#dc2626" },
   staffName: {
     fontSize: 14,
     fontWeight: "500",
@@ -1501,10 +1446,7 @@ const styles = StyleSheet.create({
     gap: 4,
     marginTop: 2,
   },
-  punchTimeText: {
-    fontSize: 11,
-    fontFamily: "Vazir",
-  },
+  punchTimeText: { fontSize: 11, fontFamily: "Vazir" },
   lateInfo: {
     flexDirection: "row",
     alignItems: "center",
@@ -1543,10 +1485,7 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     fontFamily: "VazirBold",
   },
-  emptyContainer: {
-    alignItems: "center",
-    paddingVertical: 40,
-  },
+  emptyContainer: { alignItems: "center", paddingVertical: 40 },
   emptyText: {
     marginTop: 16,
     fontSize: 16,

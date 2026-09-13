@@ -444,7 +444,13 @@ class HRApi {
   async getTodayAttendance(): Promise<ApiResponse<AttendanceSummary>> {
     return this.request("/attendance/today");
   }
-
+  async getAttendanceByDate(
+    date: string,
+  ): Promise<ApiResponse<AttendanceSummary>> {
+    const query = new URLSearchParams();
+    query.append("date", date);
+    return this.request(`/attendance/by-date?${query.toString()}`);
+  }
   async getAttendance(params?: {
     startDate?: string;
     endDate?: string;

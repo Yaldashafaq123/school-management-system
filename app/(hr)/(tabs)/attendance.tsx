@@ -1,5 +1,5 @@
 // app/(hr)/(tabs)/attendance.tsx
-// ✅ FULLY FIXED: date navigation, driver filter, PDF, Shamsi header
+// ✅ FULLY FIXED: date navigation, driver filter, PDF, Afghan Shamsi header
 import { hrApi } from "@/src/config/hrApi";
 import { Ionicons } from "@expo/vector-icons";
 import * as Print from "expo-print";
@@ -66,15 +66,96 @@ function getAfghanistanDate(date: Date): Date {
   return new Date(utc + 4.5 * 3600000);
 }
 
+// ==================== AFGHAN SHAMSI HELPERS ====================
+
+// ✅ Afghan Shamsi month names (matches backend SHAMSI_MONTH_NAMES)
+const SHAMSI_MONTH_NAMES: Record<number, string> = {
+  1: "حمل",
+  2: "ثور",
+  3: "جوزا",
+  4: "سرطان",
+  5: "اسد",
+  6: "سنبله",
+  7: "میزان",
+  8: "عقرب",
+  9: "قوس",
+  10: "جدی",
+  11: "دلو",
+  12: "حوت",
+};
+
+const SHAMSI_WEEKDAYS: Record<number, string> = {
+  0: "یکشنبه",
+  1: "دوشنبه",
+  2: "سه‌شنبه",
+  3: "چهارشنبه",
+  4: "پنجشنبه",
+  5: "جمعه",
+  6: "شنبه",
+};
+
+/**
+ * Convert a Gregorian date to Afghan Shamsi parts using the Jalaali algorithm.
+ * Avoids Intl.DateTimeFormat("fa-IR-u-ca-persian") which gives inconsistent
+ * month names across iOS / Android / Web builds.
+ */
+function toShamsiParts(date: Date): {
+  year: number;
+  month: number;
+  day: number;
+  monthName: string;
+  weekday: string;
+} {
+  const gy = date.getFullYear();
+  const gm = date.getMonth() + 1;
+  const gd = date.getDate();
+
+  // ---- Jalaali conversion (jalali-js algorithm, MIT) ----
+  const g_d_m = [0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334];
+  let jy = gy <= 1600 ? 0 : 979;
+  const gy2 = gy <= 1600 ? gy - 621 : gy - 1600;
+  const gm2 = gm - 1;
+  let days =
+    365 * gy2 +
+    Math.floor((gy2 + 3) / 4) -
+    Math.floor((gy2 + 99) / 100) +
+    Math.floor((gy2 + 399) / 400) -
+    80 +
+    gd +
+    g_d_m[gm2];
+
+  jy += 33 * Math.floor(days / 12053);
+  days %= 12053;
+  jy += 4 * Math.floor(days / 1461);
+  days %= 1461;
+  if (days > 365) {
+    jy += Math.floor((days - 1) / 365);
+    days = (days - 1) % 365;
+  }
+
+  const jm =
+    days < 186 ? 1 + Math.floor(days / 31) : 7 + Math.floor((days - 186) / 30);
+  const jd = 1 + (days < 186 ? days % 31 : (days - 186) % 30);
+
+  return {
+    year: jy,
+    month: jm,
+    day: jd,
+    monthName: SHAMSI_MONTH_NAMES[jm] || "",
+    weekday: SHAMSI_WEEKDAYS[date.getDay()] || "",
+  };
+}
+
+// ✅ Convert Latin digits to Persian digits (۱۲۳…) for a clean RTL look
+function toPersianDigits(input: number | string): string {
+  return String(input).replace(/\d/g, (d) => "۰۱۲۳۴۵۶۷۸۹"[parseInt(d, 10)]);
+}
+
+// ✅ Shamsi date for the header — e.g. "جمعه، ۲۳ سنبله ۱۴۰۵"
 function formatShamsiDate(date: Date): string {
   try {
-    const formatter = new Intl.DateTimeFormat("fa-IR-u-ca-persian", {
-      weekday: "long",
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-    });
-    return formatter.format(date);
+    const s = toShamsiParts(date);
+    return `${s.weekday}، ${toPersianDigits(s.day)} ${s.monthName} ${toPersianDigits(s.year)}`;
   } catch {
     return date.toLocaleDateString("fa-IR");
   }

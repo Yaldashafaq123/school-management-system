@@ -86,7 +86,27 @@ export const disciplineApi = {
   },
 
   getRecordDetails: (id) => request(`/admin/records/${id}`),
-
+  // در disciplineApi اضافه کنید:
+getPraiseCatalog: () => request("/praise/catalog"),
+getPraiseLeaderboard: (params = {}) => {
+  const qs = new URLSearchParams(params).toString();
+  return request(`/praise/leaderboard${qs ? `?${qs}` : ""}`);
+},
+reportPraise: (payload) =>
+  request("/praise/report", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  }),
+getPendingPraise: (params = {}) => {
+  const qs = new URLSearchParams(params).toString();
+  return request(`/praise/pending${qs ? `?${qs}` : ""}`);
+},
+reviewPraise: (id, payload) =>
+  request(`/praise/records/${id}/review`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  }),
+getMyPraise: () => request("/praise/me"),
   getStudentScore: (studentId) => request(`/student/${studentId}/score`),
   getStudentFullReport: (studentId) =>
     request(`/admin/student/${studentId}/full-report`),

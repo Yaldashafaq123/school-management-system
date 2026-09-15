@@ -1,5 +1,6 @@
 // app/(principal)/students/[id].tsx
 import DisciplineReportForm from "@/components/discipline/DisciplineReportForm";
+import PraiseForm from "@/components/discipline/PraiseForm";
 import {
   formatCurrency,
   getStudentStatusColor,
@@ -68,8 +69,9 @@ export default function StudentDetailScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [student, setStudent] = useState<StudentDetailType | null>(null);
 
-  // ✅ State جدید برای مودال نظم و انضباط
+  // ✅ State برای مودال‌های انضباط و تشویق
   const [showDisciplineModal, setShowDisciplineModal] = useState(false);
+  const [showPraiseModal, setShowPraiseModal] = useState(false);
 
   const fetchStudent = async () => {
     try {
@@ -205,12 +207,12 @@ export default function StudentDetailScreen() {
         </View>
 
         {/* ============================================ */}
-        {/* ✅ دکمه‌های اقدام اصلی */}
+        {/* ✅ کارت اقدامات انضباطی و تشویقی */}
         {/* ============================================ */}
         <View style={styles.infoCard}>
-          <Text style={styles.sectionTitle}>اقدامات</Text>
+          <Text style={styles.sectionTitle}>اقدامات انضباطی و تشویقی</Text>
 
-          {/* درج تخلف */}
+          {/* درج مورد انضباطی */}
           <TouchableOpacity
             style={[styles.bigActionButton, { backgroundColor: "#ef4444" }]}
             onPress={() => setShowDisciplineModal(true)}
@@ -219,7 +221,19 @@ export default function StudentDetailScreen() {
             <Text style={styles.bigActionText}>درج مورد انضباطی</Text>
           </TouchableOpacity>
 
-          {/* گزارش کامل */}
+          {/* ثبت تشویق */}
+          <TouchableOpacity
+            style={[
+              styles.bigActionButton,
+              { backgroundColor: "#10b981", marginTop: 10 },
+            ]}
+            onPress={() => setShowPraiseModal(true)}
+          >
+            <Ionicons name="gift" size={22} color="#fff" />
+            <Text style={styles.bigActionText}>ثبت تشویق 🎉</Text>
+          </TouchableOpacity>
+
+          {/* گزارش کامل انضباطی */}
           <TouchableOpacity
             style={[
               styles.bigActionButton,
@@ -231,6 +245,7 @@ export default function StudentDetailScreen() {
             <Text style={styles.bigActionText}>گزارش کامل انضباطی</Text>
           </TouchableOpacity>
         </View>
+
         {/* Fee Summary */}
         {student.feeSummary && (
           <View style={styles.infoCard}>
@@ -327,7 +342,24 @@ export default function StudentDetailScreen() {
             : undefined
         }
         onSuccess={() => {
-          // رفرش اطلاعات شاگرد (اختیاری)
+          fetchStudent();
+        }}
+      />
+
+      {/* ============================================ */}
+      {/* ✅ مودال ثبت تشویق */}
+      {/* ============================================ */}
+      <PraiseForm
+        visible={showPraiseModal}
+        onClose={() => setShowPraiseModal(false)}
+        studentId={student.id}
+        studentName={student.User.fullName}
+        className={
+          student.Class
+            ? `${student.Class.name}${student.Class.section ? ` - ${student.Class.section}` : ""}`
+            : undefined
+        }
+        onSuccess={() => {
           fetchStudent();
         }}
       />
@@ -513,7 +545,7 @@ const styles = StyleSheet.create({
     fontFamily: "Vazir",
   },
 
-  // ✅ استایل جدید برای دکمه بزرگ انضباطی
+  // ✅ استایل دکمه‌های بزرگ انضباطی/تشویقی
   bigActionButton: {
     flexDirection: "row",
     alignItems: "center",

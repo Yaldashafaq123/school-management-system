@@ -1,5 +1,6 @@
 /* eslint-disable react-hooks/set-state-in-effect */
 import DisciplineReportForm from "@/components/discipline/DisciplineReportForm";
+import PraiseForm from "@/components/discipline/PraiseForm";
 import { Header } from "@/components/Header";
 import { Colors } from "@/constants/Colors";
 import { useAuth } from "@/contexts/AuthContext";
@@ -30,6 +31,7 @@ export default function StudentDetail() {
   const { id } = useLocalSearchParams();
   const { user } = useAuth();
   const [showDisciplineModal, setShowDisciplineModal] = useState(false);
+  const [showPraiseModal, setShowPraiseModal] = useState(false);
   const [student, setStudent] = useState<StudentDetailType | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -349,6 +351,15 @@ export default function StudentDetail() {
             >
               <Ionicons name="warning" size={24} color={Colors.danger} />
               <Text style={styles.quickActionText}>درج مورد انضباطی</Text>
+            </TouchableOpacity>
+          )}
+          {(isTeacher || isAdmin) && (
+            <TouchableOpacity
+              style={styles.quickAction}
+              onPress={() => setShowPraiseModal(true)}
+            >
+              <Ionicons name="gift" size={24} color={Colors.success} />
+              <Text style={styles.quickActionText}>ثبت تشویق 🎉</Text>
             </TouchableOpacity>
           )}
         </View>
@@ -696,7 +707,24 @@ export default function StudentDetail() {
             : undefined
         }
         onSuccess={() => {
-          // رفرش پروفایل شاگرد بعد از ثبت موفق (اختیاری)
+          fetchStudentDetails();
+        }}
+      />
+
+      {/* =============================== */}
+      {/* ✅ Praise Modal */}
+      {/* =============================== */}
+      <PraiseForm
+        visible={showPraiseModal}
+        onClose={() => setShowPraiseModal(false)}
+        studentId={student?.id}
+        studentName={student?.fullName}
+        className={
+          student?.class
+            ? `${student.class.name}${student.class.section ? ` - ${student.class.section}` : ""}`
+            : undefined
+        }
+        onSuccess={() => {
           fetchStudentDetails();
         }}
       />

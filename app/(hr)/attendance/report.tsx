@@ -164,6 +164,7 @@ export default function AttendanceReportScreen() {
   // Initial load
   // ---------------------------------------------------------------------------
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchReport(1, false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -347,10 +348,11 @@ export default function AttendanceReportScreen() {
             <Ionicons name="arrow-back" size={24} color="#1e293b" />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>گزارش حضور</Text>
+
           <TouchableOpacity
-            onPress={() => router.push("/(hr)/attendance/export" as any)}
+            onPress={() => router.push("/(hr)/attendance/overview" as any)}
           >
-            <Ionicons name="download-outline" size={24} color="#8b5cf6" />
+            <Ionicons name="stats-chart-outline" size={24} color="#8b5cf6" />
           </TouchableOpacity>
         </View>
 

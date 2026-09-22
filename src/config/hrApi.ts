@@ -475,7 +475,40 @@ class HRApi {
     const qs = query.toString();
     return this.request(`/attendance${qs ? `?${qs}` : ""}`);
   }
+  /**
+   * Get monthly attendance summaries for a batch of staff IDs.
+   * Runs requests in parallel with a small concurrency cap.
+   */
+  async getBulkStaffMonthlyAttendance(
+    staffIds: number[],
+    params: { year: number; month: number },
+    concurrency: number = 6,
+  ): Promise<Record<number, any>> {
+    const results: Record<number, any> = {};
+    let index = 0;
 
+    const worker = async (): Promise<void> => {
+      while (index < staffIds.length) {
+        const i = index++;
+        const id = staffIds[i];
+        try {
+          const res = await this.getStaffMonthlyAttendance(id, params);
+          if (res?.success && res.data) {
+            results[id] = res.data;
+          }
+        } catch (e) {
+          console.warn(`⚠️ Monthly fetch failed for staff ${id}`, e);
+        }
+      }
+    };
+
+    const workers = Array.from(
+      { length: Math.min(concurrency, staffIds.length) },
+      () => worker(),
+    );
+    await Promise.all(workers);
+    return results;
+  }
   async recordAttendance(data: {
     staffId: number;
     punch?: number;

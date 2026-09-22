@@ -1,5 +1,7 @@
+/* eslint-disable react-hooks/set-state-in-effect */
 // app/(hr)/attendance/overview.tsx - Admin Monthly Attendance Overview
-// Shows ALL staff with their monthly attendance stats in one list
+// Fetches staff list, then fetches each person's monthly summary in parallel
+// and renders + exports a shareable PDF report.
 import { hrApi } from "@/src/config/hrApi";
 import { Ionicons } from "@expo/vector-icons";
 import * as Print from "expo-print";
@@ -7,18 +9,18 @@ import { useRouter } from "expo-router";
 import * as Sharing from "expo-sharing";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  ActivityIndicator,
-  Alert,
-  FlatList,
-  RefreshControl,
-  SafeAreaView,
-  ScrollView,
-  StatusBar,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Alert,
+    FlatList,
+    RefreshControl,
+    SafeAreaView,
+    ScrollView,
+    StatusBar,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
 } from "react-native";
 
 // ==================== TYPES ====================
@@ -33,7 +35,6 @@ type StaffMonthlyRow = {
   department: string | null;
   isActive: boolean;
   teacherCode: string | null;
-  // monthly stats (returned by backend when year/month provided)
   presentDays: number;
   absentDays: number;
   lateDays: number;
@@ -54,17 +55,6 @@ type OverviewSummary = {
   totalLate: number;
   averageAttendance: number;
   totalRecords: number;
-};
-
-type OverviewResponse = {
-  report: StaffMonthlyRow[];
-  summary: OverviewSummary;
-  pagination: {
-    page: number;
-    total: number;
-    totalPages: number;
-    limit: number;
-  };
 };
 
 // ==================== HELPERS ====================
@@ -104,6 +94,239 @@ function getCurrentShamsi(): { month: number; year: number } {
   }
 }
 
+function getStaffTypeLabel(type: string): string {
+  const labels: Record<string, string> = {
+    TEACHER: "استاد",
+    ADMIN: "مدیر",
+    FINANCE: "مالی",
+    HR: "منابع بشری",
+    PRINCIPAL: "مدیر مکتب",
+    CHEF: "آشپز",
+    GUARD: "نگهبان",
+    DRIVER: "راننده",
+    CLEANER: "پاک‌کن",
+    SECURITY: "امنیت",
+    MAINTENANCE: "تعمیرات",
+    LIBRARIAN: "کتابدار",
+    NURSE: "نرس",
+    COUNSELOR: "مشاور",
+    COACH: "مربی",
+    OTHER: "سایر",
+  };
+  return labels[type] || type;
+}
+
+// ==================== PDF GENERATOR ====================
+
+function generateTeamMonthlyPDF(
+  rows: StaffMonthlyRow[],
+  summary: OverviewSummary | null,
+  monthName: string,
+  year: number,
+): string {
+  const totals = rows.reduce(
+    (acc, r) => {
+      acc.present += r.presentDays || 0;
+      acc.absent += r.absentDays || 0;
+      acc.late += r.lateDays || 0;
+      acc.working += r.workingDays || 0;
+      acc.records += r.totalRecords || 0;
+      return acc;
+    },
+    { present: 0, absent: 0, late: 0, working: 0, records: 0 },
+  );
+
+  const avgRate =
+    rows.length > 0
+      ? Math.round(
+          rows.reduce((s, r) => s + (r.attendanceRate || 0), 0) / rows.length,
+        )
+      : 0;
+
+  const tableRows = rows
+    .map((s, idx) => {
+      const rate = s.attendanceRate || 0;
+      const rateColor =
+        rate >= 90 ? "#10b981" : rate >= 70 ? "#f59e0b" : "#ef4444";
+      const statusColor = s.isActive ? "#10b981" : "#94a3b8";
+      const statusText = s.isActive ? "فعال" : "غیرفعال";
+
+      return `
+        <tr style="${idx % 2 === 0 ? "background:#f8fafc;" : ""}">
+          <td style="padding:10px;border-bottom:1px solid #e2e8f0;text-align:center;font-weight:500;">${
+            idx + 1
+          }</td>
+          <td style="padding:10px;border-bottom:1px solid #e2e8f0;">${
+            s.fullName
+          }${s.nameFarsi ? `<br><span style="font-size:11px;color:#94a3b8;">${s.nameFarsi}</span>` : ""}</td>
+          <td style="padding:10px;border-bottom:1px solid #e2e8f0;text-align:center;">${getStaffTypeLabel(s.staffType)}</td>
+          <td style="padding:10px;border-bottom:1px solid #e2e8f0;text-align:center;">${s.department || "—"}</td>
+          <td style="padding:10px;border-bottom:1px solid #e2e8f0;text-align:center;color:#10b981;font-weight:700;">${s.presentDays || 0}</td>
+          <td style="padding:10px;border-bottom:1px solid #e2e8f0;text-align:center;color:#ef4444;font-weight:700;">${s.absentDays || 0}</td>
+          <td style="padding:10px;border-bottom:1px solid #e2e8f0;text-align:center;color:#f59e0b;font-weight:700;">${s.lateDays || 0}</td>
+          <td style="padding:10px;border-bottom:1px solid #e2e8f0;text-align:center;color:#3b82f6;font-weight:600;">${s.workingDays || 0}</td>
+          <td style="padding:10px;border-bottom:1px solid #e2e8f0;text-align:center;">
+            <span style="display:inline-block;padding:4px 10px;border-radius:10px;background:${rateColor}20;color:${rateColor};font-weight:700;font-size:12px;min-width:44px;">${rate}%</span>
+          </td>
+          <td style="padding:10px;border-bottom:1px solid #e2e8f0;text-align:center;">
+            <span style="display:inline-block;padding:2px 8px;border-radius:8px;background:${statusColor}20;color:${statusColor};font-size:11px;font-weight:600;">${statusText}</span>
+          </td>
+        </tr>`;
+    })
+    .join("");
+
+  return `
+    <!DOCTYPE html>
+    <html dir="rtl" lang="fa">
+    <head>
+      <meta charset="UTF-8" />
+      <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+      <title>گزارش ماهانه حضور - ${monthName} ${year}</title>
+      <style>
+        @import url('https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;600;700;800&display=swap');
+        * { margin:0; padding:0; box-sizing:border-box; }
+        body {
+          font-family:'Vazirmatn','Vazir',sans-serif;
+          background:#f1f5f9;
+          padding:20px;
+          direction:rtl;
+          color:#1e293b;
+        }
+        .report {
+          max-width:1300px;
+          margin:0 auto;
+          background:#fff;
+          border-radius:16px;
+          overflow:hidden;
+          box-shadow:0 4px 24px rgba(0,0,0,.08);
+        }
+        /* Header */
+        .header {
+          background:linear-gradient(135deg,#8b5cf6 0%,#6d28d9 100%);
+          padding:32px 40px;
+          color:#fff;
+        }
+        .header h1 { font-size:26px; font-weight:800; margin-bottom:6px; letter-spacing:.3px; }
+        .header .subtitle { font-size:15px; opacity:.95; font-weight:500; }
+        .header .meta { font-size:13px; opacity:.8; margin-top:8px; }
+        /* Summary grid */
+        .summary {
+          display:grid;
+          grid-template-columns:repeat(6,1fr);
+          gap:12px;
+          padding:22px 40px;
+          background:#f8fafc;
+          border-bottom:1px solid #e2e8f0;
+        }
+        .card {
+          background:#fff;
+          border-radius:12px;
+          padding:14px;
+          text-align:center;
+          border-right:4px solid #8b5cf6;
+          box-shadow:0 1px 3px rgba(0,0,0,.06);
+        }
+        .card .v { font-size:24px; font-weight:800; }
+        .card .l { font-size:11px; color:#64748b; margin-top:4px; font-weight:500; }
+        .card.g { border-right-color:#10b981; } .card.g .v { color:#10b981; }
+        .card.r { border-right-color:#ef4444; } .card.r .v { color:#ef4444; }
+        .card.y { border-right-color:#f59e0b; } .card.y .v { color:#f59e0b; }
+        .card.b { border-right-color:#3b82f6; } .card.b .v { color:#3b82f6; }
+        .card.p { border-right-color:#ec4899; } .card.p .v { color:#ec4899; }
+        /* Table */
+        .table-wrap { padding:24px 40px 40px; }
+        .table-title {
+          display:flex; justify-content:space-between; align-items:center;
+          margin-bottom:16px;
+        }
+        .table-title h2 { font-size:18px; font-weight:700; }
+        .table-title .count { font-size:13px; color:#94a3b8; }
+        table { width:100%; border-collapse:collapse; font-family:inherit; }
+        thead { background:#f1f5f9; }
+        thead th {
+          padding:12px 10px;
+          text-align:center;
+          font-size:12px;
+          font-weight:700;
+          color:#1e293b;
+          border-bottom:2px solid #e2e8f0;
+          white-space:nowrap;
+        }
+        tbody td { font-size:13px; color:#1e293b; }
+        tbody tr:hover { background:#f1f5f9; }
+        /* Footer */
+        .footer {
+          padding:16px 40px;
+          border-top:1px solid #e2e8f0;
+          display:flex;
+          justify-content:space-between;
+          font-size:11px;
+          color:#94a3b8;
+          background:#f8fafc;
+        }
+        /* Print */
+        @media print {
+          body { background:#fff; padding:0; }
+          .report { box-shadow:none; border-radius:0; }
+          thead { display:table-header-group; }
+          tbody tr { page-break-inside:avoid; }
+        }
+      </style>
+    </head>
+    <body>
+      <div class="report">
+        <div class="header">
+          <h1>📊 گزارش ماهانه حضور و غیاب کارمندان</h1>
+          <div class="subtitle">${monthName} ${year}</div>
+          <div class="meta">
+            تعداد کارمندان: ${rows.length} &nbsp;•&nbsp;
+            تاریخ تولید: ${new Date().toLocaleString("fa-IR")}
+          </div>
+        </div>
+
+        <div class="summary">
+          <div class="card"><div class="v">${rows.length}</div><div class="l">کل کارمندان</div></div>
+          <div class="card g"><div class="v">${totals.present}</div><div class="l">مجموع حضور</div></div>
+          <div class="card r"><div class="v">${totals.absent}</div><div class="l">مجموع غیبت</div></div>
+          <div class="card y"><div class="v">${totals.late}</div><div class="l">مجموع تأخیر</div></div>
+          <div class="card b"><div class="v">${totals.working}</div><div class="l">مجموع روز کاری</div></div>
+          <div class="card p"><div class="v">${avgRate}%</div><div class="l">میانگین نرخ حضور</div></div>
+        </div>
+
+        <div class="table-wrap">
+          <div class="table-title">
+            <h2>📋 لیست تفصیلی کارمندان</h2>
+            <div class="count">${rows.length} ردیف</div>
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>نام و تخلص</th>
+                <th>وظیفه</th>
+                <th>بخش</th>
+                <th>حضور</th>
+                <th>غیبت</th>
+                <th>تأخیر</th>
+                <th>روز کاری</th>
+                <th>نرخ</th>
+                <th>وضعیت</th>
+              </tr>
+            </thead>
+            <tbody>${tableRows}</tbody>
+          </table>
+        </div>
+
+        <div class="footer">
+          <span>📄 سیستم مدیریت حضور و غیاب</span>
+          <span>گزارش رسمی — قابل ارائه به مدیریت</span>
+        </div>
+      </div>
+    </body>
+    </html>
+  `;
+}
+
 // ==================== COMPONENT ====================
 
 export default function AdminAttendanceOverviewScreen() {
@@ -120,6 +343,7 @@ export default function AdminAttendanceOverviewScreen() {
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
   const [staffList, setStaffList] = useState<StaffMonthlyRow[]>([]);
   const [summary, setSummary] = useState<OverviewSummary | null>(null);
   const [pagination, setPagination] = useState({
@@ -157,7 +381,7 @@ export default function AdminAttendanceOverviewScreen() {
   ];
 
   // ---------------------------------------------------------------------------
-  // Fetch — replace or append
+  // Fetch — staff list + per-person monthly summary
   // ---------------------------------------------------------------------------
   const fetchOverview = useCallback(
     async (pageNum: number = 1, append: boolean = false) => {
@@ -168,41 +392,149 @@ export default function AdminAttendanceOverviewScreen() {
       }
 
       try {
-        const params: any = {
+        // 1) Get paginated staff list
+        const listParams: any = {
           page: pageNum,
           limit: pagination.limit,
-          year: selectedShamsiYear,
-          month: selectedShamsiMonth,
         };
+        if (selectedStaffType !== "all")
+          listParams.staffType = selectedStaffType;
+        if (search) listParams.search = search;
 
-        if (selectedStaffType !== "all") params.staffType = selectedStaffType;
-        if (search) params.search = search;
+        console.log("📡 [1/2] Fetch staff list:", listParams);
 
-        // 🎯 Uses the SAME endpoint — the backend returns monthly stats
-        // when year/month params are present.
-        const response = await hrApi.getAttendanceReport(params);
+        const listRes = await hrApi.getAttendanceReport(listParams);
 
-        if (response.success && response.data) {
-          const incoming: StaffMonthlyRow[] = response.data.report || [];
-
-          if (append) {
-            setStaffList((prev) => {
-              const existingIds = new Set(prev.map((s) => s.staffId));
-              return [
-                ...prev,
-                ...incoming.filter((s) => !existingIds.has(s.staffId)),
-              ];
-            });
-          } else {
-            setStaffList(incoming);
-          }
-
-          setSummary(response.data.summary);
-          setPagination(response.data.pagination);
-          pageRef.current = response.data.pagination.page;
+        if (!listRes?.success || !listRes.data) {
+          console.warn("⚠️ Staff list response invalid:", listRes);
+          return;
         }
+
+        const incoming: any[] = listRes.data.report || [];
+        console.log(`✅ Got ${incoming.length} staff (page ${pageNum})`);
+
+        if (incoming.length === 0) {
+          if (!append) setStaffList([]);
+          setPagination(
+            listRes.data.pagination || {
+              page: 1,
+              total: 0,
+              totalPages: 1,
+              limit: 20,
+            },
+          );
+          return;
+        }
+
+        // 2) Fetch monthly summary for each staff (parallel, capped)
+        const staffIds = incoming.map((s) => s.staffId).filter(Boolean);
+        console.log(
+          `📡 [2/2] Fetching monthly summaries for ${staffIds.length} staff ` +
+            `(${selectedShamsiMonth}/${selectedShamsiYear})...`,
+        );
+
+        const monthlyMap = await hrApi.getBulkStaffMonthlyAttendance(
+          staffIds,
+          { year: selectedShamsiYear, month: selectedShamsiMonth },
+          6,
+        );
+
+        console.log(
+          `✅ Monthly summaries received: ${Object.keys(monthlyMap).length}/${staffIds.length}`,
+        );
+
+        // 3) Merge profile + monthly summary
+        const merged: StaffMonthlyRow[] = incoming.map((s) => {
+          const m = monthlyMap[s.staffId];
+          const ms = m?.summary || {};
+
+          return {
+            staffId: s.staffId,
+            fullName: s.fullName,
+            nameFarsi: s.nameFarsi,
+            role: s.role,
+            staffType: s.staffType,
+            position: s.position,
+            department: s.department,
+            isActive: s.isActive,
+            teacherCode: s.teacherCode,
+            presentDays: ms.presentDays ?? 0,
+            absentDays: ms.absentDays ?? 0,
+            lateDays: ms.lateDays ?? 0,
+            onTimeDays: ms.onTimeDays ?? 0,
+            fridayDays: ms.fridayDays ?? 0,
+            workingDays: ms.workingDays ?? 0,
+            totalRecords: ms.totalRecords ?? 0,
+            attendanceRate: ms.attendanceRate ?? 0,
+            totalPunchIn: ms.totalPunchIn ?? 0,
+            totalPunchOut: ms.totalPunchOut ?? 0,
+          };
+        });
+
+        // 4) Update state
+        let nextList: StaffMonthlyRow[];
+        if (append) {
+          setStaffList((prev) => {
+            const existingIds = new Set(prev.map((x) => x.staffId));
+            const appended = [
+              ...prev,
+              ...merged.filter((x) => !existingIds.has(x.staffId)),
+            ];
+            nextList = appended;
+            return appended;
+          });
+        } else {
+          nextList = merged;
+          setStaffList(merged);
+        }
+
+        // Aggregate summary across all loaded rows
+        const allRows = append ? staffList.concat(merged) : merged;
+        const totals = allRows.reduce(
+          (acc, r) => {
+            acc.totalPresent += r.presentDays;
+            acc.totalAbsent += r.absentDays;
+            acc.totalLate += r.lateDays;
+            acc.totalRecords += r.totalRecords;
+            acc.rateSum += r.attendanceRate;
+            return acc;
+          },
+          {
+            totalPresent: 0,
+            totalAbsent: 0,
+            totalLate: 0,
+            totalRecords: 0,
+            rateSum: 0,
+          },
+        );
+
+        setSummary({
+          totalStaff:
+            listRes.data.pagination?.total ??
+            listRes.data.summary?.totalStaff ??
+            0,
+          activeStaff: listRes.data.summary?.activeStaff ?? 0,
+          totalPresent: totals.totalPresent,
+          totalAbsent: totals.totalAbsent,
+          totalLate: totals.totalLate,
+          averageAttendance: allRows.length
+            ? Math.round(totals.rateSum / allRows.length)
+            : 0,
+          totalRecords: totals.totalRecords,
+        });
+
+        setPagination(
+          listRes.data.pagination || {
+            page: pageNum,
+            total: merged.length,
+            totalPages: 1,
+            limit: pagination.limit,
+          },
+        );
+        pageRef.current = listRes.data.pagination?.page ?? pageNum;
       } catch (error) {
-        console.error("Fetch overview error:", error);
+        console.error("❌ Fetch overview error:", error);
+        Alert.alert("خطا", "خطا در دریافت گزارش. لطفا دوباره تلاش کنید.");
       } finally {
         setLoading(false);
         setRefreshing(false);
@@ -218,12 +550,12 @@ export default function AdminAttendanceOverviewScreen() {
       pagination.limit,
       selectedShamsiMonth,
       selectedShamsiYear,
+      staffList,
     ],
   );
 
   // Initial + refetch on month change
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true);
     pageRef.current = 1;
     fetchOverview(1, false);
@@ -285,7 +617,7 @@ export default function AdminAttendanceOverviewScreen() {
   };
 
   // ---------------------------------------------------------------------------
-  // PDF — full team monthly report
+  // PDF — share with manager
   // ---------------------------------------------------------------------------
   const generateTeamPDF = async () => {
     if (staffList.length === 0) {
@@ -293,100 +625,24 @@ export default function AdminAttendanceOverviewScreen() {
       return;
     }
 
+    setIsGeneratingPDF(true);
+
     try {
       const monthName = getShamsiMonthName(selectedShamsiMonth);
+      const html = generateTeamMonthlyPDF(
+        staffList,
+        summary,
+        monthName,
+        selectedShamsiYear,
+      );
 
-      const rows = staffList
-        .map((s) => {
-          const rate = s.attendanceRate || 0;
-          const rateColor =
-            rate >= 90 ? "#10b981" : rate >= 70 ? "#f59e0b" : "#ef4444";
-          return `
-            <tr>
-              <td style="padding:8px;border-bottom:1px solid #e2e8f0;text-align:center;">${s.staffId}</td>
-              <td style="padding:8px;border-bottom:1px solid #e2e8f0;">${s.fullName}</td>
-              <td style="padding:8px;border-bottom:1px solid #e2e8f0;text-align:center;">${s.position || s.staffType}</td>
-              <td style="padding:8px;border-bottom:1px solid #e2e8f0;text-align:center;">${s.department || "—"}</td>
-              <td style="padding:8px;border-bottom:1px solid #e2e8f0;text-align:center;color:#10b981;font-weight:600;">${s.presentDays || 0}</td>
-              <td style="padding:8px;border-bottom:1px solid #e2e8f0;text-align:center;color:#ef4444;font-weight:600;">${s.absentDays || 0}</td>
-              <td style="padding:8px;border-bottom:1px solid #e2e8f0;text-align:center;color:#f59e0b;font-weight:600;">${s.lateDays || 0}</td>
-              <td style="padding:8px;border-bottom:1px solid #e2e8f0;text-align:center;">${s.workingDays || 0}</td>
-              <td style="padding:8px;border-bottom:1px solid #e2e8f0;text-align:center;">
-                <span style="display:inline-block;padding:3px 10px;border-radius:10px;background:${rateColor}20;color:${rateColor};font-weight:600;font-size:12px;">${rate}%</span>
-              </td>
-            </tr>`;
-        })
-        .join("");
+      const { uri } = await Print.printToFileAsync({
+        html,
+        base64: false,
+        width: 1300,
+      });
 
-      const html = `
-        <!DOCTYPE html>
-        <html dir="rtl" lang="fa">
-        <head>
-          <meta charset="UTF-8" />
-          <style>
-            @import url('https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;600;700&display=swap');
-            * { margin:0; padding:0; box-sizing:border-box; }
-            body { font-family:'Vazirmatn','Vazir',sans-serif; background:#f1f5f9; padding:20px; direction:rtl; }
-            .container { max-width:1200px; margin:0 auto; background:#fff; border-radius:16px; overflow:hidden; box-shadow:0 4px 24px rgba(0,0,0,.08); }
-            .header { background:linear-gradient(135deg,#8b5cf6,#6d28d9); padding:28px 40px; color:#fff; }
-            .header h1 { font-size:22px; margin-bottom:4px; }
-            .header p { font-size:14px; opacity:.9; }
-            .summary { display:grid; grid-template-columns:repeat(5,1fr); gap:10px; padding:18px 40px; background:#f8fafc; border-bottom:1px solid #e2e8f0; }
-            .card { background:#fff; padding:12px; border-radius:10px; text-align:center; border-right:3px solid #8b5cf6; }
-            .card .v { font-size:20px; font-weight:700; color:#1e293b; }
-            .card .l { font-size:11px; color:#64748b; margin-top:2px; }
-            .card.g { border-right-color:#10b981; } .card.g .v { color:#10b981; }
-            .card.r { border-right-color:#ef4444; } .card.r .v { color:#ef4444; }
-            .card.y { border-right-color:#f59e0b; } .card.y .v { color:#f59e0b; }
-            .table-wrap { padding:24px 40px 40px; }
-            table { width:100%; border-collapse:collapse; }
-            thead { background:#f1f5f9; }
-            thead th { padding:10px; font-size:12px; color:#1e293b; border-bottom:2px solid #e2e8f0; text-align:center; }
-            tbody td { font-size:12px; color:#1e293b; }
-            tbody tr:nth-child(even) { background:#f8fafc; }
-            .footer { padding:14px 40px; border-top:1px solid #e2e8f0; font-size:11px; color:#94a3b8; background:#f8fafc; display:flex; justify-content:space-between; }
-          </style>
-        </head>
-        <body>
-          <div class="container">
-            <div class="header">
-              <h1>📊 گزارش ماهانه حضور و غیاب کارمندان</h1>
-              <p>${monthName} ${selectedShamsiYear} • ${staffList.length} کارمند</p>
-            </div>
-            <div class="summary">
-              <div class="card"><div class="v">${summary?.totalStaff ?? 0}</div><div class="l">کل کارمندان</div></div>
-              <div class="card g"><div class="v">${summary?.totalPresent ?? 0}</div><div class="l">مجموع حضور</div></div>
-              <div class="card r"><div class="v">${summary?.totalAbsent ?? 0}</div><div class="l">مجموع غیبت</div></div>
-              <div class="card y"><div class="v">${summary?.totalLate ?? 0}</div><div class="l">مجموع تأخیر</div></div>
-              <div class="card"><div class="v">${summary?.averageAttendance ?? 0}%</div><div class="l">میانگین حضور</div></div>
-            </div>
-            <div class="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>کد</th>
-                    <th>نام</th>
-                    <th>وظیفه</th>
-                    <th>بخش</th>
-                    <th>حضور</th>
-                    <th>غیبت</th>
-                    <th>تأخیر</th>
-                    <th>روز کاری</th>
-                    <th>نرخ</th>
-                  </tr>
-                </thead>
-                <tbody>${rows}</tbody>
-              </table>
-            </div>
-            <div class="footer">
-              <span>📄 تولید: ${new Date().toLocaleString("fa-IR")}</span>
-              <span>سیستم حضور و غیاب</span>
-            </div>
-          </div>
-        </body>
-        </html>`;
-
-      const { uri } = await Print.printToFileAsync({ html, base64: false });
+      console.log("📄 PDF generated:", uri);
 
       if (await Sharing.isAvailableAsync()) {
         await Sharing.shareAsync(uri, {
@@ -395,11 +651,15 @@ export default function AdminAttendanceOverviewScreen() {
           UTI: "com.adobe.pdf",
         });
       } else {
-        Alert.alert("موفق", `PDF ذخیره شد:\n${uri}`);
+        Alert.alert("موفق", `فایل PDF در مسیر زیر ذخیره شد:\n${uri}`, [
+          { text: "باشه" },
+        ]);
       }
     } catch (err) {
-      console.error("PDF error:", err);
-      Alert.alert("خطا", "خطا در تولید PDF");
+      console.error("❌ PDF error:", err);
+      Alert.alert("خطا", "خطا در تولید فایل PDF");
+    } finally {
+      setIsGeneratingPDF(false);
     }
   };
 
@@ -427,13 +687,13 @@ export default function AdminAttendanceOverviewScreen() {
           </View>
           <View style={styles.summaryCard}>
             <Text style={[styles.summaryValue, { color: "#ef4444" }]}>
-              {summary.totalAbsent ?? 0}
+              {summary.totalAbsent}
             </Text>
             <Text style={styles.summaryLabel}>مجموع غیبت</Text>
           </View>
           <View style={styles.summaryCard}>
             <Text style={[styles.summaryValue, { color: "#f59e0b" }]}>
-              {summary.totalLate ?? 0}
+              {summary.totalLate}
             </Text>
             <Text style={styles.summaryLabel}>مجموع تأخیر</Text>
           </View>
@@ -442,10 +702,6 @@ export default function AdminAttendanceOverviewScreen() {
               {summary.averageAttendance}%
             </Text>
             <Text style={styles.summaryLabel}>میانگین حضور</Text>
-          </View>
-          <View style={styles.summaryCard}>
-            <Text style={styles.summaryValue}>{summary.totalRecords}</Text>
-            <Text style={styles.summaryLabel}>کل ثبت‌ها</Text>
           </View>
         </View>
       </ScrollView>
@@ -462,7 +718,6 @@ export default function AdminAttendanceOverviewScreen() {
         style={styles.card}
         onPress={() => router.push(`/(hr)/attendance/${item.staffId}` as any)}
       >
-        {/* Top row — avatar, name, rate badge */}
         <View style={styles.cardHeader}>
           <View style={styles.avatar}>
             <Text style={styles.avatarText}>
@@ -472,7 +727,8 @@ export default function AdminAttendanceOverviewScreen() {
           <View style={styles.cardInfo}>
             <Text style={styles.staffName}>{item.fullName}</Text>
             <Text style={styles.staffDetails}>
-              {item.position || item.staffType} • {item.department || "عمومی"}
+              {item.position || getStaffTypeLabel(item.staffType)} •{" "}
+              {item.department || "عمومی"}
             </Text>
           </View>
           <View style={styles.rateContainer}>
@@ -486,7 +742,6 @@ export default function AdminAttendanceOverviewScreen() {
           </View>
         </View>
 
-        {/* Bottom row — day chips */}
         <View style={styles.statsGrid}>
           <View style={[styles.statBox, { backgroundColor: "#ecfdf5" }]}>
             <Ionicons name="checkmark-circle" size={16} color="#10b981" />
@@ -551,6 +806,9 @@ export default function AdminAttendanceOverviewScreen() {
       <SafeAreaView style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#8b5cf6" />
         <Text style={styles.loadingText}>در حال بارگذاری گزارش ماهانه...</Text>
+        <Text style={styles.loadingSubtext}>
+          دریافت اطلاعات {pagination.limit} کارمند
+        </Text>
       </SafeAreaView>
     );
   }
@@ -570,8 +828,16 @@ export default function AdminAttendanceOverviewScreen() {
             <Ionicons name="arrow-back" size={24} color="#1e293b" />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>گزارش ماهانه کارمندان</Text>
-          <TouchableOpacity onPress={generateTeamPDF}>
-            <Ionicons name="download-outline" size={24} color="#8b5cf6" />
+          <TouchableOpacity
+            style={styles.pdfButton}
+            onPress={generateTeamPDF}
+            disabled={isGeneratingPDF}
+          >
+            {isGeneratingPDF ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <Ionicons name="share-outline" size={20} color="#fff" />
+            )}
           </TouchableOpacity>
         </View>
 
@@ -587,9 +853,7 @@ export default function AdminAttendanceOverviewScreen() {
             <Text style={styles.monthText}>
               {monthName} {selectedShamsiYear}
             </Text>
-            <Text style={styles.monthSubtext}>
-              {pagination.total} کارمند
-            </Text>
+            <Text style={styles.monthSubtext}>{pagination.total} کارمند</Text>
           </View>
           <TouchableOpacity
             style={styles.monthNavButton}
@@ -655,7 +919,7 @@ export default function AdminAttendanceOverviewScreen() {
                             styles.filterChipTextActive,
                         ]}
                       >
-                        {type === "all" ? "همه" : type}
+                        {type === "all" ? "همه" : getStaffTypeLabel(type)}
                       </Text>
                     </TouchableOpacity>
                   ))}
@@ -663,10 +927,7 @@ export default function AdminAttendanceOverviewScreen() {
               </View>
             </View>
 
-            <TouchableOpacity
-              style={styles.applyButton}
-              onPress={applyFilters}
-            >
+            <TouchableOpacity style={styles.applyButton} onPress={applyFilters}>
               <Text style={styles.applyButtonText}>اعمال فیلترها</Text>
             </TouchableOpacity>
           </View>
@@ -722,8 +983,14 @@ const styles = StyleSheet.create({
   },
   loadingText: {
     marginTop: 12,
-    fontSize: 14,
+    fontSize: 15,
     color: "#64748b",
+    fontFamily: "Vazir",
+  },
+  loadingSubtext: {
+    marginTop: 6,
+    fontSize: 12,
+    color: "#94a3b8",
     fontFamily: "Vazir",
   },
   header: {
@@ -738,10 +1005,20 @@ const styles = StyleSheet.create({
   },
   backButton: { padding: 4 },
   headerTitle: {
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: "700",
     color: "#1e293b",
     fontFamily: "VazirBold",
+    flex: 1,
+    textAlign: "center",
+  },
+  pdfButton: {
+    backgroundColor: "#8b5cf6",
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    justifyContent: "center",
+    alignItems: "center",
   },
 
   // Month navigator
@@ -944,7 +1221,6 @@ const styles = StyleSheet.create({
     fontFamily: "VazirBold",
   },
 
-  // Stats grid (4 day-count boxes)
   statsGrid: {
     flexDirection: "row",
     gap: 8,
@@ -967,7 +1243,6 @@ const styles = StyleSheet.create({
     fontFamily: "Vazir",
   },
 
-  // Footer / empty
   footerContainer: {
     paddingVertical: 16,
     alignItems: "center",

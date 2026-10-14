@@ -7,21 +7,25 @@ import { Ionicons } from "@expo/vector-icons";
 import * as Print from "expo-print";
 import { useRouter } from "expo-router";
 import * as Sharing from "expo-sharing";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-    ActivityIndicator,
-    Alert,
-    FlatList,
-    RefreshControl,
-    SafeAreaView,
-    ScrollView,
-    StatusBar,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Alert,
+  FlatList,
+  RefreshControl,
+  SafeAreaView,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
+
+// ==================== DEBUG FLAG ====================
+// Set to false when you're done debugging to hide debug UI
+const DEBUG = true;
 
 // ==================== TYPES ====================
 
@@ -45,6 +49,9 @@ type StaffMonthlyRow = {
   attendanceRate: number;
   totalPunchIn: number;
   totalPunchOut: number;
+  // 🐛 DEBUG: track which month these numbers came from
+  _sourceMonth?: number;
+  _sourceYear?: number;
 };
 
 type OverviewSummary = {
@@ -56,6 +63,15 @@ type OverviewSummary = {
   averageAttendance: number;
   totalRecords: number;
 };
+
+// ✅ NEW: status filter options
+type StatusFilter =
+  | "all"
+  | "present"
+  | "absent"
+  | "late"
+  | "absent_and_late"
+  | "perfect";
 
 // ==================== HELPERS ====================
 
@@ -77,20 +93,96 @@ function getShamsiMonthName(month: number): string {
   return names[month - 1] || `ماه ${month}`;
 }
 
+function getStatusFilterLabel(filter: StatusFilter): string {
+  const labels: Record<StatusFilter, string> = {
+    all: "همه",
+    present: "حاضر",
+    absent: "غایب",
+    late: "تأخیر",
+    absent_and_late: "غایب و تأخیر",
+    perfect: "بدون غیبت",
+  };
+  return labels[filter];
+}
+
+function getStatusFilterDescription(filter: StatusFilter): string {
+  const labels: Record<StatusFilter, string> = {
+    all: "",
+    present: "کسانی که حداقل یک روز حضور دارند",
+    absent: "کسانی که حداقل یک روز غیبت دارند",
+    late: "کسانی که حداقل یک روز تأخیر دارند",
+    absent_and_late: "کسانی که هم غیبت و هم تأخیر دارند",
+    perfect: "کسانی که هیچ غیبت یا تأخیری ندارند",
+  };
+  return labels[filter];
+}
+
+/**
+ * ✅ FIXED: Robustly compute current Shamsi month/year on any RN engine.
+ */
 function getCurrentShamsi(): { month: number; year: number } {
   try {
     const now = new Date();
-    const formatter = new Intl.DateTimeFormat("fa-IR-u-ca-persian", {
+    const formatter = new Intl.DateTimeFormat("en-US-u-ca-persian", {
       year: "numeric",
       month: "numeric",
     });
-    const parts = formatter.format(now).split("/");
-    return { month: parseInt(parts[1]), year: parseInt(parts[0]) };
+
+    const parts = formatter.formatToParts(now);
+    const yearPart = parts.find((p) => p.type === "year")?.value || "";
+    const monthPart = parts.find((p) => p.type === "month")?.value || "";
+
+    const toLatinDigits = (s: string) =>
+      s
+        .replace(/[۰-۹]/g, (d) => String("۰۱۲۳۴۵۶۷۸۹".indexOf(d)))
+        .replace(/[٠-٩]/g, (d) => String("٠١٢٣٤٥٦٧٨٩".indexOf(d)))
+        .replace(/[^\d]/g, "");
+
+    const year = parseInt(toLatinDigits(yearPart), 10);
+    const month = parseInt(toLatinDigits(monthPart), 10);
+
+    if (
+      Number.isFinite(year) &&
+      Number.isFinite(month) &&
+      year > 1300 &&
+      month >= 1 &&
+      month <= 12
+    ) {
+      return { month, year };
+    }
+    throw new Error("Intl parse failed");
   } catch {
-    return {
-      month: new Date().getMonth() + 1,
-      year: new Date().getFullYear() - 621,
-    };
+    const now = new Date();
+    const gy = now.getFullYear();
+    const gm = now.getMonth() + 1;
+    const gd = now.getDate();
+
+    const g_d_m = [0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334];
+    let jy = gy <= 1600 ? 0 : 979;
+    const gy2 = gy <= 1600 ? gy - 621 : gy - 1600;
+    const gm2 = gm > 2 ? 1 : 0;
+    let gd2 =
+      365 * gy2 +
+      Math.floor((gy2 + 3) / 4) -
+      Math.floor((gy2 + 99) / 100) +
+      Math.floor((gy2 + 399) / 400) -
+      80 +
+      gd +
+      g_d_m[gm - 1] +
+      gm2;
+
+    jy += 33 * Math.floor(gd2 / 12053);
+    gd2 %= 12053;
+    jy += 4 * Math.floor(gd2 / 1461);
+    gd2 %= 1461;
+    if (gd2 > 365) {
+      jy += Math.floor((gd2 - 1) / 365);
+      gd2 = (gd2 - 1) % 365;
+    }
+    const jm =
+      gd2 < 186 ? 1 + Math.floor(gd2 / 31) : 7 + Math.floor((gd2 - 186) / 30);
+
+    return { month: jm, year: jy };
   }
 }
 
@@ -123,6 +215,7 @@ function generateTeamMonthlyPDF(
   summary: OverviewSummary | null,
   monthName: string,
   year: number,
+  filterLabel: string = "همه",
 ): string {
   const totals = rows.reduce(
     (acc, r) => {
@@ -175,6 +268,11 @@ function generateTeamMonthlyPDF(
     })
     .join("");
 
+  const filterBadge =
+    filterLabel && filterLabel !== "همه"
+      ? `<span style="display:inline-block;margin-right:8px;padding:3px 12px;border-radius:10px;background:rgba(255,255,255,0.25);font-size:12px;font-weight:600;">🔎 فلتر: ${filterLabel}</span>`
+      : "";
+
   return `
     <!DOCTYPE html>
     <html dir="rtl" lang="fa">
@@ -200,7 +298,6 @@ function generateTeamMonthlyPDF(
           overflow:hidden;
           box-shadow:0 4px 24px rgba(0,0,0,.08);
         }
-        /* Header */
         .header {
           background:linear-gradient(135deg,#8b5cf6 0%,#6d28d9 100%);
           padding:32px 40px;
@@ -209,7 +306,6 @@ function generateTeamMonthlyPDF(
         .header h1 { font-size:26px; font-weight:800; margin-bottom:6px; letter-spacing:.3px; }
         .header .subtitle { font-size:15px; opacity:.95; font-weight:500; }
         .header .meta { font-size:13px; opacity:.8; margin-top:8px; }
-        /* Summary grid */
         .summary {
           display:grid;
           grid-template-columns:repeat(6,1fr);
@@ -233,7 +329,6 @@ function generateTeamMonthlyPDF(
         .card.y { border-right-color:#f59e0b; } .card.y .v { color:#f59e0b; }
         .card.b { border-right-color:#3b82f6; } .card.b .v { color:#3b82f6; }
         .card.p { border-right-color:#ec4899; } .card.p .v { color:#ec4899; }
-        /* Table */
         .table-wrap { padding:24px 40px 40px; }
         .table-title {
           display:flex; justify-content:space-between; align-items:center;
@@ -254,7 +349,6 @@ function generateTeamMonthlyPDF(
         }
         tbody td { font-size:13px; color:#1e293b; }
         tbody tr:hover { background:#f1f5f9; }
-        /* Footer */
         .footer {
           padding:16px 40px;
           border-top:1px solid #e2e8f0;
@@ -264,7 +358,6 @@ function generateTeamMonthlyPDF(
           color:#94a3b8;
           background:#f8fafc;
         }
-        /* Print */
         @media print {
           body { background:#fff; padding:0; }
           .report { box-shadow:none; border-radius:0; }
@@ -277,7 +370,7 @@ function generateTeamMonthlyPDF(
       <div class="report">
         <div class="header">
           <h1>📊 گزارش ماهانه حضور و غیاب کارمندان</h1>
-          <div class="subtitle">${monthName} ${year}</div>
+          <div class="subtitle">${monthName} ${year} ${filterBadge}</div>
           <div class="meta">
             تعداد کارمندان: ${rows.length} &nbsp;•&nbsp;
             تاریخ تولید: ${new Date().toLocaleString("fa-IR")}
@@ -357,8 +450,15 @@ export default function AdminAttendanceOverviewScreen() {
   const [selectedStaffType, setSelectedStaffType] = useState("all");
   const [showFilters, setShowFilters] = useState(false);
 
+  // ✅ NEW: status filter state
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+
   const isLoadingMoreRef = useRef(false);
   const pageRef = useRef(1);
+
+  // 🐛 DEBUG: track the last fetched month/year so UI can warn about stale data
+  const [lastLoadedMonth, setLastLoadedMonth] = useState<number | null>(null);
+  const [lastLoadedYear, setLastLoadedYear] = useState<number | null>(null);
 
   const staffTypes = [
     "all",
@@ -380,11 +480,103 @@ export default function AdminAttendanceOverviewScreen() {
     "OTHER",
   ];
 
+  const statusFilters: StatusFilter[] = [
+    "all",
+    "present",
+    "absent",
+    "late",
+    "absent_and_late",
+    "perfect",
+  ];
+
+  // ✅ NEW: apply status filter + search filter to the loaded list (client-side)
+  const filteredStaffList = useMemo(() => {
+    let list = staffList;
+
+    // Search filter (client-side, in case backend is slow to filter)
+    if (search.trim()) {
+      const q = search.trim().toLowerCase();
+      list = list.filter(
+        (s) =>
+          s.fullName?.toLowerCase().includes(q) ||
+          s.nameFarsi?.toLowerCase().includes(q) ||
+          s.department?.toLowerCase().includes(q) ||
+          s.position?.toLowerCase().includes(q),
+      );
+    }
+
+    // Status filter
+    switch (statusFilter) {
+      case "present":
+        list = list.filter((s) => (s.presentDays || 0) > 0);
+        break;
+      case "absent":
+        list = list.filter((s) => (s.absentDays || 0) > 0);
+        break;
+      case "late":
+        list = list.filter((s) => (s.lateDays || 0) > 0);
+        break;
+      case "absent_and_late":
+        list = list.filter(
+          (s) => (s.absentDays || 0) > 0 && (s.lateDays || 0) > 0,
+        );
+        break;
+      case "perfect":
+        list = list.filter(
+          (s) => (s.absentDays || 0) === 0 && (s.lateDays || 0) === 0,
+        );
+        break;
+      case "all":
+      default:
+        break;
+    }
+
+    return list;
+  }, [staffList, search, statusFilter]);
+
+  // ✅ NEW: count of active filters (for the badge on the filter button)
+  const activeFilterCount = useMemo(() => {
+    let n = 0;
+    if (selectedStaffType !== "all") n++;
+    if (statusFilter !== "all") n++;
+    if (search.trim()) n++;
+    return n;
+  }, [selectedStaffType, statusFilter, search]);
+
   // ---------------------------------------------------------------------------
   // Fetch — staff list + per-person monthly summary
   // ---------------------------------------------------------------------------
   const fetchOverview = useCallback(
-    async (pageNum: number = 1, append: boolean = false) => {
+    async (
+      pageNum: number = 1,
+      append: boolean = false,
+      shamsiMonth: number = selectedShamsiMonth,
+      shamsiYear: number = selectedShamsiYear,
+    ) => {
+      if (DEBUG) {
+        console.log(
+          `🚀 [fetchOverview] START page=${pageNum} append=${append} month=${shamsiMonth}/${shamsiYear}`,
+        );
+      }
+
+      if (
+        !Number.isFinite(shamsiMonth) ||
+        !Number.isFinite(shamsiYear) ||
+        shamsiMonth < 1 ||
+        shamsiMonth > 12
+      ) {
+        console.error(
+          `❌ [fetchOverview] INVALID month/year: ${shamsiMonth}/${shamsiYear}. Aborting fetch.`,
+        );
+        setLoading(false);
+        setRefreshing(false);
+        if (append) {
+          isLoadingMoreRef.current = false;
+          setLoadingMore(false);
+        }
+        return;
+      }
+
       if (append) {
         if (isLoadingMoreRef.current) return;
         isLoadingMoreRef.current = true;
@@ -401,9 +593,18 @@ export default function AdminAttendanceOverviewScreen() {
           listParams.staffType = selectedStaffType;
         if (search) listParams.search = search;
 
-        console.log("📡 [1/2] Fetch staff list:", listParams);
+        if (DEBUG) console.log("📡 [1/2] Fetch staff list:", listParams);
 
         const listRes = await hrApi.getAttendanceReport(listParams);
+
+        if (DEBUG) {
+          console.log(
+            "📥 [1/2] Staff list response:",
+            listRes?.success,
+            "count=",
+            listRes?.data?.report?.length,
+          );
+        }
 
         if (!listRes?.success || !listRes.data) {
           console.warn("⚠️ Staff list response invalid:", listRes);
@@ -411,7 +612,8 @@ export default function AdminAttendanceOverviewScreen() {
         }
 
         const incoming: any[] = listRes.data.report || [];
-        console.log(`✅ Got ${incoming.length} staff (page ${pageNum})`);
+        if (DEBUG)
+          console.log(`✅ Got ${incoming.length} staff (page ${pageNum})`);
 
         if (incoming.length === 0) {
           if (!append) setStaffList([]);
@@ -423,25 +625,40 @@ export default function AdminAttendanceOverviewScreen() {
               limit: 20,
             },
           );
+          setLastLoadedMonth(shamsiMonth);
+          setLastLoadedYear(shamsiYear);
           return;
         }
 
         // 2) Fetch monthly summary for each staff (parallel, capped)
         const staffIds = incoming.map((s) => s.staffId).filter(Boolean);
-        console.log(
-          `📡 [2/2] Fetching monthly summaries for ${staffIds.length} staff ` +
-            `(${selectedShamsiMonth}/${selectedShamsiYear})...`,
-        );
+        if (DEBUG) {
+          console.log(
+            `📡 [2/2] Fetching monthly summaries for ${staffIds.length} staff ` +
+              `(${shamsiMonth}/${shamsiYear})...`,
+          );
+        }
 
         const monthlyMap = await hrApi.getBulkStaffMonthlyAttendance(
           staffIds,
-          { year: selectedShamsiYear, month: selectedShamsiMonth },
+          { year: shamsiYear, month: shamsiMonth },
           6,
         );
 
-        console.log(
-          `✅ Monthly summaries received: ${Object.keys(monthlyMap).length}/${staffIds.length}`,
-        );
+        if (DEBUG) {
+          console.log(
+            `✅ Monthly summaries received: ${Object.keys(monthlyMap).length}/${staffIds.length}`,
+          );
+          const firstId = staffIds[0];
+          if (firstId && monthlyMap[firstId]) {
+            console.log(
+              `🔬 [Sample] staff ${firstId} summary:`,
+              JSON.stringify(monthlyMap[firstId]?.summary, null, 2),
+            );
+          } else {
+            console.warn(`🔬 [Sample] NO data for staff ${firstId}`);
+          }
+        }
 
         // 3) Merge profile + monthly summary
         const merged: StaffMonthlyRow[] = incoming.map((s) => {
@@ -468,59 +685,56 @@ export default function AdminAttendanceOverviewScreen() {
             attendanceRate: ms.attendanceRate ?? 0,
             totalPunchIn: ms.totalPunchIn ?? 0,
             totalPunchOut: ms.totalPunchOut ?? 0,
+            _sourceMonth: shamsiMonth,
+            _sourceYear: shamsiYear,
           };
         });
 
-        // 4) Update state
-        let nextList: StaffMonthlyRow[];
-        if (append) {
-          setStaffList((prev) => {
-            const existingIds = new Set(prev.map((x) => x.staffId));
-            const appended = [
-              ...prev,
-              ...merged.filter((x) => !existingIds.has(x.staffId)),
-            ];
-            nextList = appended;
-            return appended;
+        // 4) Update list + compute summary from the freshest combined list
+        setStaffList((prev) => {
+          const nextList = append
+            ? [
+                ...prev,
+                ...merged.filter(
+                  (x) => !prev.some((p) => p.staffId === x.staffId),
+                ),
+              ]
+            : merged;
+
+          const totals = nextList.reduce(
+            (acc, r) => {
+              acc.totalPresent += r.presentDays;
+              acc.totalAbsent += r.absentDays;
+              acc.totalLate += r.lateDays;
+              acc.totalRecords += r.totalRecords;
+              acc.rateSum += r.attendanceRate;
+              return acc;
+            },
+            {
+              totalPresent: 0,
+              totalAbsent: 0,
+              totalLate: 0,
+              totalRecords: 0,
+              rateSum: 0,
+            },
+          );
+
+          setSummary({
+            totalStaff:
+              listRes.data.pagination?.total ??
+              listRes.data.summary?.totalStaff ??
+              0,
+            activeStaff: listRes.data.summary?.activeStaff ?? 0,
+            totalPresent: totals.totalPresent,
+            totalAbsent: totals.totalAbsent,
+            totalLate: totals.totalLate,
+            averageAttendance: nextList.length
+              ? Math.round(totals.rateSum / nextList.length)
+              : 0,
+            totalRecords: totals.totalRecords,
           });
-        } else {
-          nextList = merged;
-          setStaffList(merged);
-        }
 
-        // Aggregate summary across all loaded rows
-        const allRows = append ? staffList.concat(merged) : merged;
-        const totals = allRows.reduce(
-          (acc, r) => {
-            acc.totalPresent += r.presentDays;
-            acc.totalAbsent += r.absentDays;
-            acc.totalLate += r.lateDays;
-            acc.totalRecords += r.totalRecords;
-            acc.rateSum += r.attendanceRate;
-            return acc;
-          },
-          {
-            totalPresent: 0,
-            totalAbsent: 0,
-            totalLate: 0,
-            totalRecords: 0,
-            rateSum: 0,
-          },
-        );
-
-        setSummary({
-          totalStaff:
-            listRes.data.pagination?.total ??
-            listRes.data.summary?.totalStaff ??
-            0,
-          activeStaff: listRes.data.summary?.activeStaff ?? 0,
-          totalPresent: totals.totalPresent,
-          totalAbsent: totals.totalAbsent,
-          totalLate: totals.totalLate,
-          averageAttendance: allRows.length
-            ? Math.round(totals.rateSum / allRows.length)
-            : 0,
-          totalRecords: totals.totalRecords,
+          return nextList;
         });
 
         setPagination(
@@ -532,6 +746,15 @@ export default function AdminAttendanceOverviewScreen() {
           },
         );
         pageRef.current = listRes.data.pagination?.page ?? pageNum;
+
+        setLastLoadedMonth(shamsiMonth);
+        setLastLoadedYear(shamsiYear);
+
+        if (DEBUG) {
+          console.log(
+            `🏁 [fetchOverview] DONE. Loaded ${merged.length} rows for ${shamsiMonth}/${shamsiYear}`,
+          );
+        }
       } catch (error) {
         console.error("❌ Fetch overview error:", error);
         Alert.alert("خطا", "خطا در دریافت گزارش. لطفا دوباره تلاش کنید.");
@@ -544,41 +767,56 @@ export default function AdminAttendanceOverviewScreen() {
         }
       }
     },
-    [
-      selectedStaffType,
-      search,
-      pagination.limit,
-      selectedShamsiMonth,
-      selectedShamsiYear,
-      staffList,
-    ],
+    [selectedStaffType, search, pagination.limit],
   );
 
   // Initial + refetch on month change
   useEffect(() => {
+    if (DEBUG) {
+      console.log(
+        `🔥 [useEffect] FIRED month=${selectedShamsiMonth} year=${selectedShamsiYear}`,
+      );
+    }
     setLoading(true);
     pageRef.current = 1;
-    fetchOverview(1, false);
+    fetchOverview(1, false, selectedShamsiMonth, selectedShamsiYear);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedShamsiMonth, selectedShamsiYear]);
 
   const onRefresh = useCallback(() => {
+    if (DEBUG) {
+      console.log(
+        `🔄 [onRefresh] month=${selectedShamsiMonth} year=${selectedShamsiYear}`,
+      );
+    }
     setRefreshing(true);
     pageRef.current = 1;
-    fetchOverview(1, false);
-  }, [fetchOverview]);
+    fetchOverview(1, false, selectedShamsiMonth, selectedShamsiYear);
+  }, [fetchOverview, selectedShamsiMonth, selectedShamsiYear]);
 
   const handleSearch = useCallback(() => {
+    if (DEBUG) console.log("🔎 [handleSearch]");
     pageRef.current = 1;
     setLoading(true);
-    fetchOverview(1, false);
-  }, [fetchOverview]);
+    fetchOverview(1, false, selectedShamsiMonth, selectedShamsiYear);
+  }, [fetchOverview, selectedShamsiMonth, selectedShamsiYear]);
 
   const applyFilters = useCallback(() => {
+    if (DEBUG) console.log("🎛️ [applyFilters]");
     pageRef.current = 1;
     setLoading(true);
-    fetchOverview(1, false);
-  }, [fetchOverview]);
+    fetchOverview(1, false, selectedShamsiMonth, selectedShamsiYear);
+  }, [fetchOverview, selectedShamsiMonth, selectedShamsiYear]);
+
+  // ✅ NEW: clear all filters
+  const clearAllFilters = useCallback(() => {
+    setSearch("");
+    setSelectedStaffType("all");
+    setStatusFilter("all");
+    pageRef.current = 1;
+    setLoading(true);
+    fetchOverview(1, false, selectedShamsiMonth, selectedShamsiYear);
+  }, [fetchOverview, selectedShamsiMonth, selectedShamsiYear]);
 
   const loadMore = useCallback(() => {
     if (isLoadingMoreRef.current) return;
@@ -588,8 +826,22 @@ export default function AdminAttendanceOverviewScreen() {
     const totalPages = pagination.totalPages || 1;
     if (currentPage >= totalPages) return;
 
-    fetchOverview(currentPage + 1, true);
-  }, [loading, refreshing, loadingMore, pagination.totalPages, fetchOverview]);
+    if (DEBUG) console.log(`⬇️ [loadMore] page ${currentPage + 1}`);
+    fetchOverview(
+      currentPage + 1,
+      true,
+      selectedShamsiMonth,
+      selectedShamsiYear,
+    );
+  }, [
+    loading,
+    refreshing,
+    loadingMore,
+    pagination.totalPages,
+    fetchOverview,
+    selectedShamsiMonth,
+    selectedShamsiYear,
+  ]);
 
   // ---------------------------------------------------------------------------
   // Month navigation
@@ -600,6 +852,11 @@ export default function AdminAttendanceOverviewScreen() {
     if (m === 0) {
       m = 12;
       y -= 1;
+    }
+    if (DEBUG) {
+      console.log(
+        `🔙 [goToPreviousMonth] ${selectedShamsiMonth}/${selectedShamsiYear} → ${m}/${y}`,
+      );
     }
     setSelectedShamsiMonth(m);
     setSelectedShamsiYear(y);
@@ -612,15 +869,20 @@ export default function AdminAttendanceOverviewScreen() {
       m = 1;
       y += 1;
     }
+    if (DEBUG) {
+      console.log(
+        `🔜 [goToNextMonth] ${selectedShamsiMonth}/${selectedShamsiYear} → ${m}/${y}`,
+      );
+    }
     setSelectedShamsiMonth(m);
     setSelectedShamsiYear(y);
   };
 
   // ---------------------------------------------------------------------------
-  // PDF — share with manager
+  // PDF — share with manager (uses the FILTERED list)
   // ---------------------------------------------------------------------------
   const generateTeamPDF = async () => {
-    if (staffList.length === 0) {
+    if (filteredStaffList.length === 0) {
       Alert.alert("اطلاعات", "داده‌ای برای تولید PDF وجود ندارد");
       return;
     }
@@ -629,11 +891,13 @@ export default function AdminAttendanceOverviewScreen() {
 
     try {
       const monthName = getShamsiMonthName(selectedShamsiMonth);
+      const filterLabel = getStatusFilterLabel(statusFilter);
       const html = generateTeamMonthlyPDF(
-        staffList,
+        filteredStaffList,
         summary,
         monthName,
         selectedShamsiYear,
+        filterLabel,
       );
 
       const { uri } = await Print.printToFileAsync({
@@ -644,10 +908,13 @@ export default function AdminAttendanceOverviewScreen() {
 
       console.log("📄 PDF generated:", uri);
 
+      const suffix = statusFilter !== "all" ? ` - ${filterLabel}` : "";
+      const fileLabel = `گزارش ${monthName} ${selectedShamsiYear}${suffix}`;
+
       if (await Sharing.isAvailableAsync()) {
         await Sharing.shareAsync(uri, {
           mimeType: "application/pdf",
-          dialogTitle: `گزارش ماهانه - ${monthName} ${selectedShamsiYear}`,
+          dialogTitle: fileLabel,
           UTI: "com.adobe.pdf",
         });
       } else {
@@ -789,7 +1056,7 @@ export default function AdminAttendanceOverviewScreen() {
       );
     }
     if (
-      staffList.length > 0 &&
+      filteredStaffList.length > 0 &&
       pageRef.current >= (pagination.totalPages || 1)
     ) {
       return (
@@ -814,6 +1081,13 @@ export default function AdminAttendanceOverviewScreen() {
   }
 
   const monthName = getShamsiMonthName(selectedShamsiMonth);
+
+  // 🐛 DEBUG: detect stale data
+  const isStale =
+    lastLoadedMonth !== null &&
+    lastLoadedYear !== null &&
+    (lastLoadedMonth !== selectedShamsiMonth ||
+      lastLoadedYear !== selectedShamsiYear);
 
   return (
     <SafeAreaView style={styles.safeContainer}>
@@ -841,6 +1115,33 @@ export default function AdminAttendanceOverviewScreen() {
           </TouchableOpacity>
         </View>
 
+        {/* 🐛 DEBUG BANNER */}
+        {DEBUG && (
+          <View
+            style={{
+              backgroundColor: isStale ? "#fef2f2" : "#f0fdf4",
+              paddingHorizontal: 12,
+              paddingVertical: 6,
+              borderBottomWidth: 1,
+              borderBottomColor: isStale ? "#fecaca" : "#bbf7d0",
+            }}
+          >
+            <Text
+              style={{
+                fontSize: 10,
+                color: isStale ? "#dc2626" : "#16a34a",
+                fontFamily: "Vazir",
+                textAlign: "center",
+              }}
+            >
+              DEBUG • selected={selectedShamsiMonth}/{selectedShamsiYear} •
+              loaded={lastLoadedMonth ?? "?"}/{lastLoadedYear ?? "?"} • rows=
+              {staffList.length} • filtered={filteredStaffList.length} •{" "}
+              {isStale ? "⚠️ STALE" : "✅ OK"} • loading={loading ? "Y" : "N"}
+            </Text>
+          </View>
+        )}
+
         {/* Month Navigator */}
         <View style={styles.monthNavigator}>
           <TouchableOpacity
@@ -853,7 +1154,21 @@ export default function AdminAttendanceOverviewScreen() {
             <Text style={styles.monthText}>
               {monthName} {selectedShamsiYear}
             </Text>
-            <Text style={styles.monthSubtext}>{pagination.total} کارمند</Text>
+            <Text style={styles.monthSubtext}>
+              {filteredStaffList.length} از {pagination.total} کارمند
+            </Text>
+            {DEBUG && isStale && (
+              <Text
+                style={{
+                  fontSize: 9,
+                  color: "#dc2626",
+                  fontFamily: "Vazir",
+                  marginTop: 2,
+                }}
+              >
+                ⏳ در حال به‌روزرسانی...
+              </Text>
+            )}
           </View>
           <TouchableOpacity
             style={styles.monthNavButton}
@@ -875,6 +1190,11 @@ export default function AdminAttendanceOverviewScreen() {
           <Text style={styles.filterToggleText}>
             {showFilters ? "پنهان کردن فیلترها" : "نمایش فیلترها"}
           </Text>
+          {activeFilterCount > 0 && (
+            <View style={styles.filterBadge}>
+              <Text style={styles.filterBadgeText}>{activeFilterCount}</Text>
+            </View>
+          )}
           <Ionicons
             name={showFilters ? "chevron-up" : "chevron-down"}
             size={20}
@@ -895,6 +1215,7 @@ export default function AdminAttendanceOverviewScreen() {
               returnKeyType="search"
             />
 
+            {/* Staff type */}
             <View style={styles.filterRow}>
               <View style={styles.filterGroup}>
                 <Text style={styles.filterLabel}>نوع کارمند</Text>
@@ -927,15 +1248,95 @@ export default function AdminAttendanceOverviewScreen() {
               </View>
             </View>
 
-            <TouchableOpacity style={styles.applyButton} onPress={applyFilters}>
-              <Text style={styles.applyButtonText}>اعمال فیلترها</Text>
-            </TouchableOpacity>
+            {/* ✅ NEW: status filter */}
+            <View style={styles.filterRow}>
+              <View style={styles.filterGroup}>
+                <Text style={styles.filterLabel}>وضعیت حضور (در این ماه)</Text>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  style={styles.filterOptions}
+                >
+                  {statusFilters.map((sf) => {
+                    const isActive = statusFilter === sf;
+                    // pick a color per filter
+                    const tint =
+                      sf === "absent"
+                        ? "#ef4444"
+                        : sf === "late"
+                          ? "#f59e0b"
+                          : sf === "absent_and_late"
+                            ? "#dc2626"
+                            : sf === "present"
+                              ? "#10b981"
+                              : sf === "perfect"
+                                ? "#3b82f6"
+                                : "#8b5cf6";
+                    return (
+                      <TouchableOpacity
+                        key={sf}
+                        style={[
+                          styles.filterChip,
+                          isActive && {
+                            backgroundColor: tint + "20",
+                            borderColor: tint,
+                            borderWidth: 1,
+                          },
+                        ]}
+                        onPress={() => setStatusFilter(sf)}
+                      >
+                        <Text
+                          style={[
+                            styles.filterChipText,
+                            isActive && { color: tint, fontWeight: "700" },
+                          ]}
+                        >
+                          {getStatusFilterLabel(sf)}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+                {statusFilter !== "all" && (
+                  <Text
+                    style={{
+                      fontSize: 11,
+                      color: "#64748b",
+                      fontFamily: "Vazir",
+                      marginTop: 4,
+                    }}
+                  >
+                    {getStatusFilterDescription(statusFilter)}
+                  </Text>
+                )}
+              </View>
+            </View>
+
+            {/* Action buttons */}
+            <View style={styles.actionRow}>
+              <TouchableOpacity
+                style={[styles.applyButton, { flex: 1 }]}
+                onPress={applyFilters}
+              >
+                <Text style={styles.applyButtonText}>اعمال فیلترها</Text>
+              </TouchableOpacity>
+
+              {activeFilterCount > 0 && (
+                <TouchableOpacity
+                  style={[styles.clearButton, { flex: 1 }]}
+                  onPress={clearAllFilters}
+                >
+                  <Text style={styles.clearButtonText}>پاک کردن همه</Text>
+                </TouchableOpacity>
+              )}
+            </View>
           </View>
         )}
 
-        {/* Staff Monthly List */}
+        {/* Staff Monthly List — now uses FILTERED list */}
         <FlatList
-          data={staffList}
+          key={`${selectedShamsiMonth}-${selectedShamsiYear}-${statusFilter}`}
+          data={filteredStaffList}
           renderItem={renderItem}
           keyExtractor={(item) => item.staffId.toString()}
           contentContainerStyle={styles.listContent}
@@ -953,7 +1354,21 @@ export default function AdminAttendanceOverviewScreen() {
           ListEmptyComponent={
             <View style={styles.emptyContainer}>
               <Ionicons name="people-outline" size={48} color="#94a3b8" />
-              <Text style={styles.emptyText}>هیچ داده‌ای یافت نشد</Text>
+              <Text style={styles.emptyText}>
+                {statusFilter !== "all"
+                  ? `هیچ کارمندی با وضعیت «${getStatusFilterLabel(statusFilter)}» در این ماه یافت نشد`
+                  : "هیچ داده‌ای یافت نشد"}
+              </Text>
+              {statusFilter !== "all" && (
+                <TouchableOpacity
+                  onPress={clearAllFilters}
+                  style={styles.emptyClearButton}
+                >
+                  <Text style={styles.emptyClearButtonText}>
+                    پاک کردن فیلترها
+                  </Text>
+                </TouchableOpacity>
+              )}
             </View>
           }
           initialNumToRender={10}
@@ -1105,6 +1520,22 @@ const styles = StyleSheet.create({
     color: "#64748b",
     fontFamily: "Vazir",
   },
+  // ✅ NEW
+  filterBadge: {
+    backgroundColor: "#8b5cf6",
+    minWidth: 20,
+    height: 20,
+    borderRadius: 10,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 6,
+  },
+  filterBadgeText: {
+    color: "#fff",
+    fontSize: 11,
+    fontWeight: "700",
+    fontFamily: "VazirBold",
+  },
   filtersContainer: {
     backgroundColor: "#fff",
     padding: 16,
@@ -1114,13 +1545,13 @@ const styles = StyleSheet.create({
   filterRow: {
     flexDirection: "row",
     gap: 12,
-    marginTop: 8,
+    marginTop: 12,
   },
   filterGroup: { flex: 1 },
   filterLabel: {
     fontSize: 13,
     color: "#64748b",
-    marginBottom: 4,
+    marginBottom: 6,
     fontFamily: "Vazir",
   },
   filterOptions: { flexDirection: "row" },
@@ -1130,6 +1561,8 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     backgroundColor: "#f1f5f9",
     marginRight: 6,
+    borderWidth: 1,
+    borderColor: "transparent",
   },
   filterChipActive: { backgroundColor: "#ede9fe" },
   filterChipText: {
@@ -1146,15 +1579,34 @@ const styles = StyleSheet.create({
     color: "#1e293b",
     fontFamily: "Vazir",
   },
+  // ✅ NEW
+  actionRow: {
+    flexDirection: "row",
+    gap: 8,
+    marginTop: 16,
+  },
   applyButton: {
     backgroundColor: "#8b5cf6",
     borderRadius: 10,
     paddingVertical: 10,
     alignItems: "center",
-    marginTop: 12,
   },
   applyButtonText: {
     color: "#fff",
+    fontSize: 14,
+    fontWeight: "600",
+    fontFamily: "Vazir",
+  },
+  clearButton: {
+    backgroundColor: "#f1f5f9",
+    borderRadius: 10,
+    paddingVertical: 10,
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+  },
+  clearButtonText: {
+    color: "#64748b",
     fontSize: 14,
     fontWeight: "600",
     fontFamily: "Vazir",
@@ -1258,11 +1710,28 @@ const styles = StyleSheet.create({
   emptyContainer: {
     alignItems: "center",
     paddingVertical: 60,
+    paddingHorizontal: 24,
   },
   emptyText: {
     marginTop: 16,
-    fontSize: 16,
+    fontSize: 14,
     color: "#94a3b8",
     fontFamily: "Vazir",
+    textAlign: "center",
+    lineHeight: 22,
+  },
+  // ✅ NEW
+  emptyClearButton: {
+    marginTop: 16,
+    backgroundColor: "#ede9fe",
+    paddingHorizontal: 20,
+    paddingVertical: 8,
+    borderRadius: 10,
+  },
+  emptyClearButtonText: {
+    color: "#8b5cf6",
+    fontSize: 13,
+    fontWeight: "700",
+    fontFamily: "VazirBold",
   },
 });

@@ -534,7 +534,9 @@ class HRApi {
   // ==================== ATTENDANCE REPORTS ====================
 
   /**
-   * Get attendance report for all staff with filtering
+   * Get attendance report for all staff with filtering.
+   * ✅ FIXED: now forwards `search`, `year`, `month` so the admin overview
+   * can request month-specific aggregates from the backend.
    */
   async getAttendanceReport(params?: {
     startDate?: string;
@@ -542,6 +544,9 @@ class HRApi {
     staffId?: number;
     staffType?: string;
     department?: string;
+    search?: string;
+    year?: number;
+    month?: number;
     page?: number;
     limit?: number;
   }): Promise<ApiResponse<any>> {
@@ -551,6 +556,13 @@ class HRApi {
     if (params?.staffId) query.append("staffId", params.staffId.toString());
     if (params?.staffType) query.append("staffType", params.staffType);
     if (params?.department) query.append("department", params.department);
+    if (params?.search) query.append("search", params.search);
+    if (params?.year !== undefined && Number.isFinite(params.year)) {
+      query.append("year", params.year.toString());
+    }
+    if (params?.month !== undefined && Number.isFinite(params.month)) {
+      query.append("month", params.month.toString());
+    }
     if (params?.page) query.append("page", params.page.toString());
     if (params?.limit) query.append("limit", params.limit.toString());
     const qs = query.toString();
@@ -559,7 +571,7 @@ class HRApi {
 
   /**
    * Get monthly attendance for a specific staff member
-   * ✅ FIXED: Properly formats the URL with query parameters
+   * ✅ FIXED: Rejects NaN so the query string can never be silently dropped.
    */
   async getStaffMonthlyAttendance(
     staffId: number,
@@ -568,14 +580,18 @@ class HRApi {
       year?: number;
     },
   ): Promise<ApiResponse<any>> {
-    // ✅ Build query string properly
     const queryParams = new URLSearchParams();
-    if (params?.month) {
-      queryParams.append("month", params.month.toString());
+
+    const m = Number(params?.month);
+    const y = Number(params?.year);
+
+    if (Number.isFinite(m) && m >= 1 && m <= 12) {
+      queryParams.append("month", m.toString());
     }
-    if (params?.year) {
-      queryParams.append("year", params.year.toString());
+    if (Number.isFinite(y) && y > 1300) {
+      queryParams.append("year", y.toString());
     }
+
     const queryString = queryParams.toString();
     const url = `/attendance/staff/${staffId}/monthly${queryString ? `?${queryString}` : ""}`;
 

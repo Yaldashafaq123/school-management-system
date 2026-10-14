@@ -1,46 +1,63 @@
+/* eslint-disable react-hooks/set-state-in-effect */
 // app/(teacher)/classes/[id]/index.tsx
-import { Ionicons } from '@expo/vector-icons';
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useState, useEffect, useCallback } from 'react';
-import { 
-  FlatList, 
-  ScrollView, 
-  StyleSheet, 
-  Text, 
-  TouchableOpacity, 
-  View,
+import { Colors } from "@/constants/Colors";
+import { useAuth } from "@/contexts/AuthContext";
+import { classApi, ClassDetails, ClassStudent } from "@/src/config/classApi";
+import { Ionicons } from "@expo/vector-icons";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import { useCallback, useEffect, useState } from "react";
+import {
   ActivityIndicator,
+  Alert,
+  FlatList,
   RefreshControl,
-  Alert 
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { useAuth } from '@/contexts/AuthContext';
-import { classApi, ClassDetails, ClassStudent } from '@/src/config/classApi';
-import { Colors } from '@/constants/Colors';
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 export default function ClassDetailsPage() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const params = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const { user } = useAuth();
-  
+
+  // ✅ Safe ID parsing (handles string | string[] | undefined)
+  const rawId = Array.isArray(params.id) ? params.id[0] : params.id;
+  const classId = rawId ? parseInt(String(rawId), 10) : NaN;
+  const isValidId = !isNaN(classId) && classId > 0;
+
   const [classDetails, setClassDetails] = useState<ClassDetails | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
   const fetchClassDetails = useCallback(async () => {
+    // ✅ Guard: refuse to fetch with invalid id
+    if (!isValidId) {
+      console.error("❌ Invalid class id:", { rawId, params });
+      setLoading(false);
+      Alert.alert("خطا", "شناسه صنف نامعتبر است", [
+        { text: "بازگشت", onPress: () => router.back() },
+      ]);
+      return;
+    }
+
     try {
-      const response = await classApi.getClassDetails(Number(id));
+      const response = await classApi.getClassDetails(classId);
       if (response.success) {
         setClassDetails(response.data);
       }
     } catch (error) {
-      console.error('Error fetching class details:', error);
-      Alert.alert('خطا', 'دریافت اطلاعات کلاس با مشکل مواجه شد');
+      console.error("Error fetching class details:", error);
+      Alert.alert("خطا", "دریافت اطلاعات کلاس با مشکل مواجه شد");
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [id]);
+  }, [classId, isValidId, rawId, params, router]);
 
   useEffect(() => {
     fetchClassDetails();
@@ -51,19 +68,50 @@ export default function ClassDetailsPage() {
     fetchClassDetails();
   };
 
+  // ✅ Safe navigation helper
+  const safeNavigate = (path: string) => {
+    if (!path || path.includes("NaN") || path.includes("undefined")) {
+      console.error("❌ Bad navigation path:", path);
+      Alert.alert("خطا", "شناسه نامعتبر است");
+      return;
+    }
+    router.push(path as any);
+  };
+
+  // ✅ Open monthly report — validates id first
+  const openMonthlyReport = () => {
+    if (!isValidId) {
+      Alert.alert("خطا", "شناسه صنف نامعتبر است");
+      return;
+    }
+    router.push(`/(teacher)/classes/${classId}/monthly-report` as any);
+  };
+
+  // ✅ Open class attendance report — validates id first
+  const openAttendanceReport = () => {
+    if (!isValidId) {
+      Alert.alert("خطا", "شناسه صنف نامعتبر است");
+      return;
+    }
+    router.push(`/(teacher)/classes/${classId}/attendance` as any);
+  };
+
   const renderStudentItem = ({ item }: { item: ClassStudent }) => (
-    <TouchableOpacity 
+    <TouchableOpacity
       style={styles.studentCard}
-      onPress={() => router.push({
-        pathname: '/(teacher)/students/[id]/progress',
-        params: { id: item.id }
-      } as any)}
+      onPress={() => {
+        if (!item?.id) return;
+        router.push({
+          pathname: "/(teacher)/students/[id]/progress",
+          params: { id: item.id },
+        } as any);
+      }}
     >
       <View style={styles.studentAvatar}>
-        <Text style={styles.avatarText}>{item.fullName.charAt(0)}</Text>
+        <Text style={styles.avatarText}>{item.fullName?.charAt(0) || "؟"}</Text>
       </View>
       <View style={styles.studentInfo}>
-        <Text style={styles.studentName}>{item.fullName}</Text>
+        <Text style={styles.studentName}>{item.fullName || "نامشخص"}</Text>
         <Text style={styles.studentRoll}>شماره: {item.rollNumber}</Text>
       </View>
       <View style={styles.studentStats}>
@@ -94,13 +142,17 @@ export default function ClassDetailsPage() {
   const renderEmptyStudents = () => (
     <View style={styles.emptyContainer}>
       <Ionicons name="people-outline" size={60} color={Colors.textSecondary} />
-      <Text style={styles.emptyText}>هیچ دانش‌آموزی در این کلاس وجود ندارد</Text>
+      <Text style={styles.emptyText}>
+        هیچ دانش‌آموزی در این کلاس وجود ندارد
+      </Text>
     </View>
   );
 
   const renderEmptyAttendance = () => (
     <View style={styles.emptyAttendanceContainer}>
-      <Text style={styles.emptyAttendanceText}>هنوز حضور و غیابی ثبت نشده است</Text>
+      <Text style={styles.emptyAttendanceText}>
+        هنوز حضور و غیابی ثبت نشده است
+      </Text>
     </View>
   );
 
@@ -115,13 +167,18 @@ export default function ClassDetailsPage() {
     );
   }
 
-  if (!classDetails) {
+  if (!isValidId || !classDetails) {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.errorContainer}>
           <Ionicons name="alert-circle" size={60} color={Colors.danger} />
-          <Text style={styles.errorText}>کلاس یافت نشد</Text>
-          <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
+          <Text style={styles.errorText}>
+            {!isValidId ? "شناسه صنف نامعتبر است" : "کلاس یافت نشد"}
+          </Text>
+          <TouchableOpacity
+            style={styles.errorBackButton}
+            onPress={() => router.back()}
+          >
             <Text style={styles.backButtonText}>بازگشت</Text>
           </TouchableOpacity>
         </View>
@@ -131,15 +188,22 @@ export default function ClassDetailsPage() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView 
+      <ScrollView
         showsVerticalScrollIndicator={false}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[Colors.primary]} />
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            colors={[Colors.primary]}
+          />
         }
       >
         {/* Class Header */}
         <View style={styles.classHeader}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+          <TouchableOpacity
+            onPress={() => router.back()}
+            style={styles.backButton}
+          >
             <Ionicons name="arrow-forward" size={24} color={Colors.text} />
           </TouchableOpacity>
           <View style={styles.headerContent}>
@@ -154,37 +218,100 @@ export default function ClassDetailsPage() {
           </TouchableOpacity>
         </View>
 
+        {/* ============================================ */}
+        {/* MONTHLY REPORT BANNER (NEW) */}
+        {/* ============================================ */}
+        <View style={styles.reportBannerContainer}>
+          <TouchableOpacity
+            style={styles.reportBanner}
+            onPress={openMonthlyReport}
+            activeOpacity={0.7}
+          >
+            <View style={styles.reportBannerIconBox}>
+              <Ionicons name="stats-chart" size={22} color={Colors.primary} />
+            </View>
+            <View style={styles.reportBannerText}>
+              <Text style={styles.reportBannerTitle}>گزارش ماهانه صنف</Text>
+              <Text style={styles.reportBannerSubtitle}>
+                حضور، نمرات و کارخانگی
+              </Text>
+            </View>
+            <Ionicons name="chevron-back" size={20} color={Colors.primary} />
+          </TouchableOpacity>
+        </View>
+
         {/* Action Buttons */}
         <View style={styles.actionButtons}>
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.actionButton}
-            onPress={() => router.push({
-              pathname: '/(teacher)/attendance/take',
-              params: { classId: classDetails.id }
-            } as any)}
+            onPress={() => {
+              if (!isValidId) {
+                Alert.alert("خطا", "شناسه صنف نامعتبر است");
+                return;
+              }
+              router.push({
+                pathname: "/(teacher)/attendance/take",
+                params: { classId },
+              } as any);
+            }}
           >
-            <Ionicons name="calendar-outline" size={24} color={Colors.primary} />
+            <Ionicons
+              name="calendar-outline"
+              size={24}
+              color={Colors.primary}
+            />
             <Text style={styles.actionText}>ثبت حضور و غیاب</Text>
           </TouchableOpacity>
-          <TouchableOpacity 
+
+          <TouchableOpacity
             style={styles.actionButton}
-            onPress={() => router.push({
-              pathname: '/(teacher)/assignments/create',
-              params: { classId: classDetails.id }
-            } as any)}
+            onPress={() => {
+              if (!isValidId) {
+                Alert.alert("خطا", "شناسه صنف نامعتبر است");
+                return;
+              }
+              router.push({
+                pathname: "/(teacher)/assignments/create",
+                params: { classId },
+              } as any);
+            }}
           >
-            <Ionicons name="document-text-outline" size={24} color={Colors.success} />
+            <Ionicons
+              name="document-text-outline"
+              size={24}
+              color={Colors.success}
+            />
             <Text style={styles.actionText}>ایجاد تکلیف</Text>
           </TouchableOpacity>
-          <TouchableOpacity 
+
+          <TouchableOpacity
             style={styles.actionButton}
-            onPress={() => router.push({
-              pathname: '/(teacher)/grading/entry',
-              params: { classId: classDetails.id }
-            } as any)}
+            onPress={() => {
+              if (!isValidId) {
+                Alert.alert("خطا", "شناسه صنف نامعتبر است");
+                return;
+              }
+              router.push({
+                pathname: "/(teacher)/grading/entry",
+                params: { classId },
+              } as any);
+            }}
           >
             <Ionicons name="school-outline" size={24} color={Colors.warning} />
             <Text style={styles.actionText}>ورود نمرات</Text>
+          </TouchableOpacity>
+
+          {/* ✅ NEW: Attendance Report Button */}
+          <TouchableOpacity
+            style={styles.actionButton}
+            onPress={openAttendanceReport}
+          >
+            <Ionicons
+              name="time-outline"
+              size={24}
+              color={Colors.info || Colors.primary}
+            />
+            <Text style={styles.actionText}>گزارش حضور</Text>
           </TouchableOpacity>
         </View>
 
@@ -192,9 +319,11 @@ export default function ClassDetailsPage() {
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>لیست دانش‌آموزان</Text>
-            <Text style={styles.sectionCount}>{classDetails.totalStudents} دانش‌آموز</Text>
+            <Text style={styles.sectionCount}>
+              {classDetails.totalStudents} دانش‌آموز
+            </Text>
           </View>
-          {classDetails.students.length > 0 ? (
+          {classDetails.students?.length > 0 ? (
             <FlatList
               data={classDetails.students}
               renderItem={renderStudentItem}
@@ -210,15 +339,16 @@ export default function ClassDetailsPage() {
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>تاریخچه حضور و غیاب</Text>
-            <TouchableOpacity>
+            <TouchableOpacity onPress={openAttendanceReport}>
               <Text style={styles.viewAllText}>مشاهده همه</Text>
             </TouchableOpacity>
           </View>
-          {classDetails.attendanceHistory && classDetails.attendanceHistory.length > 0 ? (
+          {classDetails.attendanceHistory &&
+          classDetails.attendanceHistory.length > 0 ? (
             <FlatList
               data={classDetails.attendanceHistory}
               renderItem={renderAttendanceItem}
-              keyExtractor={(item, index) => index.toString()}
+              keyExtractor={(_, index) => index.toString()}
               horizontal
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={styles.attendanceList}
@@ -231,7 +361,9 @@ export default function ClassDetailsPage() {
         {/* Quick Stats */}
         <View style={styles.statsContainer}>
           <View style={styles.statCard}>
-            <Text style={styles.statNumber}>{classDetails.averageAttendance}%</Text>
+            <Text style={styles.statNumber}>
+              {classDetails.averageAttendance}%
+            </Text>
             <Text style={styles.statLabel}>میانگین حضور</Text>
           </View>
           <View style={styles.statCard}>
@@ -239,7 +371,9 @@ export default function ClassDetailsPage() {
             <Text style={styles.statLabel}>میانگین نمره</Text>
           </View>
           <View style={styles.statCard}>
-            <Text style={styles.statNumber}>{classDetails.pendingAssignments}</Text>
+            <Text style={styles.statNumber}>
+              {classDetails.pendingAssignments}
+            </Text>
             <Text style={styles.statLabel}>تکلیف در انتظار</Text>
           </View>
         </View>
@@ -258,8 +392,8 @@ const styles = StyleSheet.create({
   },
   loadingContainer: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
   },
   loadingText: {
     marginTop: 12,
@@ -268,8 +402,8 @@ const styles = StyleSheet.create({
   },
   errorContainer: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
     padding: 20,
   },
   errorText: {
@@ -278,20 +412,27 @@ const styles = StyleSheet.create({
     marginTop: 12,
     marginBottom: 20,
   },
-  classHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 20,
-    backgroundColor: Colors.card,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
+  errorBackButton: {
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    backgroundColor: Colors.primary,
+    borderRadius: 12,
   },
   backButton: {
     padding: 8,
   },
   backButtonText: {
-    color: Colors.primary,
-    fontSize: 16,
+    color: "#fff",
+    fontWeight: "600",
+    fontSize: 14,
+  },
+  classHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 20,
+    backgroundColor: Colors.card,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
   },
   headerContent: {
     flex: 1,
@@ -299,53 +440,102 @@ const styles = StyleSheet.create({
   },
   classTitle: {
     fontSize: 24,
-    fontWeight: 'bold',
+    fontWeight: "bold",
     color: Colors.text,
-    textAlign: 'right',
+    textAlign: "right",
   },
   classSubtitle: {
     fontSize: 16,
     color: Colors.textSecondary,
     marginTop: 4,
-    textAlign: 'right',
+    textAlign: "right",
   },
   menuButton: {
     padding: 8,
   },
+
+  // ============================================
+  // MONTHLY REPORT BANNER STYLES (NEW)
+  // ============================================
+  reportBannerContainer: {
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    backgroundColor: Colors.card,
+  },
+  reportBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: Colors.primary + "15",
+    borderRadius: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 14,
+    borderWidth: 1,
+    borderColor: Colors.primary + "30",
+    gap: 12,
+  },
+  reportBannerIconBox: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: Colors.primary + "25",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  reportBannerText: {
+    flex: 1,
+  },
+  reportBannerTitle: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: Colors.primary,
+    textAlign: "right",
+  },
+  reportBannerSubtitle: {
+    fontSize: 12,
+    color: Colors.textSecondary,
+    marginTop: 2,
+    textAlign: "right",
+  },
+
+  // Action Buttons
   actionButtons: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    justifyContent: "space-between",
     padding: 16,
     backgroundColor: Colors.card,
     marginTop: 1,
+    flexWrap: "wrap",
   },
   actionButton: {
-    alignItems: 'center',
+    alignItems: "center",
     flex: 1,
+    minWidth: 80,
     padding: 12,
   },
   actionText: {
     marginTop: 8,
     fontSize: 12,
     color: Colors.text,
-    textAlign: 'center',
+    textAlign: "center",
   },
+
+  // Sections
   section: {
     backgroundColor: Colors.card,
     marginTop: 8,
     padding: 16,
   },
   sectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     marginBottom: 16,
   },
   sectionTitle: {
     fontSize: 18,
-    fontWeight: '600',
+    fontWeight: "600",
     color: Colors.text,
-    textAlign: 'right',
+    textAlign: "right",
   },
   sectionCount: {
     fontSize: 14,
@@ -354,11 +544,13 @@ const styles = StyleSheet.create({
   viewAllText: {
     fontSize: 14,
     color: Colors.primary,
-    fontWeight: '500',
+    fontWeight: "500",
   },
+
+  // Student Cards
   studentCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     paddingVertical: 12,
     borderBottomWidth: 1,
     borderBottomColor: Colors.border,
@@ -368,56 +560,58 @@ const styles = StyleSheet.create({
     height: 40,
     borderRadius: 20,
     backgroundColor: Colors.primary,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
     marginLeft: 12,
   },
   avatarText: {
-    color: '#fff',
+    color: "#fff",
     fontSize: 18,
-    fontWeight: 'bold',
+    fontWeight: "bold",
   },
   studentInfo: {
     flex: 1,
   },
   studentName: {
     fontSize: 16,
-    fontWeight: '500',
+    fontWeight: "500",
     color: Colors.text,
-    textAlign: 'right',
+    textAlign: "right",
   },
   studentRoll: {
     fontSize: 14,
     color: Colors.textSecondary,
     marginTop: 2,
-    textAlign: 'right',
+    textAlign: "right",
   },
   studentStats: {
-    alignItems: 'flex-end',
+    alignItems: "flex-end",
     marginLeft: 12,
   },
   attendanceText: {
     fontSize: 14,
     color: Colors.success,
-    fontWeight: '500',
+    fontWeight: "500",
   },
   gradeText: {
     fontSize: 14,
     color: Colors.warning,
-    fontWeight: '500',
+    fontWeight: "500",
     marginTop: 2,
   },
   emptyContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     padding: 32,
   },
   emptyText: {
     fontSize: 14,
     color: Colors.textSecondary,
     marginTop: 12,
-    textAlign: 'center',
+    textAlign: "center",
   },
+
+  // Attendance
   attendanceList: {
     paddingBottom: 8,
   },
@@ -432,14 +626,14 @@ const styles = StyleSheet.create({
   },
   dateText: {
     fontSize: 14,
-    fontWeight: '500',
+    fontWeight: "500",
     color: Colors.text,
     marginBottom: 8,
-    textAlign: 'right',
+    textAlign: "right",
   },
   attendanceStats: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    justifyContent: "space-between",
   },
   statBadge: {
     paddingHorizontal: 6,
@@ -447,40 +641,42 @@ const styles = StyleSheet.create({
     borderRadius: 4,
   },
   statText: {
-    color: '#fff',
+    color: "#fff",
     fontSize: 12,
-    fontWeight: '500',
+    fontWeight: "500",
   },
   emptyAttendanceContainer: {
     padding: 24,
-    alignItems: 'center',
+    alignItems: "center",
   },
   emptyAttendanceText: {
     fontSize: 14,
     color: Colors.textSecondary,
-    textAlign: 'center',
+    textAlign: "center",
   },
+
+  // Quick Stats
   statsContainer: {
-    flexDirection: 'row',
+    flexDirection: "row",
     padding: 16,
     backgroundColor: Colors.card,
     marginTop: 8,
   },
   statCard: {
     flex: 1,
-    alignItems: 'center',
+    alignItems: "center",
     padding: 12,
   },
   statNumber: {
     fontSize: 24,
-    fontWeight: 'bold',
+    fontWeight: "bold",
     color: Colors.primary,
   },
   statLabel: {
     fontSize: 12,
     color: Colors.textSecondary,
     marginTop: 4,
-    textAlign: 'center',
+    textAlign: "center",
   },
   spacer: {
     height: 20,

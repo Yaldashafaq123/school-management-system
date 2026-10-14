@@ -18,6 +18,9 @@ import {
   View,
 } from "react-native";
 
+// ==================== DEBUG FLAG ====================
+const DEBUG = true;
+
 // ==================== TYPES ====================
 
 type DailyRecord = {
@@ -101,6 +104,80 @@ function getShamsiMonthName(month: number): string {
   return names[month - 1] || `ماه ${month}`;
 }
 
+/**
+ * ✅ FIXED: Robustly compute current Shamsi month/year on any RN engine.
+ * Previously returned { month: NaN, year: NaN } because Hermes' Intl emits
+ * Persian digits (۱۴۰۳) which parseInt can't handle, and the output order of
+ * "fa-IR-u-ca-persian" isn't guaranteed. Now: uses formatToParts + converts
+ * Persian/Arabic digits + manual Gregorian→Jalali fallback.
+ */
+function getCurrentShamsi(): { month: number; year: number } {
+  try {
+    const now = new Date();
+    const formatter = new Intl.DateTimeFormat("en-US-u-ca-persian", {
+      year: "numeric",
+      month: "numeric",
+    });
+
+    const parts = formatter.formatToParts(now);
+    const yearPart = parts.find((p) => p.type === "year")?.value || "";
+    const monthPart = parts.find((p) => p.type === "month")?.value || "";
+
+    const toLatinDigits = (s: string) =>
+      s
+        .replace(/[۰-۹]/g, (d) => String("۰۱۲۳۴۵۶۷۸۹".indexOf(d)))
+        .replace(/[٠-٩]/g, (d) => String("٠١٢٣٤٥٦٧٨٩".indexOf(d)))
+        .replace(/[^\d]/g, "");
+
+    const year = parseInt(toLatinDigits(yearPart), 10);
+    const month = parseInt(toLatinDigits(monthPart), 10);
+
+    if (
+      Number.isFinite(year) &&
+      Number.isFinite(month) &&
+      year > 1300 &&
+      month >= 1 &&
+      month <= 12
+    ) {
+      return { month, year };
+    }
+    throw new Error("Intl parse failed");
+  } catch {
+    // Manual Gregorian → Jalali fallback
+    const now = new Date();
+    const gy = now.getFullYear();
+    const gm = now.getMonth() + 1;
+    const gd = now.getDate();
+
+    const g_d_m = [0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334];
+    let jy = gy <= 1600 ? 0 : 979;
+    const gy2 = gy <= 1600 ? gy - 621 : gy - 1600;
+    const gm2 = gm > 2 ? 1 : 0;
+    let gd2 =
+      365 * gy2 +
+      Math.floor((gy2 + 3) / 4) -
+      Math.floor((gy2 + 99) / 100) +
+      Math.floor((gy2 + 399) / 400) -
+      80 +
+      gd +
+      g_d_m[gm - 1] +
+      gm2;
+
+    jy += 33 * Math.floor(gd2 / 12053);
+    gd2 %= 12053;
+    jy += 4 * Math.floor(gd2 / 1461);
+    gd2 %= 1461;
+    if (gd2 > 365) {
+      jy += Math.floor((gd2 - 1) / 365);
+      gd2 = (gd2 - 1) % 365;
+    }
+    const jm =
+      gd2 < 186 ? 1 + Math.floor(gd2 / 31) : 7 + Math.floor((gd2 - 186) / 30);
+
+    return { month: jm, year: jy };
+  }
+}
+
 function getStatusColor(
   isPresent: boolean,
   isFriday: boolean,
@@ -143,7 +220,6 @@ function generateStaffAttendancePDF(
 ): string {
   const { staff, summary, daily } = data;
 
-  // Generate table rows for all days
   const tableRows = daily
     .map((day) => {
       const isPresent = day.isPresent || false;
@@ -182,7 +258,6 @@ function generateStaffAttendancePDF(
     })
     .join("");
 
-  // Generate punch summary chips
   const punchSummaryHTML =
     summary.punchSummary && Object.keys(summary.punchSummary).length > 0
       ? Object.entries(summary.punchSummary)
@@ -228,7 +303,6 @@ function generateStaffAttendancePDF(
           overflow: hidden;
         }
         
-        /* Header */
         .report-header {
           background: linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%);
           padding: 30px 40px;
@@ -260,7 +334,6 @@ function generateStaffAttendancePDF(
           margin-top: 6px;
         }
         
-        /* Summary Cards */
         .summary-grid {
           display: grid;
           grid-template-columns: repeat(6, 1fr);
@@ -304,7 +377,6 @@ function generateStaffAttendancePDF(
         .summary-card.records { border-right-color: #ec4899; }
         .summary-card.records .value { color: #ec4899; }
         
-        /* Punch Summary */
         .punch-summary-section {
           padding: 12px 40px;
           background: #fff;
@@ -321,7 +393,6 @@ function generateStaffAttendancePDF(
           color: #1e293b;
         }
         
-        /* Table */
         .table-section {
           padding: 24px 40px 40px;
         }
@@ -394,7 +465,6 @@ function generateStaffAttendancePDF(
           font-weight: 500;
         }
         
-        /* Footer */
         .report-footer {
           padding: 16px 40px;
           border-top: 1px solid #e2e8f0;
@@ -405,7 +475,6 @@ function generateStaffAttendancePDF(
           background: #f8fafc;
         }
         
-        /* Print Styles */
         @media print {
           body {
             background: white;
@@ -451,7 +520,6 @@ function generateStaffAttendancePDF(
     </head>
     <body>
       <div class="report-container">
-        <!-- Header -->
         <div class="report-header">
           <h1>📋 گزارش حضور کارمند</h1>
           <div class="employee-name">${staff.fullName}</div>
@@ -459,7 +527,6 @@ function generateStaffAttendancePDF(
           <div class="month-year">📅 ${monthName} ${year}</div>
         </div>
         
-        <!-- Summary Cards -->
         <div class="summary-grid">
           <div class="summary-card present">
             <div class="value">${summary.presentDays}</div>
@@ -487,13 +554,11 @@ function generateStaffAttendancePDF(
           </div>
         </div>
         
-        <!-- Punch Summary -->
         <div class="punch-summary-section">
           <span class="punch-summary-label">📊 جزئیات ثبت‌ها:</span>
           ${punchSummaryHTML}
         </div>
         
-        <!-- Table Section -->
         <div class="table-section">
           <div class="table-header">
             <div class="table-title">📅 روزهای حضور و غیاب</div>
@@ -520,7 +585,6 @@ function generateStaffAttendancePDF(
           </div>
         </div>
         
-        <!-- Footer -->
         <div class="report-footer">
           <span>📄 تاریخ تولید: ${new Date().toLocaleString("fa-IR")}</span>
           <span>نسخه PDF • سیستم حضور و غیاب</span>
@@ -543,25 +607,15 @@ export default function StaffAttendanceDetailScreen() {
   const [data, setData] = useState<StaffMonthlyAttendance | null>(null);
   const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
 
-  // ✅ Current Shamsi month/year
-  const getCurrentShamsi = () => {
-    try {
-      const now = new Date();
-      const formatter = new Intl.DateTimeFormat("fa-IR-u-ca-persian", {
-        year: "numeric",
-        month: "numeric",
-      });
-      const parts = formatter.format(now).split("/");
-      return { month: parseInt(parts[1]), year: parseInt(parts[0]) };
-    } catch {
-      return {
-        month: new Date().getMonth() + 1,
-        year: new Date().getFullYear() - 621,
-      };
-    }
-  };
-
+  // ✅ Current Shamsi month/year (bulletproof)
   const currentShamsi = getCurrentShamsi();
+
+  if (DEBUG) {
+    console.log(
+      `🗓️ [init] currentShamsi = ${currentShamsi.month}/${currentShamsi.year}`,
+    );
+  }
+
   const [selectedShamsiMonth, setSelectedShamsiMonth] = useState(
     currentShamsi.month,
   );
@@ -569,62 +623,102 @@ export default function StaffAttendanceDetailScreen() {
     currentShamsi.year,
   );
 
-  // ✅ Fetch data function - wrapped in useCallback
-  const fetchData = useCallback(async () => {
-    if (!id) {
-      Alert.alert("خطا", "شناسه کارمند یافت نشد");
-      setLoading(false);
-      return;
-    }
-
-    const staffId = parseInt(id);
-    if (isNaN(staffId) || staffId <= 0) {
-      Alert.alert("خطا", "شناسه کارمند نامعتبر است");
-      setLoading(false);
-      return;
-    }
-
-    try {
-      console.log(`📡 Fetching attendance for staff ${staffId}`);
-      console.log(
-        `📡 Shamsi Month: ${selectedShamsiMonth}/${selectedShamsiYear}`,
-      );
-
-      const response = await hrApi.getStaffMonthlyAttendance(staffId, {
-        year: selectedShamsiYear,
-        month: selectedShamsiMonth,
-      });
-
-      console.log("📡 Response received:", response);
-
-      if (response.success && response.data) {
-        setData(response.data);
-      } else {
-        Alert.alert("خطا", response.message || "داده‌ای برای این ماه یافت نشد");
-        setData(null);
+  // ✅ Fetch data — takes month/year as args so it can never go stale
+  const fetchData = useCallback(
+    async (
+      shamsiMonth: number = selectedShamsiMonth,
+      shamsiYear: number = selectedShamsiYear,
+    ) => {
+      if (!id) {
+        Alert.alert("خطا", "شناسه کارمند یافت نشد");
+        setLoading(false);
+        return;
       }
-    } catch (error: any) {
-      console.error("Fetch data error:", error);
-      Alert.alert("خطا", error.message || "خطا در دریافت اطلاعات حضور");
-      setData(null);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, [id, selectedShamsiMonth, selectedShamsiYear]);
 
-  // ✅ useEffect with proper dependencies
+      const staffId = parseInt(id);
+      if (isNaN(staffId) || staffId <= 0) {
+        Alert.alert("خطا", "شناسه کارمند نامعتبر است");
+        setLoading(false);
+        return;
+      }
+
+      // 🐛 Guard against NaN — prevents the "same month forever" bug
+      if (
+        !Number.isFinite(shamsiMonth) ||
+        !Number.isFinite(shamsiYear) ||
+        shamsiMonth < 1 ||
+        shamsiMonth > 12
+      ) {
+        console.error(
+          `❌ [fetchData] INVALID month/year: ${shamsiMonth}/${shamsiYear}. Aborting.`,
+        );
+        setLoading(false);
+        setRefreshing(false);
+        return;
+      }
+
+      try {
+        if (DEBUG) {
+          console.log(
+            `📡 [fetchData] Fetching staff ${staffId} for ${shamsiMonth}/${shamsiYear}`,
+          );
+        }
+
+        const response = await hrApi.getStaffMonthlyAttendance(staffId, {
+          year: shamsiYear,
+          month: shamsiMonth,
+        });
+
+        if (DEBUG) {
+          console.log(
+            "📥 [fetchData] Response:",
+            response?.success,
+            "daily count=",
+            response?.data?.daily?.length,
+            "summary=",
+            JSON.stringify(response?.data?.summary, null, 2),
+          );
+        }
+
+        if (response.success && response.data) {
+          setData(response.data);
+        } else {
+          Alert.alert(
+            "خطا",
+            response.message || "داده‌ای برای این ماه یافت نشد",
+          );
+          setData(null);
+        }
+      } catch (error: any) {
+        console.error("Fetch data error:", error);
+        Alert.alert("خطا", error.message || "خطا در دریافت اطلاعات حضور");
+        setData(null);
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
+      }
+    },
+    [id],
+  );
+
+  // ✅ useEffect — fires on id / month / year change
   useEffect(() => {
+    if (DEBUG) {
+      console.log(
+        `🔥 [useEffect] FIRED id=${id} month=${selectedShamsiMonth} year=${selectedShamsiYear}`,
+      );
+    }
     if (id) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setLoading(true);
-      fetchData();
+      fetchData(selectedShamsiMonth, selectedShamsiYear);
     }
-  }, [id, selectedShamsiMonth, selectedShamsiYear, fetchData]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id, selectedShamsiMonth, selectedShamsiYear]);
 
   const onRefresh = () => {
     setRefreshing(true);
-    fetchData();
+    fetchData(selectedShamsiMonth, selectedShamsiYear);
   };
 
   // ✅ Generate PDF
@@ -654,7 +748,7 @@ export default function StaffAttendanceDetailScreen() {
       if (await Sharing.isAvailableAsync()) {
         await Sharing.shareAsync(uri, {
           mimeType: "application/pdf",
-          dialogTitle: `گزارش حضور - ${data.staff.fullName}`,
+          dialogTitle: `گزارش حضور - ${data.staff.fullName} - ${monthName} ${selectedShamsiYear}`,
           UTI: "com.adobe.pdf",
         });
       } else {
@@ -670,7 +764,7 @@ export default function StaffAttendanceDetailScreen() {
     }
   };
 
-  // ✅ Month navigation functions
+  // ✅ Month navigation
   const goToPreviousMonth = () => {
     let newMonth = selectedShamsiMonth - 1;
     let newYear = selectedShamsiYear;
@@ -678,7 +772,11 @@ export default function StaffAttendanceDetailScreen() {
       newMonth = 12;
       newYear = selectedShamsiYear - 1;
     }
-    console.log(`🔄 Navigating to previous month: ${newMonth}/${newYear}`);
+    if (DEBUG) {
+      console.log(
+        `🔙 [prev] ${selectedShamsiMonth}/${selectedShamsiYear} → ${newMonth}/${newYear}`,
+      );
+    }
     setSelectedShamsiMonth(newMonth);
     setSelectedShamsiYear(newYear);
   };
@@ -690,7 +788,11 @@ export default function StaffAttendanceDetailScreen() {
       newMonth = 1;
       newYear = selectedShamsiYear + 1;
     }
-    console.log(`🔄 Navigating to next month: ${newMonth}/${newYear}`);
+    if (DEBUG) {
+      console.log(
+        `🔜 [next] ${selectedShamsiMonth}/${selectedShamsiYear} → ${newMonth}/${newYear}`,
+      );
+    }
     setSelectedShamsiMonth(newMonth);
     setSelectedShamsiYear(newYear);
   };
@@ -797,26 +899,37 @@ export default function StaffAttendanceDetailScreen() {
     );
   };
 
-  // ✅ Show loading state
+  // ✅ Loading state
   if (loading) {
     return (
       <SafeAreaView style={styles.safeContainer}>
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#8b5cf6" />
           <Text style={styles.loadingText}>در حال بارگذاری...</Text>
+          {DEBUG && (
+            <Text
+              style={{
+                marginTop: 8,
+                fontSize: 11,
+                color: "#94a3b8",
+                fontFamily: "Vazir",
+              }}
+            >
+              {getShamsiMonthName(selectedShamsiMonth)} {selectedShamsiYear}
+            </Text>
+          )}
         </View>
       </SafeAreaView>
     );
   }
 
-  // ✅ Show error/no data state
+  // ✅ Error / no data state
   if (!data || !data.daily || data.daily.length === 0) {
     const monthName = getShamsiMonthName(selectedShamsiMonth);
     return (
       <SafeAreaView style={styles.safeContainer}>
         <StatusBar barStyle="dark-content" backgroundColor="#f1f5f9" />
         <View style={styles.container}>
-          {/* Header */}
           <View style={styles.header}>
             <TouchableOpacity
               style={styles.backButton}
@@ -831,7 +944,6 @@ export default function StaffAttendanceDetailScreen() {
             <View style={{ width: 24 }} />
           </View>
 
-          {/* Month Navigator */}
           <View style={styles.monthNavigator}>
             <TouchableOpacity
               style={styles.monthNavButton}
@@ -843,6 +955,18 @@ export default function StaffAttendanceDetailScreen() {
               <Text style={styles.monthText}>
                 {monthName} {selectedShamsiYear}
               </Text>
+              {DEBUG && (
+                <Text
+                  style={{
+                    fontSize: 9,
+                    color: "#dc2626",
+                    fontFamily: "Vazir",
+                    marginTop: 2,
+                  }}
+                >
+                  state={selectedShamsiMonth}/{selectedShamsiYear}
+                </Text>
+              )}
             </View>
             <TouchableOpacity
               style={styles.monthNavButton}
@@ -862,7 +986,7 @@ export default function StaffAttendanceDetailScreen() {
               style={styles.retryButton}
               onPress={() => {
                 setLoading(true);
-                fetchData();
+                fetchData(selectedShamsiMonth, selectedShamsiYear);
               }}
             >
               <Text style={styles.retryButtonText}>تلاش مجدد</Text>
@@ -891,7 +1015,6 @@ export default function StaffAttendanceDetailScreen() {
             <Text style={styles.headerTitle}>حضور کارمند</Text>
             <Text style={styles.headerSubtitle}>{staff.fullName}</Text>
           </View>
-          {/* PDF Button */}
           <TouchableOpacity
             style={styles.pdfButton}
             onPress={generatePDF}
@@ -950,6 +1073,19 @@ export default function StaffAttendanceDetailScreen() {
             <Text style={styles.monthSubtext}>
               {summary.totalDays} روز • {summary.workingDays} روز کاری
             </Text>
+            {DEBUG && (
+              <Text
+                style={{
+                  fontSize: 9,
+                  color: "#16a34a",
+                  fontFamily: "Vazir",
+                  marginTop: 2,
+                }}
+              >
+                state={selectedShamsiMonth}/{selectedShamsiYear} • records=
+                {summary.totalRecords}
+              </Text>
+            )}
           </View>
           <TouchableOpacity
             style={styles.monthNavButton}
@@ -980,8 +1116,9 @@ export default function StaffAttendanceDetailScreen() {
             </View>
           )}
 
-        {/* Days List */}
+        {/* Days List — key forces fresh render on month change */}
         <FlatList
+          key={`${selectedShamsiMonth}-${selectedShamsiYear}`}
           data={daily}
           renderItem={renderDayItem}
           keyExtractor={(item, index) => `${item.date}-${index}`}

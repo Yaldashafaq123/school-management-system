@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -84,7 +84,7 @@ const defaultDashboard = {
     },
     {
       id: 8,
-      title: " ارزیابی هفتگی",
+      title: "ارزیابی هفتگی",
       icon: "library",
       color: Colors.primary,
       route: "/(teacher)/WeeklyAssessment/WeeklyAssessmentListScreen",
@@ -105,20 +105,28 @@ const defaultDashboard = {
     },
     {
       id: 11,
-      title: "گزارش حضور و غیاب",
+      title: "گزارش حضور و غیاب من",
       icon: "time",
       color: Colors.info,
       route: "/(teacher)/attendance/report",
     },
+    // ✅ FIXED: Points to classes list — teacher picks a class, then sees report
     {
       id: 12,
+      title: "گزارش ماهانه صنف",
+      icon: "time",
+      color: Colors.info,
+      route: "/(teacher)/classes",
+    },
+    {
+      id: 13,
       title: "درخواست‌های من",
       icon: "list",
       color: Colors.primary,
       route: "/(teacher)/requests",
     },
     {
-      id: 13,
+      id: 14,
       title: "گزارش معاش",
       icon: "cash",
       color: Colors.success,
@@ -130,12 +138,13 @@ const defaultDashboard = {
 export default function TeacherDashboardTab() {
   const router = useRouter();
   const { user } = useAuth();
-  const insets = useSafeAreaInsets(); // ✅ ADDED
+  const insets = useSafeAreaInsets();
   const [dashboard, setDashboard] = useState(defaultDashboard);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
-  const fetchDashboard = async () => {
+  // ✅ Wrapped in useCallback so it can be a stable dependency
+  const fetchDashboard = useCallback(async () => {
     try {
       setLoading(true);
       const data = await apiRequest("/teacher/dashboard");
@@ -163,22 +172,29 @@ export default function TeacherDashboardTab() {
       setLoading(false);
       setRefreshing(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchDashboard();
-  }, []);
+  }, [fetchDashboard]);
 
   const onRefresh = () => {
     setRefreshing(true);
     fetchDashboard();
   };
 
+  // ✅ Safe navigation with validation
   const handleNavigation = (route: string) => {
+    if (!route || route === "#" || route.trim() === "") {
+      Alert.alert("توجه", "این بخش هنوز آماده نیست");
+      return;
+    }
+
     try {
       router.push(route as any);
     } catch (error) {
+      console.error("Navigation error:", error);
       Alert.alert("خطا", "این بخش در حال توسعه است");
     }
   };
@@ -210,7 +226,6 @@ export default function TeacherDashboardTab() {
   }
 
   return (
-    // ✅ FIXED: Removed edges prop to handle both top and bottom properly
     <SafeAreaView style={styles.container}>
       <Header
         title="داشبورد معلم"
@@ -242,9 +257,8 @@ export default function TeacherDashboardTab() {
 
       <ScrollView
         style={styles.content}
-        // ✅ FIXED: Added contentContainerStyle with proper bottom padding
         contentContainerStyle={{
-          paddingBottom: insets.bottom + 20, // Space above tab bar
+          paddingBottom: insets.bottom + 20,
         }}
         showsVerticalScrollIndicator={false}
         refreshControl={
@@ -367,7 +381,11 @@ export default function TeacherDashboardTab() {
                 <TouchableOpacity
                   key={activity.id}
                   style={styles.activityCard}
-                  onPress={() => handleNavigation(activity.route || "#")}
+                  onPress={() => {
+                    if (activity.route) {
+                      handleNavigation(activity.route);
+                    }
+                  }}
                 >
                   <View
                     style={[

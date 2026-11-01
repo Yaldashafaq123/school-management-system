@@ -2,19 +2,20 @@
 import { principalApi } from "@/src/config/principalApi";
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
-    ActivityIndicator,
-    Alert,
-    KeyboardAvoidingView,
-    Platform,
-    RefreshControl,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  Vibration,
+  View,
 } from "react-native";
 
 // ==================== HELPERS ====================
@@ -95,6 +96,19 @@ const getCategoryLabelFarsi = (category: string): string => {
   return labels[category] || category;
 };
 
+const getCategoryColor = (category: string): string => {
+  const colors: Record<string, string> = {
+    TEACHING: "#3b82f6",
+    DISCIPLINE: "#8b5cf6",
+    COMMUNICATION: "#10b981",
+    PROFESSIONAL: "#f59e0b",
+    STUDENT_RELATION: "#ec4899",
+    ADMINISTRATIVE: "#06b6d4",
+    OTHER: "#64748b",
+  };
+  return colors[category] || "#64748b";
+};
+
 // ==================== MAIN SCREEN ====================
 
 export default function EvaluationDetailScreen() {
@@ -116,6 +130,13 @@ export default function EvaluationDetailScreen() {
   const [recommendations, setRecommendations] = useState("");
   const [principalNotes, setPrincipalNotes] = useState("");
 
+  // Collapsible categories — default: all open
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+
+  // Track unsaved changes for beforeRemove guard
+  const [dirty, setDirty] = useState(false);
+  const autoSaveTimer = useRef<any>(null);
+
   const isEditable =
     evaluation?.status === "DRAFT" || evaluation?.status === "PENDING_REVIEW";
 
@@ -125,7 +146,6 @@ export default function EvaluationDetailScreen() {
       if (res.success) {
         setEvaluation(res.data);
 
-        // Initialize scores from existing
         const initScores: Record<number, { score: number; comment: string }> =
           {};
         (res.data.criteria || []).forEach((c: any) => {
@@ -141,6 +161,7 @@ export default function EvaluationDetailScreen() {
         setGoals(res.data.goals || "");
         setRecommendations(res.data.recommendations || "");
         setPrincipalNotes(res.data.principalNotes || "");
+        setDirty(false);
       }
     } catch (error) {
       console.error("Fetch evaluation error:", error);
@@ -156,12 +177,62 @@ export default function EvaluationDetailScreen() {
     if (id) fetchEvaluation();
   }, [id, fetchEvaluation]);
 
+  // Auto-save draft every 45 seconds when editable and dirty
+  useEffect(() => {
+    if (!isEditable) return;
+    autoSaveTimer.current = setInterval(() => {
+      if (dirty) {
+        // Silently save — no alert
+        (async () => {
+          try {
+            const scoresArray = (evaluation?.criteria || []).map((c: any) => ({
+              criteriaId: c.criteriaId,
+              score: scores[c.criteriaId]?.score || 0,
+              comment: scores[c.criteriaId]?.comment || undefined,
+            }));
+            await principalApi.submitEvaluationScores(Number(id), {
+              scores: scoresArray,
+              strengths: strengths || undefined,
+              weaknesses: weaknesses || undefined,
+              goals: goals || undefined,
+              recommendations: recommendations || undefined,
+              principalNotes: principalNotes || undefined,
+            });
+            setDirty(false);
+            console.log("💾 auto-saved draft");
+          } catch (e) {
+            console.warn("auto-save failed", e);
+          }
+        })();
+      }
+    }, 45000);
+    return () => {
+      if (autoSaveTimer.current) clearInterval(autoSaveTimer.current);
+    };
+  }, [
+    isEditable,
+    dirty,
+    evaluation,
+    scores,
+    strengths,
+    weaknesses,
+    goals,
+    recommendations,
+    principalNotes,
+    id,
+  ]);
+
   const onRefresh = () => {
     setRefreshing(true);
     fetchEvaluation();
   };
 
+  const markDirty = () => {
+    if (!dirty) setDirty(true);
+  };
+
   const handleScoreChange = (criteriaId: number, score: number) => {
+    if (Platform.OS !== "web") Vibration.vibrate(10);
     setScores((prev) => ({
       ...prev,
       [criteriaId]: {
@@ -169,6 +240,7 @@ export default function EvaluationDetailScreen() {
         comment: prev[criteriaId]?.comment || "",
       },
     }));
+    markDirty();
   };
 
   const handleCommentChange = (criteriaId: number, comment: string) => {
@@ -179,6 +251,31 @@ export default function EvaluationDetailScreen() {
         comment,
       },
     }));
+    markDirty();
+  };
+
+  // Bulk fill: set every unscored criteria in a category to `value`
+  const bulkFillCategory = (items: any[], value: number) => {
+    const updates: any = { ...scores };
+    let filled = 0;
+    items.forEach((c: any) => {
+      if (!updates[c.criteriaId]?.score) {
+        updates[c.criteriaId] = {
+          score: value,
+          comment: updates[c.criteriaId]?.comment || "",
+        };
+        filled++;
+      }
+    });
+    setScores(updates);
+    markDirty();
+    if (filled > 0) {
+      Alert.alert("تکمیل گروهی", `${filled} معیار با نمره ${value} پر شد`);
+    }
+  };
+
+  const toggleCategory = (category: string) => {
+    setCollapsed((prev) => ({ ...prev, [category]: !prev[category] }));
   };
 
   const handleSaveDraft = async () => {
@@ -200,6 +297,7 @@ export default function EvaluationDetailScreen() {
       });
 
       if (res.success) {
+        setDirty(false);
         Alert.alert("موفقیت", "پیش‌نویس ذخیره شد");
         fetchEvaluation();
       }
@@ -211,9 +309,27 @@ export default function EvaluationDetailScreen() {
   };
 
   const handleSubmit = async () => {
-    // Save first
-    await handleSaveDraft();
+    // Validate all criteria scored
+    const totalCriteria = evaluation?.criteria?.length || 0;
+    const scored = Object.values(scores).filter((s: any) => s.score > 0).length;
+    if (scored < totalCriteria) {
+      Alert.alert(
+        "ارزیابی ناقص",
+        `${totalCriteria - scored} معیار هنوز نمره‌دهی نشده است. آیا می‌خواهید ادامه دهید؟`,
+        [
+          { text: "انصراف", style: "cancel" },
+          {
+            text: "بله، ادامه بده",
+            onPress: () => confirmSubmit(),
+          },
+        ],
+      );
+      return;
+    }
+    confirmSubmit();
+  };
 
+  const confirmSubmit = () => {
     Alert.alert(
       "نهایی‌سازی ارزیابی",
       "آیا از نهایی‌سازی ارزیابی مطمئن هستید؟ این عملیات قابل بازگشت نیست.",
@@ -225,10 +341,29 @@ export default function EvaluationDetailScreen() {
           onPress: async () => {
             try {
               setSubmitting(true);
+
+              // Save first
+              const scoresArray = (evaluation?.criteria || []).map(
+                (c: any) => ({
+                  criteriaId: c.criteriaId,
+                  score: scores[c.criteriaId]?.score || 0,
+                  comment: scores[c.criteriaId]?.comment || undefined,
+                }),
+              );
+              await principalApi.submitEvaluationScores(Number(id), {
+                scores: scoresArray,
+                strengths: strengths || undefined,
+                weaknesses: weaknesses || undefined,
+                goals: goals || undefined,
+                recommendations: recommendations || undefined,
+                principalNotes: principalNotes || undefined,
+              });
+
               const res = await principalApi.submitTeacherEvaluation(
                 Number(id),
               );
               if (res.success) {
+                setDirty(false);
                 Alert.alert("موفقیت", "ارزیابی نهایی شد", [
                   {
                     text: "مشاهده کارنامه",
@@ -287,6 +422,15 @@ export default function EvaluationDetailScreen() {
     criteriaByCategory[c.category].push(c);
   });
 
+  // Progress stats
+  const totalCriteria = evaluation.criteria?.length || 0;
+  const totalScored = Object.values(scores).filter(
+    (s: any) => s.score > 0,
+  ).length;
+  const overallProgress =
+    totalCriteria > 0 ? Math.round((totalScored / totalCriteria) * 100) : 0;
+  const categoryKeys = Object.keys(criteriaByCategory);
+
   return (
     <KeyboardAvoidingView
       style={{ flex: 1 }}
@@ -294,7 +438,10 @@ export default function EvaluationDetailScreen() {
     >
       <ScrollView
         style={styles.container}
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[
+          styles.content,
+          isEditable && { paddingBottom: 120 },
+        ]}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
@@ -303,7 +450,24 @@ export default function EvaluationDetailScreen() {
         <View style={styles.header}>
           <TouchableOpacity
             style={styles.backButton}
-            onPress={() => router.back()}
+            onPress={() => {
+              if (dirty) {
+                Alert.alert(
+                  "تغییرات ذخیره نشده",
+                  "آیا می‌خواهید بدون ذخیره خارج شوید؟",
+                  [
+                    { text: "ماندن", style: "cancel" },
+                    {
+                      text: "خروج",
+                      style: "destructive",
+                      onPress: () => router.back(),
+                    },
+                  ],
+                );
+              } else {
+                router.back();
+              }
+            }}
           >
             <Ionicons name="arrow-back" size={24} color="#1e293b" />
           </TouchableOpacity>
@@ -390,16 +554,76 @@ export default function EvaluationDetailScreen() {
           </View>
         </View>
 
+        {/* Progress Overview (edit mode only) */}
+        {isEditable && totalCriteria > 0 && (
+          <View style={styles.progressCard}>
+            <View style={styles.progressHeaderRow}>
+              <View
+                style={{ flexDirection: "row", alignItems: "center", gap: 6 }}
+              >
+                <Ionicons name="stats-chart" size={18} color="#8b5cf6" />
+                <Text style={styles.progressTitle}>پیشرفت ارزیابی</Text>
+              </View>
+              <Text style={styles.progressCount}>
+                {totalScored} / {totalCriteria}
+              </Text>
+            </View>
+            <View style={styles.progressBarTrack}>
+              <View
+                style={[
+                  styles.progressBarFill,
+                  {
+                    width: `${overallProgress}%`,
+                    backgroundColor:
+                      overallProgress === 100 ? "#10b981" : "#8b5cf6",
+                  },
+                ]}
+              />
+            </View>
+            <View style={styles.categoryChipsRow}>
+              {categoryKeys.map((cat) => {
+                const items = criteriaByCategory[cat];
+                const filled = items.filter(
+                  (c: any) => (scores[c.criteriaId]?.score || 0) > 0,
+                ).length;
+                const pct =
+                  items.length > 0
+                    ? Math.round((filled / items.length) * 100)
+                    : 0;
+                const color = getCategoryColor(cat);
+                const done = filled === items.length;
+                return (
+                  <View
+                    key={cat}
+                    style={[
+                      styles.categoryChip,
+                      {
+                        backgroundColor: done ? color : color + "20",
+                        borderColor: color,
+                      },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.categoryChipText,
+                        { color: done ? "#fff" : color },
+                      ]}
+                    >
+                      {getCategoryLabelFarsi(cat)} {filled}/{items.length}
+                    </Text>
+                  </View>
+                );
+              })}
+            </View>
+          </View>
+        )}
+
         {/* Category Scores (view mode) */}
         {!isEditable && evaluation.categoryScores && (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>امتیازات دسته‌ها</Text>
             {[
-              {
-                key: "teachingScore",
-                label: "تدریس",
-                color: "#3b82f6",
-              },
+              { key: "teachingScore", label: "تدریس", color: "#3b82f6" },
               {
                 key: "disciplineScore",
                 label: "نظم و انضباط",
@@ -410,11 +634,7 @@ export default function EvaluationDetailScreen() {
                 label: "ارتباطات",
                 color: "#10b981",
               },
-              {
-                key: "professionalScore",
-                label: "حرفه‌ای",
-                color: "#f59e0b",
-              },
+              { key: "professionalScore", label: "حرفه‌ای", color: "#f59e0b" },
               {
                 key: "studentRelationScore",
                 label: "رابطه با شاگردان",
@@ -450,94 +670,212 @@ export default function EvaluationDetailScreen() {
           </View>
         )}
 
-        {/* Criteria - editable or view mode */}
-        {Object.entries(criteriaByCategory).map(([category, items]) => (
-          <View key={category} style={styles.section}>
-            <View style={styles.categoryHeader}>
-              <Text style={styles.categoryTitle}>
-                {getCategoryLabelFarsi(category)}
-              </Text>
-              <Text style={styles.categoryCount}>{items.length} معیار</Text>
-            </View>
+        {/* Criteria - collapsible by category */}
+        {categoryKeys.map((category) => {
+          const items = criteriaByCategory[category];
+          const isCollapsed = !!collapsed[category];
+          const filled = items.filter(
+            (c: any) => (scores[c.criteriaId]?.score || 0) > 0,
+          ).length;
+          const catColor = getCategoryColor(category);
+          const catDone = filled === items.length;
 
-            {items.map((c: any) => {
-              const currentScore = scores[c.criteriaId]?.score || 0;
-              return (
-                <View key={c.criteriaId} style={styles.criteriaCard}>
-                  <View style={styles.criteriaHeader}>
-                    <Text style={styles.criteriaName}>
-                      {c.nameFarsi || c.name}
+          return (
+            <View key={category} style={styles.section}>
+              {/* Category header — tappable to collapse */}
+              <TouchableOpacity
+                activeOpacity={0.7}
+                style={styles.categoryHeader}
+                onPress={() => toggleCategory(category)}
+              >
+                <View style={styles.categoryHeaderLeft}>
+                  <View
+                    style={[styles.categoryDot, { backgroundColor: catColor }]}
+                  />
+                  <Text style={styles.categoryTitle}>
+                    {getCategoryLabelFarsi(category)}
+                  </Text>
+                </View>
+                <View style={styles.categoryHeaderRight}>
+                  <View
+                    style={[
+                      styles.categoryProgressBadge,
+                      {
+                        backgroundColor: catDone
+                          ? "#d1fae5"
+                          : filled > 0
+                            ? "#fef3c7"
+                            : "#f1f5f9",
+                      },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.categoryProgressText,
+                        {
+                          color: catDone
+                            ? "#047857"
+                            : filled > 0
+                              ? "#92400e"
+                              : "#64748b",
+                        },
+                      ]}
+                    >
+                      {filled}/{items.length}
                     </Text>
-                    {!isEditable && (
-                      <Text style={styles.criteriaScoreText}>
-                        {c.score}/{c.maxScore}
-                      </Text>
-                    )}
                   </View>
+                  <Ionicons
+                    name={isCollapsed ? "chevron-forward" : "chevron-down"}
+                    size={18}
+                    color="#94a3b8"
+                  />
+                </View>
+              </TouchableOpacity>
 
-                  {isEditable ? (
-                    <>
-                      <View style={styles.scoreRow}>
-                        {[1, 2, 3, 4, 5].map((score) => (
-                          <TouchableOpacity
-                            key={score}
+              {!isCollapsed && (
+                <>
+                  {/* Bulk-fill row */}
+                  {isEditable && (
+                    <View style={styles.bulkFillRow}>
+                      <Text style={styles.bulkFillLabel}>پر کردن سریع:</Text>
+                      {[3, 4, 5].map((v) => (
+                        <TouchableOpacity
+                          key={v}
+                          style={[
+                            styles.bulkFillBtn,
+                            { borderColor: catColor },
+                          ]}
+                          onPress={() => bulkFillCategory(items, v)}
+                        >
+                          <Text
                             style={[
-                              styles.scoreButton,
-                              currentScore === score &&
-                                styles.scoreButtonActive,
+                              styles.bulkFillBtnText,
+                              { color: catColor },
                             ]}
-                            onPress={() =>
-                              handleScoreChange(c.criteriaId, score)
-                            }
                           >
-                            <Text
+                            همه {v}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  )}
+
+                  {items.map((c: any) => {
+                    const currentScore = scores[c.criteriaId]?.score || 0;
+                    return (
+                      <View key={c.criteriaId} style={styles.criteriaCard}>
+                        <View style={styles.criteriaHeader}>
+                          <Text style={styles.criteriaName}>
+                            {c.nameFarsi || c.name}
+                          </Text>
+                          {!isEditable && (
+                            <Text style={styles.criteriaScoreText}>
+                              {c.score}/{c.maxScore}
+                            </Text>
+                          )}
+                          {isEditable && currentScore > 0 && (
+                            <View
                               style={[
-                                styles.scoreButtonText,
-                                currentScore === score &&
-                                  styles.scoreButtonTextActive,
+                                styles.scoredBadge,
+                                {
+                                  backgroundColor:
+                                    currentScore >= 4
+                                      ? "#d1fae5"
+                                      : currentScore >= 3
+                                        ? "#fef3c7"
+                                        : "#fee2e2",
+                                },
                               ]}
                             >
-                              {score}
-                            </Text>
-                          </TouchableOpacity>
-                        ))}
-                      </View>
+                              <Text
+                                style={[
+                                  styles.scoredBadgeText,
+                                  {
+                                    color:
+                                      currentScore >= 4
+                                        ? "#047857"
+                                        : currentScore >= 3
+                                          ? "#92400e"
+                                          : "#dc2626",
+                                  },
+                                ]}
+                              >
+                                {currentScore}
+                              </Text>
+                            </View>
+                          )}
+                        </View>
 
-                      <TextInput
-                        style={styles.commentInput}
-                        placeholder="یادداشت..."
-                        placeholderTextColor="#94a3b8"
-                        value={scores[c.criteriaId]?.comment || ""}
-                        onChangeText={(text) =>
-                          handleCommentChange(c.criteriaId, text)
-                        }
-                        multiline
-                        textAlign="right"
-                      />
-                    </>
-                  ) : (
-                    <>
-                      <View style={styles.readonlyScoreRow}>
-                        {[1, 2, 3, 4, 5].map((n) => (
-                          <View
-                            key={n}
-                            style={[
-                              styles.readonlyDot,
-                              currentScore >= n && styles.readonlyDotFilled,
-                            ]}
-                          />
-                        ))}
+                        {isEditable ? (
+                          <>
+                            <View style={styles.scoreRow}>
+                              {[1, 2, 3, 4, 5].map((score) => (
+                                <TouchableOpacity
+                                  key={score}
+                                  style={[
+                                    styles.scoreButton,
+                                    currentScore === score &&
+                                      styles.scoreButtonActive,
+                                  ]}
+                                  onPress={() =>
+                                    handleScoreChange(c.criteriaId, score)
+                                  }
+                                  activeOpacity={0.6}
+                                >
+                                  <Text
+                                    style={[
+                                      styles.scoreButtonText,
+                                      currentScore === score &&
+                                        styles.scoreButtonTextActive,
+                                    ]}
+                                  >
+                                    {score}
+                                  </Text>
+                                </TouchableOpacity>
+                              ))}
+                            </View>
+
+                            <TextInput
+                              style={styles.commentInput}
+                              placeholder="یادداشت (اختیاری)..."
+                              placeholderTextColor="#94a3b8"
+                              value={scores[c.criteriaId]?.comment || ""}
+                              onChangeText={(text) =>
+                                handleCommentChange(c.criteriaId, text)
+                              }
+                              multiline
+                              textAlign="right"
+                            />
+                          </>
+                        ) : (
+                          <>
+                            <View style={styles.readonlyScoreRow}>
+                              {[1, 2, 3, 4, 5].map((n) => (
+                                <View
+                                  key={n}
+                                  style={[
+                                    styles.readonlyDot,
+                                    currentScore >= n &&
+                                      styles.readonlyDotFilled,
+                                  ]}
+                                />
+                              ))}
+                            </View>
+                            {c.comment && (
+                              <Text style={styles.readonlyComment}>
+                                {c.comment}
+                              </Text>
+                            )}
+                          </>
+                        )}
                       </View>
-                      {c.comment && (
-                        <Text style={styles.readonlyComment}>{c.comment}</Text>
-                      )}
-                    </>
-                  )}
-                </View>
-              );
-            })}
-          </View>
-        ))}
+                    );
+                  })}
+                </>
+              )}
+            </View>
+          );
+        })}
 
         {/* Comments Section */}
         <View style={styles.section}>
@@ -547,23 +885,42 @@ export default function EvaluationDetailScreen() {
             {
               label: "نقاط قوت",
               value: strengths,
-              setter: setStrengths,
+              setter: (v: string) => {
+                setStrengths(v);
+                markDirty();
+              },
             },
             {
               label: "نقاط ضعف",
               value: weaknesses,
-              setter: setWeaknesses,
+              setter: (v: string) => {
+                setWeaknesses(v);
+                markDirty();
+              },
             },
-            { label: "اهداف", value: goals, setter: setGoals },
+            {
+              label: "اهداف",
+              value: goals,
+              setter: (v: string) => {
+                setGoals(v);
+                markDirty();
+              },
+            },
             {
               label: "توصیه‌ها",
               value: recommendations,
-              setter: setRecommendations,
+              setter: (v: string) => {
+                setRecommendations(v);
+                markDirty();
+              },
             },
             {
               label: "یادداشت مدیر",
               value: principalNotes,
-              setter: setPrincipalNotes,
+              setter: (v: string) => {
+                setPrincipalNotes(v);
+                markDirty();
+              },
             },
           ].map((item) => (
             <View key={item.label} style={styles.textAreaWrapper}>
@@ -638,35 +995,9 @@ export default function EvaluationDetailScreen() {
           </View>
         )}
 
-        {/* Submit Buttons */}
-        <View style={styles.actionsContainer}>
-          {isEditable && (
-            <>
-              <TouchableOpacity
-                style={styles.draftButton}
-                onPress={handleSaveDraft}
-                disabled={submitting}
-              >
-                <Ionicons name="save-outline" size={18} color="#8b5cf6" />
-                <Text style={styles.draftButtonText}>ذخیره پیش‌نویس</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.submitButton}
-                onPress={handleSubmit}
-                disabled={submitting}
-              >
-                {submitting ? (
-                  <ActivityIndicator size="small" color="#fff" />
-                ) : (
-                  <>
-                    <Ionicons name="checkmark-circle" size={18} color="#fff" />
-                    <Text style={styles.submitButtonText}>نهایی‌سازی</Text>
-                  </>
-                )}
-              </TouchableOpacity>
-            </>
-          )}
-          {!isEditable && (
+        {/* View-mode report button */}
+        {!isEditable && (
+          <View style={styles.actionsContainer}>
             <TouchableOpacity
               style={styles.reportButton}
               onPress={handleViewReport}
@@ -674,11 +1005,62 @@ export default function EvaluationDetailScreen() {
               <Ionicons name="document-text" size={18} color="#fff" />
               <Text style={styles.reportButtonText}>مشاهده کارنامه کامل</Text>
             </TouchableOpacity>
-          )}
-        </View>
+          </View>
+        )}
 
         <View style={{ height: 40 }} />
       </ScrollView>
+
+      {/* Sticky bottom bar (edit mode only) */}
+      {isEditable && (
+        <View style={styles.stickyBar}>
+          <View style={styles.stickyTopRow}>
+            <Text style={styles.stickyProgressText}>
+              {totalScored} / {totalCriteria} معیار
+            </Text>
+            <Text
+              style={[
+                styles.stickyPercentText,
+                {
+                  color: overallProgress === 100 ? "#10b981" : "#8b5cf6",
+                },
+              ]}
+            >
+              {overallProgress}%
+            </Text>
+          </View>
+          <View style={styles.stickyButtonsRow}>
+            <TouchableOpacity
+              style={styles.stickyDraftBtn}
+              onPress={handleSaveDraft}
+              disabled={submitting}
+            >
+              {submitting ? (
+                <ActivityIndicator size="small" color="#8b5cf6" />
+              ) : (
+                <>
+                  <Ionicons name="save-outline" size={16} color="#8b5cf6" />
+                  <Text style={styles.stickyDraftText}>ذخیره</Text>
+                </>
+              )}
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.stickySubmitBtn}
+              onPress={handleSubmit}
+              disabled={submitting}
+            >
+              {submitting ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <>
+                  <Ionicons name="checkmark-circle" size={16} color="#fff" />
+                  <Text style={styles.stickySubmitText}>نهایی‌سازی</Text>
+                </>
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
     </KeyboardAvoidingView>
   );
 }
@@ -790,6 +1172,68 @@ const styles = StyleSheet.create({
     marginTop: 3,
     fontFamily: "Vazir",
   },
+
+  // Progress card
+  progressCard: {
+    backgroundColor: "#fff",
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 12,
+    elevation: 2,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 4,
+    borderLeftWidth: 4,
+    borderLeftColor: "#8b5cf6",
+  },
+  progressHeaderRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 10,
+  },
+  progressTitle: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#1e293b",
+    fontFamily: "VazirBold",
+  },
+  progressCount: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#8b5cf6",
+    fontFamily: "VazirBold",
+  },
+  progressBarTrack: {
+    height: 8,
+    backgroundColor: "#e2e8f0",
+    borderRadius: 4,
+    overflow: "hidden",
+    marginBottom: 10,
+  },
+  progressBarFill: {
+    height: "100%",
+    borderRadius: 4,
+  },
+  categoryChipsRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6,
+  },
+  categoryChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  categoryChipText: {
+    fontSize: 11,
+    fontWeight: "700",
+    fontFamily: "VazirBold",
+  },
+
+  // Sections
   section: {
     backgroundColor: "#fff",
     borderRadius: 14,
@@ -842,7 +1286,22 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 12,
+    marginBottom: 8,
+  },
+  categoryHeaderLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  categoryHeaderRight: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  categoryDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
   },
   categoryTitle: {
     fontSize: 15,
@@ -855,6 +1314,44 @@ const styles = StyleSheet.create({
     color: "#94a3b8",
     fontFamily: "Vazir",
   },
+  categoryProgressBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 8,
+  },
+  categoryProgressText: {
+    fontSize: 11,
+    fontWeight: "700",
+    fontFamily: "VazirBold",
+  },
+  bulkFillRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingVertical: 6,
+    paddingHorizontal: 8,
+    backgroundColor: "#f8fafc",
+    borderRadius: 8,
+    marginBottom: 8,
+  },
+  bulkFillLabel: {
+    fontSize: 11,
+    color: "#64748b",
+    fontFamily: "Vazir",
+    marginRight: 4,
+  },
+  bulkFillBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 6,
+    borderWidth: 1,
+    backgroundColor: "#fff",
+  },
+  bulkFillBtnText: {
+    fontSize: 11,
+    fontWeight: "700",
+    fontFamily: "VazirBold",
+  },
   criteriaCard: {
     backgroundColor: "#f8fafc",
     borderRadius: 12,
@@ -866,8 +1363,9 @@ const styles = StyleSheet.create({
   criteriaHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "center",
+    alignItems: "flex-start",
     marginBottom: 8,
+    gap: 8,
   },
   criteriaName: {
     flex: 1,
@@ -880,6 +1378,18 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "700",
     color: "#8b5cf6",
+    fontFamily: "VazirBold",
+  },
+  scoredBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 6,
+    minWidth: 26,
+    alignItems: "center",
+  },
+  scoredBadgeText: {
+    fontSize: 12,
+    fontWeight: "700",
     fontFamily: "VazirBold",
   },
   scoreRow: { flexDirection: "row", gap: 8, marginBottom: 8 },
@@ -1002,40 +1512,6 @@ const styles = StyleSheet.create({
     gap: 12,
     marginTop: 8,
   },
-  draftButton: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#f3e8ff",
-    paddingVertical: 14,
-    borderRadius: 12,
-    gap: 6,
-    borderWidth: 1,
-    borderColor: "#e9d5ff",
-  },
-  draftButtonText: {
-    fontSize: 14,
-    fontWeight: "700",
-    color: "#8b5cf6",
-    fontFamily: "VazirBold",
-  },
-  submitButton: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#8b5cf6",
-    paddingVertical: 14,
-    borderRadius: 12,
-    gap: 6,
-  },
-  submitButtonText: {
-    fontSize: 14,
-    fontWeight: "700",
-    color: "#fff",
-    fontFamily: "VazirBold",
-  },
   reportButton: {
     flex: 1,
     flexDirection: "row",
@@ -1047,6 +1523,79 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   reportButtonText: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#fff",
+    fontFamily: "VazirBold",
+  },
+
+  // Sticky bottom bar
+  stickyBar: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: "#fff",
+    borderTopWidth: 1,
+    borderTopColor: "#e2e8f0",
+    paddingHorizontal: 16,
+    paddingTop: 10,
+    paddingBottom: Platform.OS === "ios" ? 28 : 14,
+    elevation: 8,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+  },
+  stickyTopRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 8,
+  },
+  stickyProgressText: {
+    fontSize: 12,
+    color: "#64748b",
+    fontFamily: "Vazir",
+  },
+  stickyPercentText: {
+    fontSize: 14,
+    fontWeight: "700",
+    fontFamily: "VazirBold",
+  },
+  stickyButtonsRow: {
+    flexDirection: "row",
+    gap: 10,
+  },
+  stickyDraftBtn: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 12,
+    borderRadius: 10,
+    backgroundColor: "#f3e8ff",
+    borderWidth: 1,
+    borderColor: "#e9d5ff",
+    gap: 6,
+  },
+  stickyDraftText: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#8b5cf6",
+    fontFamily: "VazirBold",
+  },
+  stickySubmitBtn: {
+    flex: 2,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 12,
+    borderRadius: 10,
+    backgroundColor: "#8b5cf6",
+    gap: 6,
+  },
+  stickySubmitText: {
     fontSize: 14,
     fontWeight: "700",
     color: "#fff",

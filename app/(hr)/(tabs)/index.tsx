@@ -1,4 +1,6 @@
 // app/(hr)/(tabs)/index.tsx - Updated with new features
+import { Header } from "@/components/Header";
+import { NotificationBell } from "@/components/NotificationBell";
 import { useAuth } from "@/contexts/AuthContext";
 import { hrApi } from "@/src/config/hrApi";
 import { Ionicons } from "@expo/vector-icons";
@@ -106,6 +108,7 @@ export default function HRDashboardScreen() {
   const [dashboard, setDashboard] = useState<any>(null);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/immutability
     fetchDashboard();
   }, []);
 
@@ -156,6 +159,7 @@ export default function HRDashboardScreen() {
         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
       }
     >
+     
       {/* Welcome Card */}
       <LinearGradient
         colors={["#8b5cf6", "#7c3aed"]}

@@ -220,7 +220,17 @@ export default function PrincipalDashboardScreen() {
           </View>
           <Text style={styles.quickActionTitle}>اساتید</Text>
         </TouchableOpacity>
-
+        <TouchableOpacity
+          style={styles.quickActionCard}
+          onPress={() => router.push("./attendance/staff")}
+        >
+          <View
+            style={[styles.quickActionIcon, { backgroundColor: "#e0f2fe" }]}
+          >
+            <Ionicons name="time" size={28} color="#0ea5e9" />
+          </View>
+          <Text style={styles.quickActionTitle}>حضور کارمندان</Text>
+        </TouchableOpacity>
         <TouchableOpacity
           style={styles.quickActionCard}
           onPress={() => router.push("./classes")}
@@ -243,6 +253,17 @@ export default function PrincipalDashboardScreen() {
             <Ionicons name="bar-chart" size={28} color="#8b5cf6" />
           </View>
           <Text style={styles.quickActionTitle}>راپورها</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.quickActionCard}
+          onPress={() => router.push("./students/lifecycle")}
+        >
+          <View
+            style={[styles.quickActionIcon, { backgroundColor: "#fee2e2" }]}
+          >
+            <Ionicons name="exit-outline" size={28} color="#dc2626" />
+          </View>
+          <Text style={styles.quickActionTitle}>فارغ و ترک</Text>
         </TouchableOpacity>
       </View>
 

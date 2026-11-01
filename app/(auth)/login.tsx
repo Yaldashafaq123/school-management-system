@@ -1,12 +1,11 @@
-// app/(auth)/login.tsx - FIXED VERSION
-
+// app/(auth)/login.tsx
 import { Colors } from "@/constants/Colors";
 import { useAuth } from "@/contexts/AuthContext";
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import {
   Alert,
   Image,
@@ -21,7 +20,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-// ✅ Define route type to avoid TypeScript errors
+// ✅ Route type for TypeScript safety
 type AppRoute =
   | "/(admin)/(tabs)"
   | "/(teacher)/(tabs)"
@@ -37,46 +36,67 @@ export default function LoginScreen() {
   const router = useRouter();
   const { login, loading, error } = useAuth();
 
-  const [email, setEmail] = useState("");
+  const [identifier, setIdentifier] = useState(""); // ✅ email OR phone
   const [password, setPassword] = useState("");
   const [rememberMe, setRememberMe] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [validationErrors, setValidationErrors] = useState<{
-    email?: string;
+    identifier?: string;
     password?: string;
   }>({});
 
-  const validateForm = () => {
-    const errors: typeof validationErrors = {};
+  // ✅ Auto-detect mode based on input
+  const isPhone = useMemo(
+    () =>
+      /^[\d\s\-()]+$/.test(identifier.trim()) && identifier.trim().length > 0,
+    [identifier],
+  );
 
-    if (!email.trim()) {
-      errors.email = "ایمیل الزامی است";
-    } else if (!/\S+@\S+\.\S+/.test(email)) {
-      errors.email = "ایمیل معتبر نیست";
+  const validateForm = () => {
+    const errs: typeof validationErrors = {};
+    const v = identifier.trim();
+
+    if (!v) {
+      errs.identifier = isPhone
+        ? "شماره تلفن الزامی است"
+        : "ایمیل یا شماره تلفن الزامی است";
+    } else if (isPhone) {
+      const digits = v.replace(/\D/g, "");
+      if (digits.length < 9) {
+        errs.identifier = "شماره تلفن معتبر نیست";
+      }
+    } else {
+      if (!/\S+@\S+\.\S+/.test(v)) {
+        errs.identifier = "ایمیل معتبر نیست";
+      }
     }
 
     if (!password.trim()) {
-      errors.password = "رمز عبور الزامی است";
+      errs.password = "رمز عبور الزامی است";
     } else if (password.length < 6) {
-      errors.password = "رمز عبور باید حداقل ۶ کاراکتر باشد";
+      errs.password = "رمز عبور باید حداقل ۶ کاراکتر باشد";
     }
 
-    setValidationErrors(errors);
-    return Object.keys(errors).length === 0;
+    setValidationErrors(errs);
+    return Object.keys(errs).length === 0;
   };
 
   const handleLogin = async () => {
     if (!validateForm()) return;
 
     try {
-      await login({ email, password, rememberMe });
+      // ✅ Send as `email` field — the backend controller detects digits
+      // and switches to phone lookup automatically.
+      await login({
+        email: identifier.trim(),
+        password,
+        rememberMe,
+      });
 
-      // Wait a moment for storage to update
-      await new Promise((resolve) => setTimeout(resolve, 500));
+      // Let AsyncStorage settle
+      await new Promise((r) => setTimeout(r, 400));
 
-      // ✅ FIX: Get userData AFTER login
       const userDataStr = await AsyncStorage.getItem("user_data");
-
       if (!userDataStr) {
         Alert.alert("خطا", "اطلاعات کاربر یافت نشد");
         return;
@@ -84,16 +104,27 @@ export default function LoginScreen() {
 
       const userData = JSON.parse(userDataStr);
 
-      // ✅ Use userType from backend for routing
-      const role = userData.userType || userData.role;
-      const roleLower = role?.toLowerCase();
+      // ✅ FIX: `role` is authoritative for routing.
+      // `userType` may be a display label; `subRole` is extra context.
+      // Previously `userType` was checked first, which caused admins
+      // with an HRStaff record to land on the HR dashboard.
+      const role = (userData.role || userData.userType || "").toLowerCase();
 
-      console.log("✅ User role for routing:", roleLower);
+      console.log(
+        "🔍 login routing —",
+        "role:",
+        userData.role,
+        "| userType:",
+        userData.userType,
+        "| subRole:",
+        userData.subRole,
+        "→ using:",
+        role,
+      );
 
-      // ✅ Navigation based on role with proper typing
       let route: AppRoute = "/";
 
-      switch (roleLower) {
+      switch (role) {
         case "admin":
           route = "/(admin)/(tabs)";
           break;
@@ -107,26 +138,28 @@ export default function LoginScreen() {
           route = "/(parent)/(tabs)";
           break;
         case "finance":
-          console.log("✅ Navigating to Finance Dashboard");
           route = "/(finance)/(tabs)";
           break;
-        case "hr": // ✅ NEW
+        case "hr":
           route = "/(hr)/(tabs)";
           break;
-        case "principal": // ✅ NEW
+        case "principal":
           route = "/(principal)/(tabs)";
+          break;
+        case "super_admin":
+          route = "/(admin)/(tabs)";
+          break;
         default:
-          console.log("⚠️ Unknown role, navigating to home:", roleLower);
-          route = "/";
+          console.warn("⚠️ Unknown role:", role);
+          route = "/(auth)/login";
       }
 
-      // ✅ Use replace with proper route
       router.replace(route as any);
-    } catch (error: any) {
-      console.error("Login error:", error);
+    } catch (err: any) {
+      console.error("Login error:", err);
       Alert.alert(
         "خطا در ورود",
-        error.message || "ایمیل یا رمز عبور اشتباه است",
+        err?.message || "ایمیل/شماره تلفن یا رمز عبور اشتباه است",
       );
     }
   };
@@ -140,6 +173,7 @@ export default function LoginScreen() {
         <ScrollView
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
         >
           <LinearGradient
             colors={[Colors.primary, Colors.primaryDark]}
@@ -150,7 +184,7 @@ export default function LoginScreen() {
             </View>
 
             <View style={styles.card}>
-              {/* Logo Section */}
+              {/* Logo */}
               <View style={styles.logoSection}>
                 <Image
                   source={require("../../assets/images/icon1.png")}
@@ -163,54 +197,63 @@ export default function LoginScreen() {
               <View style={styles.welcomeSection}>
                 <Text style={styles.title}>خوش آمدید 👋</Text>
                 <Text style={styles.subtitle}>
-                  لطفا برای ادامه وارد حساب کاربری خود شوید
+                  لطفاً برای ادامه وارد حساب کاربری خود شوید
                 </Text>
               </View>
 
               <View style={styles.form}>
-                {/* Email Input */}
+                {/* ✅ Unified input: email OR phone */}
                 <View style={styles.inputGroup}>
-                  <Text style={styles.inputLabel}>ایمیل</Text>
+                  <Text style={styles.inputLabel}>
+                    {isPhone ? "شماره تلفن" : "ایمیل یا شماره تلفن"}
+                  </Text>
                   <View
                     style={[
                       styles.inputContainer,
-                      validationErrors.email && styles.inputError,
+                      validationErrors.identifier && styles.inputError,
                     ]}
                   >
                     <Ionicons
-                      name="mail-outline"
+                      name={isPhone ? "call-outline" : "mail-outline"}
                       size={20}
                       color={Colors.textSecondary}
                       style={styles.inputIcon}
                     />
                     <TextInput
                       style={styles.input}
-                      placeholder="example@email.com"
+                      placeholder={
+                        isPhone
+                          ? "07XXXXXXXX"
+                          : "example@email.com یا 07XXXXXXXX"
+                      }
                       placeholderTextColor={Colors.textSecondary}
-                      value={email}
+                      value={identifier}
                       onChangeText={(text) => {
-                        setEmail(text);
-                        if (validationErrors.email) {
+                        setIdentifier(text);
+                        if (validationErrors.identifier) {
                           setValidationErrors((prev) => ({
                             ...prev,
-                            email: undefined,
+                            identifier: undefined,
                           }));
                         }
                       }}
-                      keyboardType="email-address"
+                      keyboardType={isPhone ? "phone-pad" : "email-address"}
                       autoCapitalize="none"
                       autoCorrect={false}
                       editable={!loading}
                     />
                   </View>
-                  {validationErrors.email && (
+                  {validationErrors.identifier && (
                     <Text style={styles.errorText}>
-                      {validationErrors.email}
+                      {validationErrors.identifier}
                     </Text>
                   )}
+                  <Text style={styles.helperText}>
+                    والدین با شماره تلفن، سایر کاربران با ایمیل وارد شوند
+                  </Text>
                 </View>
 
-                {/* Password Input */}
+                {/* Password */}
                 <View style={styles.inputGroup}>
                   <Text style={styles.inputLabel}>رمز عبور</Text>
                   <View
@@ -260,7 +303,7 @@ export default function LoginScreen() {
                   )}
                 </View>
 
-                {/* Remember Me & Forgot Password */}
+                {/* Remember + Forgot */}
                 <View style={styles.rememberRow}>
                   <TouchableOpacity
                     style={styles.rememberMe}
@@ -281,7 +324,9 @@ export default function LoginScreen() {
                   </TouchableOpacity>
 
                   <TouchableOpacity
-                    onPress={() => router.push("/(auth)/forgot-password")}
+                    onPress={() =>
+                      router.push("/(auth)/forgot-password" as any)
+                    }
                     disabled={loading}
                   >
                     <Text style={styles.forgotPasswordText}>
@@ -290,7 +335,7 @@ export default function LoginScreen() {
                   </TouchableOpacity>
                 </View>
 
-                {/* Error Message */}
+                {/* Error banner */}
                 {error && (
                   <View style={styles.errorContainer}>
                     <Ionicons
@@ -302,7 +347,7 @@ export default function LoginScreen() {
                   </View>
                 )}
 
-                {/* Login Button */}
+                {/* Login button */}
                 <TouchableOpacity
                   style={[
                     styles.loginButton,
@@ -321,10 +366,10 @@ export default function LoginScreen() {
                   )}
                 </TouchableOpacity>
 
-                {/* Register Link */}
+                {/* Register */}
                 <View style={styles.registerContainer}>
                   <TouchableOpacity
-                    onPress={() => router.push("/(auth)/register")}
+                    onPress={() => router.push("/(auth)/register" as any)}
                     disabled={loading}
                   >
                     <Text style={styles.registerLink}>ثبت‌نام کنید</Text>
@@ -332,7 +377,6 @@ export default function LoginScreen() {
                   <Text style={styles.registerText}>حساب کاربری ندارید؟</Text>
                 </View>
 
-                {/* Footer */}
                 <View style={styles.footerContainer}>
                   <Text style={styles.footerText}>
                     © {new Date().getFullYear()} Web Studio. All rights
@@ -349,18 +393,10 @@ export default function LoginScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  keyboardAvoid: {
-    flex: 1,
-  },
-  scrollContent: {
-    flexGrow: 1,
-  },
-  gradient: {
-    flex: 1,
-  },
+  container: { flex: 1 },
+  keyboardAvoid: { flex: 1 },
+  scrollContent: { flexGrow: 1 },
+  gradient: { flex: 1 },
   header: {
     flexDirection: "row",
     alignItems: "center",
@@ -369,13 +405,8 @@ const styles = StyleSheet.create({
     paddingTop: 20,
     paddingBottom: 20,
   },
-  backButton: {
-    padding: 8,
-    zIndex: 1,
-  },
-  headerPlaceholder: {
-    width: 40,
-  },
+  backButton: { padding: 8, zIndex: 1 },
+  headerPlaceholder: { width: 40 },
   card: {
     flex: 1,
     backgroundColor: Colors.background,
@@ -402,9 +433,7 @@ const styles = StyleSheet.create({
     color: Colors.primary,
     textAlign: "center",
   },
-  welcomeSection: {
-    marginBottom: 32,
-  },
+  welcomeSection: { marginBottom: 32 },
   title: {
     fontSize: 28,
     fontWeight: "bold",
@@ -417,13 +446,8 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
     textAlign: "right",
   },
-  form: {
-    gap: 24,
-    paddingBottom: 20,
-  },
-  inputGroup: {
-    gap: 8,
-  },
+  form: { gap: 24, paddingBottom: 20 },
+  inputGroup: { gap: 8 },
   inputLabel: {
     fontSize: 14,
     fontWeight: "600",
@@ -440,24 +464,19 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.border,
   },
-  inputError: {
-    borderColor: Colors.danger,
-  },
-  inputIcon: {
-    marginLeft: 8,
-  },
-  input: {
-    flex: 1,
-    fontSize: 15,
-    color: Colors.text,
-  },
-  passwordToggle: {
-    padding: 4,
-    marginRight: 8,
-  },
+  inputError: { borderColor: Colors.danger },
+  inputIcon: { marginLeft: 8 },
+  input: { flex: 1, fontSize: 15, color: Colors.text },
+  passwordToggle: { padding: 4, marginRight: 8 },
   errorText: {
     fontSize: 12,
     color: Colors.danger,
+    textAlign: "right",
+    marginTop: 4,
+  },
+  helperText: {
+    fontSize: 11,
+    color: Colors.textSecondary,
     textAlign: "right",
     marginTop: 4,
   },
@@ -484,10 +503,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.primary,
     borderColor: Colors.primary,
   },
-  rememberText: {
-    fontSize: 14,
-    color: Colors.text,
-  },
+  rememberText: { fontSize: 14, color: Colors.text },
   forgotPasswordText: {
     fontSize: 14,
     color: Colors.primary,
@@ -501,30 +517,20 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     gap: 8,
   },
-  errorMessage: {
-    flex: 1,
-    fontSize: 14,
-    color: Colors.danger,
-  },
+  errorMessage: { flex: 1, fontSize: 14, color: Colors.danger },
   loginButton: {
     backgroundColor: Colors.primary,
     borderRadius: 12,
     paddingVertical: 16,
     alignItems: "center",
   },
-  loginButtonDisabled: {
-    opacity: 0.7,
-  },
+  loginButtonDisabled: { opacity: 0.7 },
   loadingContainer: {
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
   },
-  loginButtonText: {
-    color: "#fff",
-    fontSize: 16,
-    fontWeight: "bold",
-  },
+  loginButtonText: { color: "#fff", fontSize: 16, fontWeight: "bold" },
   registerContainer: {
     flexDirection: "row",
     justifyContent: "center",
@@ -532,15 +538,8 @@ const styles = StyleSheet.create({
     gap: 8,
     marginTop: 16,
   },
-  registerText: {
-    fontSize: 14,
-    color: Colors.textSecondary,
-  },
-  registerLink: {
-    fontSize: 14,
-    color: Colors.primary,
-    fontWeight: "bold",
-  },
+  registerText: { fontSize: 14, color: Colors.textSecondary },
+  registerLink: { fontSize: 14, color: Colors.primary, fontWeight: "bold" },
   footerContainer: {
     alignItems: "center",
     justifyContent: "center",

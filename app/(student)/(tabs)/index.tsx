@@ -1,5 +1,9 @@
+/* eslint-disable react-hooks/immutability */
 // app/(student)/(tabs)/index.tsx
 import { CourseCard } from "@/components/CourseCard";
+import { NotificationBell } from "@/components/NotificationBell";
+
+import { Header } from "@/components/Header";
 import { Colors } from "@/constants/Colors";
 import { useAuth } from "@/contexts/AuthContext";
 import { DashboardData, studentApi } from "@/src/config/studentApi";
@@ -149,6 +153,7 @@ export default function StudentDashboard() {
         />
       }
     >
+      
       {/* Welcome Header with Notification Icon */}
       <LinearGradient
         colors={["#4F46E5", "#7C3AED"]}

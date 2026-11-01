@@ -100,7 +100,146 @@ export interface StudentDetail {
     collectionRate: number;
   };
 }
+// ==================== STAFF ATTENDANCE TYPES ====================
 
+export interface StaffAttendanceDayRecord {
+  punchType: number | null;
+  label: string;
+  labelFa: string;
+  time: string;
+  device: string | null;
+}
+
+export interface StaffAttendanceDay {
+  date: string;
+  dateShamsi: string;
+  dayOfWeek: string;
+  dayNumber: number;
+  isPresent: boolean;
+  isLate: boolean;
+  lateStatus: string;
+  recordCount: number;
+  firstScan: string | null;
+  firstScanShamsi: string | null;
+  lastScan: string | null;
+  lastScanShamsi: string | null;
+  punchIn: number;
+  punchOut: number;
+  punchBreakdown: Record<string, number>;
+  isFriday: boolean;
+  records: StaffAttendanceDayRecord[];
+}
+
+export interface StaffAttendanceRow {
+  id: number;
+  name: string;
+  email: string;
+  role: string;
+  staffType: string;
+  position: string | null;
+  department: string | null;
+  status: "present" | "late" | "absent";
+  hasCheckIn: boolean;
+  hasCheckOut: boolean;
+  isLate: boolean;
+  isOnTime: boolean;
+  lateStatus: string;
+  firstCheckIn: { time: string; dateShamsi: string } | null;
+  lastPunch: {
+    type: number | null;
+    label: string;
+    labelFa: string;
+    time: string;
+    dateShamsi: string | null;
+  } | null;
+  totalPunches: number;
+  punchCounts: Record<string, number>;
+  records: StaffAttendanceDayRecord[];
+}
+
+export interface StaffAttendanceByDateResponse {
+  date: string;
+  dateShamsi: string;
+  dateShamsiFull: string;
+  shamsiMonth: number;
+  shamsiYear: number;
+  shamsiMonthName: string;
+  shamsiWeekday: string;
+  schoolStartTime: string;
+  summary: {
+    present: number;
+    late: number;
+    absent: number;
+    checkedIn: number;
+    checkedOut: number;
+    total: number;
+    totalPunches: number;
+    onTime: number;
+  };
+  attendance: StaffAttendanceRow[];
+}
+
+export interface StaffMonthlyAttendanceResponse {
+  staff: {
+    id: number;
+    fullName: string;
+    nameFarsi: string | null;
+    role: string;
+    staffType: string | null;
+    position: string | null;
+    department: string | null;
+    teacherCode: string | null;
+  };
+  shamsiMonth: number;
+  shamsiYear: number;
+  shamsiMonthName: string;
+  schoolStartTime: string;
+  summary: {
+    totalDays: number;
+    presentDays: number;
+    absentDays: number;
+    lateDays: number;
+    onTimeDays: number;
+    fridayDays: number;
+    attendanceRate: number;
+    workingDays: number;
+    totalRecords: number;
+    totalPunchIn: number;
+    totalPunchOut: number;
+    punchSummary: Record<string, number>;
+  };
+  daily: StaffAttendanceDay[];
+}
+
+export interface StaffMonthlySummaryRow {
+  staffId: number;
+  name: string;
+  role: string;
+  staffType: string;
+  position: string | null;
+  department: string | null;
+  daysPresent: number;
+  lateDays: number;
+  totalDays: number;
+  attendanceRate: number;
+  totalPunches: number;
+  punchCounts: Record<string, number>;
+}
+
+export interface StaffMonthlySummaryResponse {
+  shamsiMonth: number;
+  shamsiYear: number;
+  shamsiMonthName: string;
+  schoolStartTime: string;
+  summary: {
+    totalStaff: number;
+    totalPresent: number;
+    totalLate: number;
+    averageAttendance: number;
+    totalPunches: number;
+  };
+  staff: StaffMonthlySummaryRow[];
+}
 export interface Teacher {
   id: number;
   fullName: string;
@@ -527,7 +666,233 @@ export interface ApiResponse<T> {
 }
 
 // ==================== API CLASS ====================
+// ==================== STUDENT LIFECYCLE TYPES ====================
 
+export interface GraduateStudent {
+  id: number;
+  fullName: string;
+  email: string | null;
+  phone: string | null;
+  profileImage: string | null;
+  studentNumber: string;
+  className: string;
+  classId: number | null;
+  graduationDate: string | null;
+  graduationYear: number | null;
+  status: string;
+}
+
+export interface LeftStudent {
+  id: number;
+  fullName: string;
+  email: string | null;
+  phone: string | null;
+  profileImage: string | null;
+  studentNumber: string;
+  className: string;
+  classId: number | null;
+  leftDate: string | null;
+  leftReason: string;
+  status: string;
+}
+
+export interface GraduatesResponse {
+  students: GraduateStudent[];
+  total: number;
+  page: number;
+  totalPages: number;
+  limit: number;
+  filters: { year: number; month: number | null };
+  summary: {
+    totalThisYear: number;
+    byMonth: { month: number; count: number }[];
+  };
+}
+
+export interface LeftStudentsResponse {
+  students: LeftStudent[];
+  total: number;
+  page: number;
+  totalPages: number;
+  limit: number;
+  filters: { year: number; month: number | null };
+  summary: {
+    totalThisYear: number;
+    byReason: { reason: string; count: number }[];
+    byMonth: { month: number; count: number }[];
+  };
+}
+// ==================== STUDENT FULL DETAIL ====================
+
+export interface StudentFullDetail {
+  id: number;
+  userId: number;
+  User: {
+    id: number;
+    fullName: string;
+    nameFarsi?: string | null;
+    email: string;
+    phone: string;
+    profileImage?: string | null;
+    birthDate?: string | null;
+    birthPlace?: string | null;
+    sex?: string | null;
+    bloodType?: string | null;
+    maritalStatus?: string | null;
+    nationality?: string | null;
+    civilId?: string | null;
+    civilIdIssueDate?: string | null;
+    civilIdExpiryDate?: string | null;
+    fatherName?: string | null;
+    grandfatherName?: string | null;
+    currentAddress?: string | null;
+    permanentAddress?: string | null;
+    emergencyContactName?: string | null;
+    emergencyContactPhone?: string | null;
+    emergencyContactRelation?: string | null;
+    isActive: boolean;
+    verified?: boolean;
+    createdAt: string;
+  };
+  Class: {
+    id: number;
+    name: string;
+    section: string;
+    Teacher?: { id: number; User: { fullName: string; phone?: string } } | null;
+  } | null;
+  studentNumber?: string;
+  status: string;
+  enrollmentDate?: string;
+  enrollmentType?: string;
+  graduationDate?: string | null;
+  graduationYear?: number | null;
+  leftDate?: string | null;
+  leftReason?: string | null;
+  isTransfer?: boolean;
+  transferDate?: string | null;
+  transferSchool?: string | null;
+  previousSchool?: string | null;
+  scholarship?: boolean;
+  scholarshipPercentage?: number | null;
+  scholarshipType?: string | null;
+  feeWaiver?: boolean;
+  feeWaiverReason?: string | null;
+  birthDate?: string | null;
+  address?: string | null;
+  bio?: string | null;
+  allergies?: string | null;
+  healthConditions?: string | null;
+  medication?: string | null;
+  specialNeeds?: string | null;
+  interests?: any;
+  siblingCount?: number | null;
+  siblingNames?: string | null;
+  parentContact?: string | null;
+  ParentStudent?: any[];
+  FeeAssignment?: any[];
+  feeSummary: {
+    totalFees: number;
+    totalPaid: number;
+    balance: number;
+    collectionRate: number;
+  };
+  Grade: any[];
+  gradeSummary: { totalGrades: number; average: number };
+  Attendance: any[];
+  attendanceSummary: {
+    totalRecords: number;
+    present: number;
+    absent: number;
+    late: number;
+    excused: number;
+    rate: number;
+  };
+  disciplineCount: number;
+  praiseCount: number;
+  disciplineScore: {
+    currentScore: number;
+    grade: string;
+    totalIncidents: number;
+  } | null;
+  StudentRemarks?: any[];
+  AccidentsCard?: any;
+  relative?: any;
+}
+
+// ==================== STUDENT EVALUATIONS ====================
+
+export interface StudentEvaluationTemplate {
+  id: number;
+  name: string;
+  description: string | null;
+  period: string;
+  isDefault: boolean;
+  academicYear: string | null;
+  criteriaCount: number;
+  evaluationsCount: number;
+}
+
+export interface StudentEvaluationDetails {
+  id: number;
+  student: any;
+  template: { id: number; name: string; period: string };
+  evaluator: { id: number; fullName: string; role: string };
+  academicYear: string | null;
+  period: string;
+  term: string;
+  status: string;
+  overallScore: number | null;
+  percentage: number | null;
+  grade: string;
+  gradeLabel: string;
+  gradeColor: string;
+  categoryScores: {
+    academic: number | null;
+    discipline: number | null;
+    participation: number | null;
+    behavior: number | null;
+    attendance: number | null;
+  };
+  strengths: string | null;
+  weaknesses: string | null;
+  goals: string | null;
+  recommendations: string | null;
+  notes: string | null;
+  evaluatedAt: string | null;
+  submittedAt: string | null;
+  criteria: {
+    criteriaId: number;
+    name: string;
+    nameFarsi: string | null;
+    description: string | null;
+    category: string;
+    weight: number;
+    maxScore: number;
+    sortOrder: number;
+    score: number | null;
+    comment: string | null;
+  }[];
+  createdAt: string;
+  updatedAt: string;
+}
+export interface EnrollmentStatsResponse {
+  year: number;
+  months: {
+    month: number;
+    enrolled: number;
+    graduated: number;
+    left: number;
+    transferOut: number;
+    transferIn: number;
+  }[];
+  totals: {
+    enrolled: number;
+    graduated: number;
+    left: number;
+    transferOut: number;
+    transferIn: number;
+  };
+}
 class PrincipalApi {
   private async getToken(): Promise<string | null> {
     try {
@@ -737,7 +1102,14 @@ class PrincipalApi {
     return this.request(`/teachers${qs ? `?${qs}` : ""}`);
   }
 
-  async getTeacherById(id: number): Promise<ApiResponse<any>> {
+  async getTeacherById(
+    id: number,
+    p0?: {
+      attendanceFrom: string;
+      attendanceTo: string;
+      attendanceLimit: number;
+    },
+  ): Promise<ApiResponse<any>> {
     return this.request(`/teachers/${id}`);
   }
 
@@ -1149,6 +1521,166 @@ class PrincipalApi {
       query.append("academicYearId", params.academicYearId.toString());
     const qs = query.toString();
     return this.request(`/teacher-evaluations/analytics${qs ? `?${qs}` : ""}`);
+  }
+  // ==================== STUDENT LIFECYCLE ====================
+
+  async getGraduates(params?: {
+    year?: number;
+    month?: number;
+    search?: string;
+    page?: number;
+    limit?: number;
+  }): Promise<ApiResponse<GraduatesResponse>> {
+    const query = new URLSearchParams();
+    if (params?.year) query.append("year", params.year.toString());
+    if (params?.month) query.append("month", params.month.toString());
+    if (params?.search) query.append("search", params.search);
+    if (params?.page) query.append("page", params.page.toString());
+    if (params?.limit) query.append("limit", params.limit.toString());
+    const qs = query.toString();
+    return this.request(`/students/graduates${qs ? `?${qs}` : ""}`);
+  }
+
+  async getLeftStudents(params?: {
+    year?: number;
+    month?: number;
+    search?: string;
+    page?: number;
+    limit?: number;
+  }): Promise<ApiResponse<LeftStudentsResponse>> {
+    const query = new URLSearchParams();
+    if (params?.year) query.append("year", params.year.toString());
+    if (params?.month) query.append("month", params.month.toString());
+    if (params?.search) query.append("search", params.search);
+    if (params?.page) query.append("page", params.page.toString());
+    if (params?.limit) query.append("limit", params.limit.toString());
+    const qs = query.toString();
+    return this.request(`/students/left${qs ? `?${qs}` : ""}`);
+  }
+
+  async getEnrollmentStats(params?: {
+    year?: number;
+  }): Promise<ApiResponse<EnrollmentStatsResponse>> {
+    const query = new URLSearchParams();
+    if (params?.year) query.append("year", params.year.toString());
+    const qs = query.toString();
+    return this.request(`/students/enrollment-stats${qs ? `?${qs}` : ""}`);
+  }
+
+  async markStudentLeft(
+    id: number,
+    data: { leftDate: string; leftReason: string; detachFromClass?: boolean },
+  ): Promise<ApiResponse<any>> {
+    return this.request(`/students/${id}/mark-left`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async markStudentGraduated(
+    id: number,
+    data: { graduationDate: string },
+  ): Promise<ApiResponse<any>> {
+    return this.request(`/students/${id}/mark-graduated`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    });
+  }
+  // ==================== STUDENT FULL DETAILS ====================
+
+  async getStudentFullDetails(
+    id: number,
+  ): Promise<ApiResponse<StudentFullDetail>> {
+    return this.request(`/students/${id}/full`);
+  }
+
+  // ==================== STUDENT EVALUATIONS ====================
+
+  async getStudentEvaluationTemplates(): Promise<
+    ApiResponse<StudentEvaluationTemplate[]>
+  > {
+    return this.request("/student-evaluations/templates");
+  }
+
+  async createStudentEvaluation(data: {
+    studentId: number;
+    templateId: number;
+    period?: string;
+    term?: string;
+    academicYearId?: number;
+  }): Promise<ApiResponse<any>> {
+    return this.request("/student-evaluations", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async getStudentEvaluationDetails(
+    id: number,
+  ): Promise<ApiResponse<StudentEvaluationDetails>> {
+    return this.request(`/student-evaluations/${id}`);
+  }
+
+  async submitStudentEvaluationScores(
+    id: number,
+    data: {
+      scores: { criteriaId: number; score: number; comment?: string }[];
+      strengths?: string;
+      weaknesses?: string;
+      goals?: string;
+      recommendations?: string;
+      notes?: string;
+    },
+  ): Promise<ApiResponse<any>> {
+    return this.request(`/student-evaluations/${id}/scores`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async submitStudentEvaluation(id: number): Promise<ApiResponse<any>> {
+    return this.request(`/student-evaluations/${id}/submit`, {
+      method: "POST",
+    });
+  }
+
+  async getStudentEvaluations(studentId: number): Promise<ApiResponse<any>> {
+    return this.request(`/student-evaluations/student/${studentId}`);
+  }
+  // ==================== STAFF ATTENDANCE (SHAMSI) ====================
+
+  async getStaffAttendanceByDate(
+    date: string,
+  ): Promise<ApiResponse<StaffAttendanceByDateResponse>> {
+    return this.request(
+      `/attendance/staff/by-date?date=${encodeURIComponent(date)}`,
+    );
+  }
+
+  async getStaffMonthlyAttendance(
+    userId: number,
+    params?: { year?: number; month?: number },
+  ): Promise<ApiResponse<StaffMonthlyAttendanceResponse>> {
+    const query = new URLSearchParams();
+    if (params?.year) query.append("year", String(params.year));
+    if (params?.month) query.append("month", String(params.month));
+    const qs = query.toString();
+    return this.request(
+      `/attendance/staff/${userId}/monthly${qs ? `?${qs}` : ""}`,
+    );
+  }
+
+  async getStaffAttendanceSummary(params?: {
+    year?: number;
+    month?: number;
+  }): Promise<ApiResponse<StaffMonthlySummaryResponse>> {
+    const query = new URLSearchParams();
+    if (params?.year) query.append("year", String(params.year));
+    if (params?.month) query.append("month", String(params.month));
+    const qs = query.toString();
+    return this.request(
+      `/attendance/staff/monthly-summary${qs ? `?${qs}` : ""}`,
+    );
   }
 }
 

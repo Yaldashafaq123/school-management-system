@@ -1,7 +1,11 @@
+// app/(auth)/parent-register.tsx
+// Parent-only registration. No student flow here.
+import { Colors } from "@/constants/Colors";
 import { Ionicons } from "@expo/vector-icons";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
-import { useEffect, useRef, useState } from "react"; // ← ADD useRef
+import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -15,583 +19,528 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { Colors } from "../../constants/Colors";
-import { useAuth } from "../../contexts/AuthContext";
 
 const API_BASE_URL = "https://asraschools.cloud/api";
+const DEFAULT_SCHOOL_ID = 1;
 
-export default function RegisterScreen() {
+type Relationship = "father" | "mother" | "guardian" | "other";
+
+interface ChildEntry {
+  email: string;
+}
+
+interface ParentLookup {
+  exists: boolean;
+  parentName?: string;
+  children: { fullName: string; email: string; className?: string | null }[];
+}
+
+const RELATIONSHIPS: { value: Relationship; label: string; icon: string }[] = [
+  { value: "father", label: "پدر", icon: "man" },
+  { value: "mother", label: "مادر", icon: "woman" },
+  { value: "guardian", label: "سرپرست", icon: "person" },
+  { value: "other", label: "سایر", icon: "people" },
+];
+
+export default function ParentRegisterScreen() {
   const router = useRouter();
-  const { register, loading } = useAuth();
 
-  const [formData, setFormData] = useState({
-    name: "",
+  // ── Parent profile (full) ──
+  const [parent, setParent] = useState({
+    phone: "",
+    fullName: "",
     email: "",
     password: "",
     confirmPassword: "",
-    role: "student" as "student" | "parent",
-    class_id: undefined as number | undefined,
-    phone: "",
-    child_email: "",
+    relationship: "father" as Relationship,
+    address: "",
+    occupation: "",
+    emergencyContact: "",
   });
 
-  const [validationErrors, setValidationErrors] = useState<
-    Record<string, string>
-  >({});
+  const [showRelationOptions, setShowRelationOptions] = useState(false);
+  const [children, setChildren] = useState<ChildEntry[]>([{ email: "" }]);
+  const [checkingPhone, setCheckingPhone] = useState(false);
+  const [parentLookup, setParentLookup] = useState<ParentLookup | null>(null);
+  const [forceNewAccount, setForceNewAccount] = useState(false);
+
+  const phoneLookupTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // ── Common ──
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-  const [showRoleOptions, setShowRoleOptions] = useState(false);
-  const [showClassOptions, setShowClassOptions] = useState(false);
-  const [isCheckingChild, setIsCheckingChild] = useState(false);
-  const [childFound, setChildFound] = useState<{
-    exists: boolean;
-    name?: string;
-    class?: string;
-  } | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [errors, setErrors] = useState<Record<string, string>>({});
 
-  // ✅ Add this ref for debouncing
-  const checkChildTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
-    null,
-  );
+  // ✅ The KEY fix from before:
+  //    Show name/email/relationship by default. Hide only when we KNOW
+  //    the parent already exists (and user hasn't opted to create new).
+  const isExistingParent = parentLookup?.exists === true && !forceNewAccount;
+  const showNewParentFields = !isExistingParent;
 
-  const [classes, setClasses] = useState<{ id: number; name: string }[]>([]);
-  const [loadingClasses, setLoadingClasses] = useState(false);
-
-  // Fetch classes from backend
-  useEffect(() => {
-    const fetchClasses = async () => {
-      if (formData.role !== "student") return;
-
-      setLoadingClasses(true);
-      try {
-        const response = await fetch(`${API_BASE_URL}/public/classes`);
-
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
-        }
-
-        const data = await response.json();
-        console.log("Classes response:", data);
-
-        if (data.classes && Array.isArray(data.classes)) {
-          setClasses(data.classes);
-        } else if (Array.isArray(data)) {
-          setClasses(data);
-        } else {
-          console.error("Unexpected response format:", data);
-          setClasses([
-            { id: 1, name: "صنف اول" },
-            { id: 2, name: "صنف دوم" },
-            { id: 3, name: "صنف سوم" },
-          ]);
-        }
-      } catch (err) {
-        console.error("Failed to fetch classes:", err);
-        setClasses([
-          { id: 1, name: "صنف اول" },
-          { id: 2, name: "صنف دوم" },
-          { id: 3, name: "صنف سوم" },
-          { id: 4, name: "صنف چهارم" },
-          { id: 5, name: "صنف پنجم" },
-          { id: 6, name: "صنف ششم" },
-        ]);
-      } finally {
-        setLoadingClasses(false);
-      }
-    };
-
-    fetchClasses();
-  }, [formData.role]);
-
-  // Check child email
-  const checkChildEmail = async (email: string) => {
-    if (!email.trim() || formData.role !== "parent") return;
-
-    setIsCheckingChild(true);
+  // ==========================================================
+  // Phone lookup
+  // ==========================================================
+  const lookupPhone = async (phone: string) => {
+    if (phone.replace(/\D/g, "").length < 9) {
+      setParentLookup(null);
+      return;
+    }
+    setCheckingPhone(true);
     try {
-      const response = await fetch(
-        `${API_BASE_URL}/public/check-student?email=${encodeURIComponent(email)}`,
-      );
-      const data = await response.json();
-
-      if (response.ok && data.exists) {
-        setChildFound({
-          exists: true,
-          name: data.student?.name,
-          class: data.student?.className,
+      const res = await fetch(`${API_BASE_URL}/parent-auth/check-phone`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone, schoolId: DEFAULT_SCHOOL_ID }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setParentLookup({
+          exists: data.data.exists,
+          parentName: data.data.parentName,
+          children: data.data.children || [],
         });
       } else {
-        setChildFound({ exists: false });
+        setParentLookup({ exists: false, children: [] });
       }
-    } catch (error) {
-      console.error("Error checking child email:", error);
-      setChildFound({ exists: false });
+    } catch (err) {
+      console.warn("Phone lookup failed:", err);
+      setParentLookup({ exists: false, children: [] });
     } finally {
-      setIsCheckingChild(false);
+      setCheckingPhone(false);
     }
   };
 
-  // ✅ Cleanup timeout on unmount
+  const onPhoneChange = (text: string) => {
+    setParent((p) => ({ ...p, phone: text }));
+    setErrors((e) => ({ ...e, phone: undefined as any }));
+    setParentLookup(null);
+    setForceNewAccount(false);
+    if (phoneLookupTimeout.current) clearTimeout(phoneLookupTimeout.current);
+    if (text.replace(/\D/g, "").length >= 9) {
+      phoneLookupTimeout.current = setTimeout(() => lookupPhone(text), 500);
+    }
+  };
+
   useEffect(() => {
     return () => {
-      if (checkChildTimeoutRef.current) {
-        clearTimeout(checkChildTimeoutRef.current);
-      }
+      if (phoneLookupTimeout.current) clearTimeout(phoneLookupTimeout.current);
     };
   }, []);
 
-  const validateForm = () => {
-    const errors: Record<string, string> = {};
-
-    if (!formData.name.trim()) errors.name = "نام و نام خانوادگی الزامی است";
-    if (!formData.email.trim()) errors.email = "ایمیل الزامی است";
-    else if (!/\S+@\S+\.\S+/.test(formData.email))
-      errors.email = "ایمیل معتبر نیست";
-    if (!formData.password.trim()) errors.password = "رمز عبور الزامی است";
-    else if (formData.password.length < 6)
-      errors.password = "رمز عبور باید حداقل ۶ کاراکتر باشد";
-    if (formData.password !== formData.confirmPassword)
-      errors.confirmPassword = "رمز عبور و تکرار آن مطابقت ندارند";
-    if (formData.role === "student" && !formData.class_id)
-      errors.class_id = "انتخاب صنف الزامی است";
-
-    setValidationErrors(errors);
-    return Object.keys(errors).length === 0;
+  // ==========================================================
+  // Children
+  // ==========================================================
+  const addChild = () => {
+    if (children.length >= 6) return;
+    setChildren([...children, { email: "" }]);
+  };
+  const updateChild = (i: number, email: string) => {
+    const next = [...children];
+    next[i].email = email;
+    setChildren(next);
+    setErrors((e) => ({ ...e, [`child_${i}`]: undefined as any }));
+  };
+  const removeChild = (i: number) => {
+    if (children.length <= 1) return;
+    setChildren(children.filter((_, idx) => idx !== i));
   };
 
-  const handleRegister = async () => {
-    if (!validateForm()) return;
+  // ==========================================================
+  // Validate
+  // ==========================================================
+  const validate = (): boolean => {
+    const errs: Record<string, string> = {};
 
-    try {
-      await register(formData);
+    // Phone — always
+    if (!parent.phone.trim()) errs.phone = "شماره تلفن الزامی است";
+    else if (parent.phone.replace(/\D/g, "").length < 9)
+      errs.phone = "شماره تلفن معتبر نیست";
 
-      if (formData.role === "parent") {
-        router.replace("/(parent)/(tabs)" as any);
-      } else {
-        router.replace("/(tabs)" as any);
-      }
-    } catch (error) {
-      console.error("Registration error:", error);
-      Alert.alert(
-        "خطا در ثبت‌نام",
-        "ثبت‌نام ناموفق بود. لطفا مجددا تلاش کنید.",
-      );
+    // Password — always
+    if (!parent.password) errs.password = "رمز عبور الزامی است";
+    else if (parent.password.length < 6)
+      errs.password = "رمز عبور باید حداقل ۶ کاراکتر باشد";
+
+    // New-parent only fields
+    if (showNewParentFields) {
+      if (!parent.fullName.trim())
+        errs.fullName = "نام و نام خانوادگی الزامی است";
+
+      if (!parent.email.trim()) errs.email = "ایمیل الزامی است";
+      else if (!/\S+@\S+\.\S+/.test(parent.email))
+        errs.email = "ایمیل معتبر نیست";
+
+      if (!parent.confirmPassword)
+        errs.confirmPassword = "تکرار رمز عبور الزامی است";
+      else if (parent.password !== parent.confirmPassword)
+        errs.confirmPassword = "رمز عبور و تکرار آن مطابقت ندارند";
+
+      if (!parent.relationship) errs.relationship = "نسبت با شاگرد الزامی است";
     }
-  };
 
-  const updateFormData = (field: string, value: any) => {
-    setFormData((prev) => ({ ...prev, [field]: value }));
-    if (validationErrors[field]) {
-      setValidationErrors((prev) => {
-        const newErrors = { ...prev };
-        delete newErrors[field];
-        return newErrors;
-      });
-    }
-
-    // Reset child found status when child email changes
-    if (field === "child_email") {
-      setChildFound(null);
-    }
-  };
-
-  const clearFieldError = (field: string) => {
-    setValidationErrors((prev) => {
-      const newErrors = { ...prev };
-      delete newErrors[field];
-      return newErrors;
+    // Children — always
+    const validChildren = children.filter((c) => c.email.trim());
+    if (validChildren.length === 0)
+      errs.children = "حداقل یک ایمیل فرزند الزامی است";
+    validChildren.forEach((c, i) => {
+      if (!/\S+@\S+\.\S+/.test(c.email.trim()))
+        errs[`child_${i}`] = "ایمیل معتبر نیست";
     });
+
+    setErrors(errs);
+    return Object.keys(errs).length === 0;
   };
 
-  const getSelectedClassName = () => {
-    if (!formData.class_id) return "لطفا صنف خود را انتخاب کنید";
-    const selected = classes.find((c) => c.id === formData.class_id);
-    return selected ? selected.name : "لطفا صنف خود را انتخاب کنید";
+  // ==========================================================
+  // Submit
+  // ==========================================================
+  const handleSubmit = async () => {
+    if (!validate()) return;
+
+    const childEmails = children
+      .map((c) => c.email.trim().toLowerCase())
+      .filter(Boolean);
+
+    setLoading(true);
+    try {
+      // ── Case B: existing parent → login + add children ──
+      if (isExistingParent) {
+        const loginRes = await fetch(`${API_BASE_URL}/auth/login`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            email: parent.phone.trim(),
+            password: parent.password,
+          }),
+        });
+        const loginData = await loginRes.json();
+        if (!loginRes.ok) {
+          throw new Error(
+            loginData.message ||
+              "این شماره قبلاً ثبت شده است. رمز عبور اشتباه است.",
+          );
+        }
+
+        const token = loginData.token;
+        await AsyncStorage.setItem("auth_token", token);
+        await AsyncStorage.setItem("user_data", JSON.stringify(loginData.User));
+
+        const linked: string[] = [];
+        for (const email of childEmails) {
+          const linkRes = await fetch(`${API_BASE_URL}/parent-auth/add-child`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({ childEmail: email }),
+          });
+          const linkData = await linkRes.json();
+          if (linkRes.ok) linked.push(email);
+          else if (linkData.code !== "ALREADY_LINKED")
+            throw new Error(linkData.message || `خطا در افزودن ${email}`);
+        }
+
+        Alert.alert(
+          "موفقیت",
+          linked.length > 0
+            ? `${linked.length} فرزند به حساب شما اضافه شد`
+            : "فرزندان قبلاً به حساب شما متصل بودند",
+          [
+            {
+              text: "باشه",
+              onPress: () => router.replace("/(parent)/(tabs)" as any),
+            },
+          ],
+        );
+        return;
+      }
+
+      // ── Case A: new parent → full registration ──
+      const res = await fetch(`${API_BASE_URL}/auth/register`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: parent.fullName.trim(),
+          email: parent.email.trim().toLowerCase(),
+          password: parent.password,
+          phone: parent.phone.trim(),
+          role: "parent",
+          schoolId: DEFAULT_SCHOOL_ID,
+          childEmail: childEmails[0],
+          relationship: parent.relationship,
+          address: parent.address.trim() || undefined,
+          occupation: parent.occupation.trim() || undefined,
+          emergencyContact: parent.emergencyContact.trim() || undefined,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(
+          data.code === "PARENT_PHONE_TAKEN"
+            ? "این شماره تلفن قبلاً ثبت شده است. لطفاً وارد شوید."
+            : data.message || "ثبت‌نام ناموفق بود",
+        );
+      }
+
+      const token = data.token;
+      await AsyncStorage.setItem("auth_token", token);
+      await AsyncStorage.setItem("user_data", JSON.stringify(data.User));
+
+      // Link remaining children
+      for (const email of childEmails.slice(1)) {
+        try {
+          await fetch(`${API_BASE_URL}/parent-auth/add-child`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({ childEmail: email }),
+          });
+        } catch (err) {
+          console.warn("Failed to link extra child:", email, err);
+        }
+      }
+
+      Alert.alert("موفقیت", `${childEmails.length} فرزند به حساب شما متصل شد`, [
+        {
+          text: "باشه",
+          onPress: () => router.replace("/(parent)/(tabs)" as any),
+        },
+      ]);
+    } catch (err: any) {
+      Alert.alert("خطا", err?.message || "ثبت‌نام ناموفق بود");
+    } finally {
+      setLoading(false);
+    }
   };
 
+  // ==========================================================
+  // Render
+  // ==========================================================
   return (
     <SafeAreaView style={styles.container}>
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : "height"}
-        style={styles.keyboardAvoid}
+        style={{ flex: 1 }}
       >
         <ScrollView
-          contentContainerStyle={styles.scrollContent}
+          contentContainerStyle={{ flexGrow: 1 }}
           showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
         >
           <LinearGradient
             colors={[Colors.primary, Colors.primaryDark]}
-            style={styles.gradient}
+            style={{ flex: 1 }}
           >
             <View style={styles.header}>
               <TouchableOpacity
-                style={styles.backButton}
                 onPress={() => router.back()}
+                style={styles.backButton}
+                disabled={loading}
               >
                 <Ionicons name="arrow-back" size={24} color="#fff" />
               </TouchableOpacity>
-              <Text style={styles.logoText}>صفحه ثبت‌ نام</Text>
+              <Text style={styles.headerTitle}>ثبت‌نام والدین</Text>
             </View>
 
             <View style={styles.card}>
-              <View style={styles.welcomeSection}>
-                <Text style={styles.title}>ثبت‌نام جدید</Text>
-                <Text style={styles.subtitle}>
-                  حساب کاربری خود را ایجاد کنید
+              {/* Intro */}
+              <View style={styles.introBox}>
+                <Ionicons name="people" size={28} color={Colors.primary} />
+                <Text style={styles.introTitle}>حساب والدین</Text>
+                <Text style={styles.introText}>
+                  یک حساب برای همه فرزندان شما در مکتب
                 </Text>
               </View>
 
-              <View style={styles.form}>
-                {/* Full Name */}
-                <View style={styles.inputGroup}>
-                  <Text style={styles.inputLabel}>نام و نام خانوادگی</Text>
-                  <View
-                    style={[
-                      styles.inputContainer,
-                      validationErrors.name && styles.inputError,
-                    ]}
-                  >
-                    <Ionicons
-                      name="person-outline"
-                      size={20}
-                      color={Colors.textSecondary}
-                      style={styles.inputIcon}
-                    />
-                    <TextInput
-                      style={styles.input}
-                      placeholder="نام کامل خود را وارد کنید"
-                      placeholderTextColor={Colors.textSecondary}
-                      value={formData.name}
-                      onChangeText={(text) => {
-                        updateFormData("name", text);
-                        clearFieldError("name");
-                      }}
-                      editable={!loading}
-                      textAlign="right"
-                    />
-                  </View>
-                  {validationErrors.name && (
-                    <Text style={styles.errorText}>
-                      {validationErrors.name}
-                    </Text>
+              {/* ── LOGIN INFO ── */}
+              <Text style={styles.sectionLabel}>اطلاعات ورود</Text>
+
+              {/* Phone */}
+              <View style={styles.field}>
+                <Text style={styles.label}>شماره تلفن *</Text>
+                <View
+                  style={[
+                    styles.inputBox,
+                    errors.phone && styles.inputBoxError,
+                  ]}
+                >
+                  <Ionicons
+                    name="call-outline"
+                    size={20}
+                    color={Colors.textSecondary}
+                    style={{ marginLeft: 8 }}
+                  />
+                  <TextInput
+                    style={styles.input}
+                    value={parent.phone}
+                    onChangeText={onPhoneChange}
+                    placeholder="07XXXXXXXX"
+                    placeholderTextColor={Colors.textSecondary}
+                    keyboardType="phone-pad"
+                    textAlign="right"
+                    editable={!loading && !checkingPhone}
+                  />
+                  {checkingPhone && (
+                    <ActivityIndicator size="small" color={Colors.primary} />
                   )}
                 </View>
+                {errors.phone && (
+                  <Text style={styles.errorText}>{errors.phone}</Text>
+                )}
 
-                {/* Email */}
-                <View style={styles.inputGroup}>
-                  <Text style={styles.inputLabel}>ایمیل</Text>
-                  <View
-                    style={[
-                      styles.inputContainer,
-                      validationErrors.email && styles.inputError,
-                    ]}
-                  >
+                {isExistingParent && (
+                  <View style={styles.infoBanner}>
                     <Ionicons
-                      name="mail-outline"
-                      size={20}
-                      color={Colors.textSecondary}
-                      style={styles.inputIcon}
+                      name="checkmark-circle"
+                      size={18}
+                      color={Colors.success}
                     />
-                    <TextInput
-                      style={styles.input}
-                      placeholder="example@email.com"
-                      placeholderTextColor={Colors.textSecondary}
-                      value={formData.email}
-                      onChangeText={(text) => {
-                        updateFormData("email", text);
-                        clearFieldError("email");
-                      }}
-                      keyboardType="email-address"
-                      autoCapitalize="none"
-                      autoCorrect={false}
-                      editable={!loading}
-                      textAlign="right"
-                    />
-                  </View>
-                  {validationErrors.email && (
-                    <Text style={styles.errorText}>
-                      {validationErrors.email}
-                    </Text>
-                  )}
-                </View>
-
-                {/* Phone */}
-                <View style={styles.inputGroup}>
-                  <Text style={styles.inputLabel}>شماره تلفن (اختیاری)</Text>
-                  <View style={styles.inputContainer}>
-                    <Ionicons
-                      name="call-outline"
-                      size={20}
-                      color={Colors.textSecondary}
-                      style={styles.inputIcon}
-                    />
-                    <TextInput
-                      style={styles.input}
-                      placeholder="0912XXXXXXX"
-                      placeholderTextColor={Colors.textSecondary}
-                      value={formData.phone}
-                      onChangeText={(text) => updateFormData("phone", text)}
-                      keyboardType="phone-pad"
-                      editable={!loading}
-                      textAlign="right"
-                    />
-                  </View>
-                </View>
-
-                {/* Password */}
-                <View style={styles.inputGroup}>
-                  <Text style={styles.inputLabel}>رمز عبور</Text>
-                  <View
-                    style={[
-                      styles.inputContainer,
-                      validationErrors.password && styles.inputError,
-                    ]}
-                  >
-                    <Ionicons
-                      name="lock-closed-outline"
-                      size={20}
-                      color={Colors.textSecondary}
-                      style={styles.inputIcon}
-                    />
-                    <TextInput
-                      style={styles.input}
-                      placeholder="رمز عبور دلخواه خود را وارد کنید"
-                      placeholderTextColor={Colors.textSecondary}
-                      value={formData.password}
-                      onChangeText={(text) => {
-                        updateFormData("password", text);
-                        clearFieldError("password");
-                      }}
-                      secureTextEntry={!showPassword}
-                      editable={!loading}
-                      textAlign="right"
-                    />
-                    <TouchableOpacity
-                      onPress={() => setShowPassword(!showPassword)}
-                      style={styles.passwordToggle}
-                    >
-                      <Ionicons
-                        name={showPassword ? "eye-off" : "eye"}
-                        size={20}
-                        color={Colors.textSecondary}
-                      />
-                    </TouchableOpacity>
-                  </View>
-                  {validationErrors.password && (
-                    <Text style={styles.errorText}>
-                      {validationErrors.password}
-                    </Text>
-                  )}
-                </View>
-
-                {/* Confirm Password */}
-                <View style={styles.inputGroup}>
-                  <Text style={styles.inputLabel}>تکرار رمز عبور</Text>
-                  <View
-                    style={[
-                      styles.inputContainer,
-                      validationErrors.confirmPassword && styles.inputError,
-                    ]}
-                  >
-                    <Ionicons
-                      name="lock-closed-outline"
-                      size={20}
-                      color={Colors.textSecondary}
-                      style={styles.inputIcon}
-                    />
-                    <TextInput
-                      style={styles.input}
-                      placeholder="رمز عبور را مجددا وارد کنید"
-                      placeholderTextColor={Colors.textSecondary}
-                      value={formData.confirmPassword}
-                      onChangeText={(text) => {
-                        updateFormData("confirmPassword", text);
-                        clearFieldError("confirmPassword");
-                      }}
-                      secureTextEntry={!showConfirmPassword}
-                      editable={!loading}
-                      textAlign="right"
-                    />
-                    <TouchableOpacity
-                      onPress={() =>
-                        setShowConfirmPassword(!showConfirmPassword)
-                      }
-                      style={styles.passwordToggle}
-                    >
-                      <Ionicons
-                        name={showConfirmPassword ? "eye-off" : "eye"}
-                        size={20}
-                        color={Colors.textSecondary}
-                      />
-                    </TouchableOpacity>
-                  </View>
-                  {validationErrors.confirmPassword && (
-                    <Text style={styles.errorText}>
-                      {validationErrors.confirmPassword}
-                    </Text>
-                  )}
-                </View>
-
-                {/* Role Selection - Only Student and Parent */}
-                <View style={styles.inputGroup}>
-                  <Text style={styles.inputLabel}>نقش کاربری</Text>
-                  <TouchableOpacity
-                    style={[
-                      styles.inputContainer,
-                      validationErrors.role && styles.inputError,
-                    ]}
-                    onPress={() => setShowRoleOptions(!showRoleOptions)}
-                  >
-                    <Text style={[styles.input, { color: Colors.text }]}>
-                      {formData.role === "student" ? "دانش‌آموز" : "والدین"}
-                    </Text>
-                    <Ionicons
-                      name="chevron-down"
-                      size={20}
-                      color={Colors.textSecondary}
-                    />
-                  </TouchableOpacity>
-                  {showRoleOptions && (
-                    <View style={styles.optionsContainer}>
-                      {["student", "parent"].map((role) => (
-                        <TouchableOpacity
-                          key={role}
-                          style={styles.optionItem}
-                          onPress={() => {
-                            updateFormData("role", role);
-                            setShowRoleOptions(false);
-                            clearFieldError("role");
-                          }}
-                        >
-                          <Text style={styles.optionText}>
-                            {role === "student" ? "دانش‌آموز" : "والدین"}
-                          </Text>
-                        </TouchableOpacity>
-                      ))}
-                    </View>
-                  )}
-                </View>
-
-                {/* Child Email Input for Parents - FIXED */}
-                {formData.role === "parent" && (
-                  <View style={styles.inputGroup}>
-                    <Text style={styles.inputLabel}>
-                      ایمیل دانش‌آموز (اختیاری)
-                    </Text>
-                    <View
-                      style={[
-                        styles.inputContainer,
-                        childFound?.exists === false && styles.inputWarning,
-                        childFound?.exists === true && styles.inputSuccess,
-                      ]}
-                    >
-                      <Ionicons
-                        name="person-outline"
-                        size={20}
-                        color={Colors.textSecondary}
-                        style={styles.inputIcon}
-                      />
-                      <TextInput
-                        style={styles.input}
-                        placeholder="ایمیل دانش‌آموز خود را وارد کنید"
-                        placeholderTextColor={Colors.textSecondary}
-                        value={formData.child_email}
-                        onChangeText={(text) => {
-                          // Update form data immediately
-                          updateFormData("child_email", text);
-
-                          // Clear previous timeout
-                          if (checkChildTimeoutRef.current) {
-                            clearTimeout(checkChildTimeoutRef.current);
-                          }
-
-                          // Reset child found status
-                          setChildFound(null);
-
-                          // Only check if there's text
-                          if (text.trim()) {
-                            // Set new timeout
-                            checkChildTimeoutRef.current = setTimeout(() => {
-                              checkChildEmail(text);
-                            }, 500);
-                          }
-                        }}
-                        keyboardType="email-address"
-                        autoCapitalize="none"
-                        autoCorrect={false}
-                        editable={!loading && !isCheckingChild}
-                        textAlign="right"
-                      />
-                      {isCheckingChild && (
-                        <ActivityIndicator
-                          size="small"
-                          color={Colors.primary}
-                        />
-                      )}
-                    </View>
-
-                    {/* Child Found Status */}
-                    {childFound?.exists === true && childFound.name && (
-                      <View style={styles.successMessage}>
-                        <Ionicons
-                          name="checkmark-circle"
-                          size={16}
-                          color={Colors.success}
-                        />
-                        <Text style={styles.successText}>
-                          دانش‌آموز {childFound.name}{" "}
-                          {childFound.class && `(کلاس ${childFound.class})`}{" "}
-                          یافت شد
-                        </Text>
-                      </View>
-                    )}
-
-                    {childFound?.exists === false && (
-                      <View style={styles.warningMessage}>
-                        <Ionicons
-                          name="alert-circle"
-                          size={16}
-                          color={Colors.warning}
-                        />
-                        <Text style={styles.warningText}>
-                          دانش‌آموزی با این ایمیل یافت نشد. می‌توانید بعداً
-                          اضافه کنید.
-                        </Text>
-                      </View>
-                    )}
-
-                    <Text style={styles.helperText}>
-                      با وارد کردن ایمیل دانش‌آموز، می‌توانید به‌طور خودکار به
-                      حساب فرزند خود متصل شوید
+                    <Text style={styles.infoBannerText}>
+                      حساب موجود برای {parentLookup?.parentName}. رمز عبور خود
+                      را وارد کنید تا فرزندان جدید اضافه شوند.
                     </Text>
                   </View>
                 )}
 
-                {/* Class Selection for Students */}
-                {formData.role === "student" && (
-                  <View style={styles.inputGroup}>
-                    <Text style={styles.inputLabel}>صنف</Text>
+                {showNewParentFields &&
+                  parent.phone.replace(/\D/g, "").length >= 9 &&
+                  !checkingPhone && (
+                    <View style={styles.newBanner}>
+                      <Ionicons
+                        name="sparkles"
+                        size={18}
+                        color={Colors.primary}
+                      />
+                      <Text style={styles.newBannerText}>
+                        حساب جدید — خوش آمدید
+                      </Text>
+                    </View>
+                  )}
+
+                {/* Manual override */}
+                {parentLookup?.exists === true && !forceNewAccount && (
+                  <TouchableOpacity
+                    onPress={() => setForceNewAccount(true)}
+                    style={{ marginTop: 6 }}
+                  >
+                    <Text style={styles.overrideLink}>
+                      حساب قبلی را نمی‌خواهم — ایجاد حساب جدید
+                    </Text>
+                  </TouchableOpacity>
+                )}
+                {forceNewAccount && (
+                  <TouchableOpacity
+                    onPress={() => setForceNewAccount(false)}
+                    style={{ marginTop: 6 }}
+                  >
+                    <Text
+                      style={[
+                        styles.overrideLink,
+                        { color: Colors.textSecondary },
+                      ]}
+                    >
+                      بازگشت به حالت افزودن فرزند به حساب موجود
+                    </Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+
+              {/* Password */}
+              <Field
+                label={
+                  isExistingParent ? "رمز عبور حساب موجود *" : "رمز عبور *"
+                }
+                icon="lock-closed-outline"
+                value={parent.password}
+                error={errors.password}
+                onChangeText={(t) => {
+                  setParent((p) => ({ ...p, password: t }));
+                  setErrors((e) => ({
+                    ...e,
+                    password: undefined as any,
+                  }));
+                }}
+                secureTextEntry={!showPassword}
+                toggleSecure={() => setShowPassword(!showPassword)}
+              />
+
+              {/* ── NEW PARENT FIELDS ── */}
+              {showNewParentFields && (
+                <>
+                  <Text style={styles.sectionLabel}>مشخصات شخصی</Text>
+
+                  <Field
+                    label="نام و نام خانوادگی *"
+                    icon="person-outline"
+                    value={parent.fullName}
+                    error={errors.fullName}
+                    onChangeText={(t) => {
+                      setParent((p) => ({ ...p, fullName: t }));
+                      setErrors((e) => ({
+                        ...e,
+                        fullName: undefined as any,
+                      }));
+                    }}
+                  />
+
+                  <Field
+                    label="ایمیل *"
+                    icon="mail-outline"
+                    value={parent.email}
+                    error={errors.email}
+                    onChangeText={(t) => {
+                      setParent((p) => ({ ...p, email: t }));
+                      setErrors((e) => ({
+                        ...e,
+                        email: undefined as any,
+                      }));
+                    }}
+                    keyboardType="email-address"
+                    autoCapitalize="none"
+                  />
+
+                  <Field
+                    label="تکرار رمز عبور *"
+                    icon="lock-closed-outline"
+                    value={parent.confirmPassword}
+                    error={errors.confirmPassword}
+                    onChangeText={(t) => {
+                      setParent((p) => ({
+                        ...p,
+                        confirmPassword: t,
+                      }));
+                      setErrors((e) => ({
+                        ...e,
+                        confirmPassword: undefined as any,
+                      }));
+                    }}
+                    secureTextEntry={!showConfirmPassword}
+                    toggleSecure={() =>
+                      setShowConfirmPassword(!showConfirmPassword)
+                    }
+                  />
+
+                  {/* Relationship */}
+                  <View style={styles.field}>
+                    <Text style={styles.label}>نسبت با شاگرد *</Text>
                     <TouchableOpacity
                       style={[
-                        styles.inputContainer,
-                        validationErrors.class_id && styles.inputError,
+                        styles.inputBox,
+                        errors.relationship && styles.inputBoxError,
                       ]}
-                      onPress={() => setShowClassOptions(!showClassOptions)}
-                      disabled={loading || loadingClasses}
+                      onPress={() =>
+                        setShowRelationOptions(!showRelationOptions)
+                      }
+                      disabled={loading}
                     >
-                      <Text
-                        style={[
-                          styles.input,
-                          {
-                            color: formData.class_id
-                              ? Colors.text
-                              : Colors.textSecondary,
-                          },
-                        ]}
-                      >
-                        {loadingClasses
-                          ? "در حال بارگذاری..."
-                          : getSelectedClassName()}
+                      <Text style={styles.inputText}>
+                        {RELATIONSHIPS.find(
+                          (r) => r.value === parent.relationship,
+                        )?.label || "انتخاب نسبت"}
                       </Text>
                       <Ionicons
                         name="chevron-down"
@@ -599,81 +548,198 @@ export default function RegisterScreen() {
                         color={Colors.textSecondary}
                       />
                     </TouchableOpacity>
-
-                    {showClassOptions && !loadingClasses && (
-                      <View style={styles.optionsContainer}>
-                        <TouchableOpacity
-                          style={styles.optionItem}
-                          onPress={() => {
-                            updateFormData("class_id", undefined);
-                            setShowClassOptions(false);
-                            clearFieldError("class_id");
-                          }}
-                        >
-                          <Text
-                            style={[
-                              styles.optionText,
-                              !formData.class_id && styles.selectedOptionText,
-                            ]}
-                          >
-                            لطفا صنف خود را انتخاب کنید
-                          </Text>
-                        </TouchableOpacity>
-                        {classes.map((classItem) => (
+                    {showRelationOptions && (
+                      <View style={styles.optionsBox}>
+                        {RELATIONSHIPS.map((r) => (
                           <TouchableOpacity
-                            key={classItem.id}
+                            key={r.value}
                             style={styles.optionItem}
                             onPress={() => {
-                              updateFormData("class_id", classItem.id);
-                              setShowClassOptions(false);
-                              clearFieldError("class_id");
+                              setParent((p) => ({
+                                ...p,
+                                relationship: r.value,
+                              }));
+                              setShowRelationOptions(false);
+                              setErrors((e) => ({
+                                ...e,
+                                relationship: undefined as any,
+                              }));
                             }}
                           >
-                            <Text
-                              style={[
-                                styles.optionText,
-                                formData.class_id === classItem.id &&
-                                  styles.selectedOptionText,
-                              ]}
-                            >
-                              {classItem.name}
-                            </Text>
+                            <Ionicons
+                              name={r.icon as any}
+                              size={18}
+                              color={Colors.primary}
+                            />
+                            <Text style={styles.optionText}>{r.label}</Text>
                           </TouchableOpacity>
                         ))}
                       </View>
                     )}
-                    {validationErrors.class_id && (
+                    {errors.relationship && (
                       <Text style={styles.errorText}>
-                        {validationErrors.class_id}
+                        {errors.relationship}
                       </Text>
                     )}
                   </View>
+
+                  <Text style={styles.sectionLabel}>
+                    اطلاعات تکمیلی (اختیاری)
+                  </Text>
+
+                  <Field
+                    label="آدرس محل سکونت"
+                    icon="home-outline"
+                    value={parent.address}
+                    onChangeText={(t) =>
+                      setParent((p) => ({ ...p, address: t }))
+                    }
+                  />
+                  <Field
+                    label="شغل"
+                    icon="briefcase-outline"
+                    value={parent.occupation}
+                    onChangeText={(t) =>
+                      setParent((p) => ({ ...p, occupation: t }))
+                    }
+                  />
+                  <Field
+                    label="شماره تماس اضطراری"
+                    icon="call-outline"
+                    value={parent.emergencyContact}
+                    onChangeText={(t) =>
+                      setParent((p) => ({
+                        ...p,
+                        emergencyContact: t,
+                      }))
+                    }
+                    keyboardType="phone-pad"
+                  />
+                </>
+              )}
+
+              {/* ── Existing children preview ── */}
+              {isExistingParent &&
+                parentLookup &&
+                parentLookup.children.length > 0 && (
+                  <View style={styles.existingChildrenBox}>
+                    <Text style={styles.existingChildrenTitle}>
+                      فرزندان موجود ({parentLookup.children.length})
+                    </Text>
+                    {parentLookup.children.map((c, i) => (
+                      <View key={i} style={styles.existingChildRow}>
+                        <Ionicons
+                          name="checkmark-circle"
+                          size={16}
+                          color={Colors.success}
+                        />
+                        <Text style={styles.existingChildText}>
+                          {c.fullName}
+                          {c.className ? ` (${c.className})` : ""}
+                        </Text>
+                      </View>
+                    ))}
+                  </View>
                 )}
 
-                {/* Register Button */}
-                <TouchableOpacity
-                  style={[
-                    styles.registerButton,
-                    loading && styles.registerButtonDisabled,
-                  ]}
-                  onPress={handleRegister}
-                  disabled={loading}
-                >
-                  <Text style={styles.registerButtonText}>
-                    {loading ? "در حال ثبت‌نام..." : "ایجاد حساب کاربری"}
-                  </Text>
-                </TouchableOpacity>
+              {/* ── CHILDREN ── */}
+              <Text style={styles.sectionLabel}>فرزندان شما</Text>
 
-                {/* Login Link */}
-                <View style={styles.loginContainer}>
-                  <Text style={styles.loginText}>حساب کاربری دارید؟</Text>
+              <View style={styles.field}>
+                <Text style={styles.label}>ایمیل فرزند(ان) *</Text>
+
+                {children.map((child, i) => (
+                  <View key={i} style={{ marginBottom: 8 }}>
+                    <View
+                      style={[
+                        styles.inputBox,
+                        errors[`child_${i}`] && styles.inputBoxError,
+                      ]}
+                    >
+                      <Ionicons
+                        name="school-outline"
+                        size={20}
+                        color={Colors.textSecondary}
+                        style={{ marginLeft: 8 }}
+                      />
+                      <TextInput
+                        style={styles.input}
+                        value={child.email}
+                        onChangeText={(t) => updateChild(i, t)}
+                        placeholder={`ایمیل فرزند ${i + 1}`}
+                        placeholderTextColor={Colors.textSecondary}
+                        keyboardType="email-address"
+                        autoCapitalize="none"
+                        textAlign="right"
+                        editable={!loading}
+                      />
+                      {children.length > 1 && (
+                        <TouchableOpacity
+                          onPress={() => removeChild(i)}
+                          disabled={loading}
+                        >
+                          <Ionicons
+                            name="close-circle"
+                            size={20}
+                            color={Colors.danger}
+                          />
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                    {errors[`child_${i}`] && (
+                      <Text style={styles.errorText}>
+                        {errors[`child_${i}`]}
+                      </Text>
+                    )}
+                  </View>
+                ))}
+
+                {children.length < 6 && (
                   <TouchableOpacity
-                    onPress={() => router.push("/(auth)/login")}
+                    style={styles.addChildBtn}
+                    onPress={addChild}
                     disabled={loading}
                   >
-                    <Text style={styles.loginLink}>وارد شوید</Text>
+                    <Ionicons
+                      name="add-circle"
+                      size={20}
+                      color={Colors.primary}
+                    />
+                    <Text style={styles.addChildText}>افزودن فرزند دیگر</Text>
                   </TouchableOpacity>
-                </View>
+                )}
+
+                {errors.children && (
+                  <Text style={styles.errorText}>{errors.children}</Text>
+                )}
+              </View>
+
+              {/* Submit */}
+              <TouchableOpacity
+                style={[styles.submitBtn, loading && { opacity: 0.6 }]}
+                onPress={handleSubmit}
+                disabled={loading}
+              >
+                {loading ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Text style={styles.submitBtnText}>
+                    {isExistingParent
+                      ? "افزودن فرزندان به حساب"
+                      : "ایجاد حساب والدین"}
+                  </Text>
+                )}
+              </TouchableOpacity>
+
+              {/* Login link */}
+              <View style={styles.footerRow}>
+                <Text style={styles.footerText}>حساب دارید؟</Text>
+                <TouchableOpacity
+                  onPress={() => router.push("/(auth)/login" as any)}
+                  disabled={loading}
+                >
+                  <Text style={styles.footerLink}>وارد شوید</Text>
+                </TouchableOpacity>
               </View>
             </View>
           </LinearGradient>
@@ -683,20 +749,71 @@ export default function RegisterScreen() {
   );
 }
 
+// ==========================================================
+// Field component
+// ==========================================================
+function Field({
+  label,
+  icon,
+  value,
+  error,
+  onChangeText,
+  keyboardType,
+  autoCapitalize,
+  secureTextEntry,
+  toggleSecure,
+}: {
+  label: string;
+  icon: any;
+  value: string;
+  error?: string;
+  onChangeText: (t: string) => void;
+  keyboardType?: any;
+  autoCapitalize?: any;
+  secureTextEntry?: boolean;
+  toggleSecure?: () => void;
+}) {
+  return (
+    <View style={styles.field}>
+      <Text style={styles.label}>{label}</Text>
+      <View style={[styles.inputBox, error && styles.inputBoxError]}>
+        <Ionicons
+          name={icon}
+          size={20}
+          color={Colors.textSecondary}
+          style={{ marginLeft: 8 }}
+        />
+        <TextInput
+          style={styles.input}
+          value={value}
+          onChangeText={onChangeText}
+          placeholder={label.replace(" *", "")}
+          placeholderTextColor={Colors.textSecondary}
+          keyboardType={keyboardType}
+          autoCapitalize={autoCapitalize || "sentences"}
+          secureTextEntry={secureTextEntry}
+          textAlign="right"
+        />
+        {toggleSecure && (
+          <TouchableOpacity onPress={toggleSecure} style={{ padding: 4 }}>
+            <Ionicons
+              name={secureTextEntry ? "eye" : "eye-off"}
+              size={20}
+              color={Colors.textSecondary}
+            />
+          </TouchableOpacity>
+        )}
+      </View>
+      {error && <Text style={styles.errorText}>{error}</Text>}
+    </View>
+  );
+}
+
+// ==========================================================
+// Styles
+// ==========================================================
 const styles = StyleSheet.create({
-  // ... (keep all your existing styles)
-  container: {
-    flex: 1,
-  },
-  keyboardAvoid: {
-    flex: 1,
-  },
-  scrollContent: {
-    flexGrow: 1,
-  },
-  gradient: {
-    flex: 1,
-  },
+  container: { flex: 1 },
   header: {
     flexDirection: "row",
     alignItems: "center",
@@ -705,119 +822,83 @@ const styles = StyleSheet.create({
     paddingTop: 20,
     paddingBottom: 40,
   },
-  backButton: {
-    padding: 8,
-  },
-  logoText: {
-    fontSize: 20,
-    fontWeight: "bold",
-    color: "#fff",
-  },
+  backButton: { padding: 8 },
+  headerTitle: { fontSize: 20, fontWeight: "bold", color: "#fff" },
   card: {
     flex: 1,
     backgroundColor: Colors.background,
     borderTopLeftRadius: 30,
     borderTopRightRadius: 30,
     paddingHorizontal: 24,
-    paddingTop: 40,
+    paddingTop: 24,
     paddingBottom: 20,
   },
-  welcomeSection: {
-    marginBottom: 32,
+  introBox: {
+    alignItems: "center",
+    marginBottom: 20,
   },
-  title: {
-    fontSize: 28,
-    fontWeight: "bold",
+  introTitle: {
+    fontSize: 20,
+    fontWeight: "700",
     color: Colors.text,
-    marginBottom: 8,
-    textAlign: "right",
+    marginTop: 6,
+    textAlign: "center",
   },
-  subtitle: {
-    fontSize: 16,
+  introText: {
+    fontSize: 13,
     color: Colors.textSecondary,
+    marginTop: 4,
+    textAlign: "center",
+  },
+
+  sectionLabel: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: Colors.primary,
     textAlign: "right",
+    marginTop: 16,
+    marginBottom: 6,
+    letterSpacing: 0.3,
   },
-  form: {
-    gap: 20,
-  },
-  inputGroup: {
-    gap: 8,
-  },
-  inputLabel: {
-    fontSize: 14,
+  field: { gap: 6, marginBottom: 10 },
+  label: {
+    fontSize: 13,
     fontWeight: "600",
     color: Colors.text,
     textAlign: "right",
   },
-  inputContainer: {
+  inputBox: {
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: Colors.card,
     borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: Platform.OS === "ios" ? 14 : 0,
     borderWidth: 1,
     borderColor: Colors.border,
+    paddingHorizontal: 12,
     minHeight: 50,
   },
-  inputError: {
-    borderColor: Colors.danger,
-  },
-  inputWarning: {
-    borderColor: Colors.warning,
-  },
-  inputSuccess: {
-    borderColor: Colors.success,
-  },
-  inputIcon: {
-    marginLeft: 8,
-  },
+  inputBoxError: { borderColor: Colors.danger },
   input: {
     flex: 1,
     fontSize: 15,
     color: Colors.text,
     textAlign: "right",
-    paddingVertical: Platform.OS === "ios" ? 14 : 8,
+    paddingVertical: 12,
   },
-  passwordToggle: {
-    padding: 4,
-    marginRight: 8,
+  inputText: {
+    flex: 1,
+    fontSize: 15,
+    color: Colors.text,
+    textAlign: "right",
   },
   errorText: {
     fontSize: 12,
     color: Colors.danger,
     textAlign: "right",
-    marginTop: 4,
+    marginTop: 2,
   },
-  successMessage: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    marginTop: 6,
-  },
-  successText: {
-    fontSize: 12,
-    color: Colors.success,
-    flex: 1,
-  },
-  warningMessage: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    marginTop: 6,
-  },
-  warningText: {
-    fontSize: 12,
-    color: Colors.warning,
-    flex: 1,
-  },
-  helperText: {
-    fontSize: 11,
-    color: Colors.textSecondary,
-    textAlign: "right",
-    marginTop: 4,
-  },
-  optionsContainer: {
+
+  optionsBox: {
     backgroundColor: Colors.card,
     borderRadius: 12,
     borderWidth: 1,
@@ -826,46 +907,122 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
   optionItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
     padding: 12,
     borderBottomWidth: 1,
     borderBottomColor: Colors.border,
   },
   optionText: {
-    fontSize: 15,
+    fontSize: 14,
+    color: Colors.text,
+    textAlign: "right",
+    flex: 1,
+  },
+
+  infoBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: "#d1fae5",
+    borderRadius: 8,
+    padding: 10,
+    marginTop: 6,
+  },
+  infoBannerText: {
+    flex: 1,
+    fontSize: 12,
+    color: "#065f46",
+    textAlign: "right",
+  },
+  newBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: "#eff6ff",
+    borderRadius: 8,
+    padding: 10,
+    marginTop: 6,
+  },
+  newBannerText: {
+    flex: 1,
+    fontSize: 12,
+    color: Colors.primary,
+    textAlign: "right",
+  },
+  overrideLink: {
+    fontSize: 12,
+    color: Colors.primary,
+    textAlign: "right",
+    textDecorationLine: "underline",
+  },
+
+  existingChildrenBox: {
+    backgroundColor: "#f8fafc",
+    borderRadius: 12,
+    padding: 12,
+    gap: 6,
+    marginTop: 10,
+  },
+  existingChildrenTitle: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: Colors.text,
+    textAlign: "right",
+    marginBottom: 4,
+  },
+  existingChildRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  existingChildText: {
+    flex: 1,
+    fontSize: 13,
     color: Colors.text,
     textAlign: "right",
   },
-  selectedOptionText: {
+
+  addChildBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingVertical: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderStyle: "dashed",
+    borderColor: Colors.primary,
+    marginTop: 4,
+  },
+  addChildText: {
+    fontSize: 13,
     color: Colors.primary,
     fontWeight: "600",
   },
-  registerButton: {
+
+  submitBtn: {
     backgroundColor: Colors.primary,
     borderRadius: 12,
     paddingVertical: 16,
     alignItems: "center",
-    marginTop: 8,
+    marginTop: 24,
   },
-  registerButtonDisabled: {
-    opacity: 0.7,
-  },
-  registerButtonText: {
+  submitBtnText: {
     color: "#fff",
     fontSize: 16,
     fontWeight: "bold",
   },
-  loginContainer: {
+  footerRow: {
     flexDirection: "row",
     justifyContent: "center",
     alignItems: "center",
     gap: 8,
-    marginTop: 8,
+    marginTop: 16,
   },
-  loginText: {
-    fontSize: 14,
-    color: Colors.textSecondary,
-  },
-  loginLink: {
+  footerText: { fontSize: 14, color: Colors.textSecondary },
+  footerLink: {
     fontSize: 14,
     color: Colors.primary,
     fontWeight: "bold",

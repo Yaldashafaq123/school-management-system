@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/immutability */
 // app/(principal)/(tabs)/teachers.tsx - Connected to Backend
 import { principalApi, Teacher } from "@/src/config/principalApi";
 import { Ionicons } from "@expo/vector-icons";
@@ -177,7 +178,7 @@ export default function PrincipalTeachersScreen() {
         ListFooterComponent={
           loading && teachers.length > 0 ? (
             <ActivityIndicator style={{ padding: 16 }} color="#f59e0b" />
-          ) : null
+          ) : undefined
         }
         ListEmptyComponent={
           <View style={styles.emptyContainer}>

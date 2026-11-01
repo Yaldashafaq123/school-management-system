@@ -5,21 +5,17 @@ import { useAuth } from "../../contexts/AuthContext";
 export default function AdminLayout() {
   const { user, loading, isInitialized } = useAuth();
 
-  // ✅ Show loading while checking auth
   if (loading || !isInitialized) {
-    return null; // Or a loading spinner
+    return null;
   }
 
-  // ✅ Check if user exists
   if (!user) {
     return <Redirect href="/(auth)/login" />;
   }
 
-  // ✅ Convert role to uppercase for comparison
   const userRole = user.role?.toUpperCase();
 
-  // ✅ If not admin, redirect to appropriate dashboard
-  if (userRole !== "ADMIN") {
+  if (userRole !== "ADMIN" && userRole !== "SUPER_ADMIN") {
     switch (userRole) {
       case "STUDENT":
         return <Redirect href="/(student)/(tabs)" />;
@@ -27,7 +23,12 @@ export default function AdminLayout() {
         return <Redirect href="/(teacher)/(tabs)" />;
       case "PARENT":
         return <Redirect href="/(parent)/(tabs)" />;
-    
+      case "FINANCE":
+        return <Redirect href="/(finance)/(tabs)" />;
+      case "HR":
+        return <Redirect href="/(hr)/(tabs)" />;
+      case "PRINCIPAL":
+        return <Redirect href="/(principal)/(tabs)" />;
       default:
         return <Redirect href="/(auth)/login" />;
     }
@@ -36,6 +37,7 @@ export default function AdminLayout() {
   return (
     <Stack screenOptions={{ headerShown: false }}>
       <Stack.Screen name="(tabs)" />
+      <Stack.Screen name="link-parents" />
     </Stack>
   );
 }

@@ -4,7 +4,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Application from "expo-application";
 import Constants from "expo-constants";
 import { Slot, useRouter, useSegments } from "expo-router";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -20,6 +20,7 @@ import {
 
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { AuthProvider, useAuth } from "../contexts/AuthContext";
+
 // Enable RTL for Farsi
 I18nManager.allowRTL(true);
 I18nManager.forceRTL(true);
@@ -55,10 +56,8 @@ function UpdateChecker({ children }: { children: React.ReactNode }) {
 
   const getStoreUrl = () => {
     if (Platform.OS === "ios") {
-      // Replace with your App Store ID
       return "https://apps.apple.com/app/idYOUR_APP_ID";
     } else {
-      // Replace with your Play Store package name
       return "https://play.google.com/store/apps/details?id=com.your.app";
     }
   };
@@ -77,7 +76,7 @@ function UpdateChecker({ children }: { children: React.ReactNode }) {
       const platform = Platform.OS === "ios" ? "IOS" : "ANDROID";
 
       const response = await fetch(
-        `${process.env.EXPO_PUBLIC_API_URL}/api/versions/check?platform=${platform}&currentVersion=${currentVersion.versionCode}`,
+        `${process.env.EXPO_PUBLIC_API_URL}/api/versions/check?platform=${platform}&currentVersion=${currentVersion.versionCode}`
       );
 
       const result = await response.json();
@@ -85,13 +84,11 @@ function UpdateChecker({ children }: { children: React.ReactNode }) {
       if (result.success && result.data.updateAvailable) {
         setUpdateInfo(result.data);
 
-        // Store update info
         await AsyncStorage.setItem(
           "pending_update",
-          JSON.stringify(result.data),
+          JSON.stringify(result.data)
         );
 
-        // If force update, show modal
         if (result.data.forceUpdate) {
           setShowForceUpdate(true);
         }
@@ -110,14 +107,13 @@ function UpdateChecker({ children }: { children: React.ReactNode }) {
     try {
       const pendingUpdate = await AsyncStorage.getItem("pending_update");
       const dismissedVersion = await AsyncStorage.getItem(
-        "update_dismissed_version",
+        "update_dismissed_version"
       );
       const currentVersion = getCurrentVersion();
 
       if (pendingUpdate) {
         const update = JSON.parse(pendingUpdate);
 
-        // If version is different from dismissed version and newer than current, show update
         if (
           dismissedVersion !== update.versionCode.toString() &&
           currentVersion.versionCode < update.versionCode
@@ -127,11 +123,12 @@ function UpdateChecker({ children }: { children: React.ReactNode }) {
           if (update.forceUpdate) {
             setShowForceUpdate(true);
           } else {
-            // Show optional update alert
             Alert.alert(
               "به‌روزرسانی جدید",
               update.message ||
-                `نسخه جدید ${update.latestVersion} منتشر شده است.\n\n${update.releaseNotes || ""}`,
+                `نسخه جدید ${update.latestVersion} منتشر شده است.\n\n${
+                  update.releaseNotes || ""
+                }`,
               [
                 {
                   text: "بعداً",
@@ -139,7 +136,7 @@ function UpdateChecker({ children }: { children: React.ReactNode }) {
                   onPress: () => {
                     AsyncStorage.setItem(
                       "update_dismissed_version",
-                      update.versionCode.toString(),
+                      update.versionCode.toString()
                     );
                   },
                 },
@@ -147,7 +144,7 @@ function UpdateChecker({ children }: { children: React.ReactNode }) {
                   text: "بروزرسانی",
                   onPress: () => openStore(update.downloadUrl),
                 },
-              ],
+              ]
             );
           }
         }
@@ -169,7 +166,6 @@ function UpdateChecker({ children }: { children: React.ReactNode }) {
     initializeUpdateCheck();
   }, []);
 
-  // Periodic update check (every 24 hours)
   useEffect(() => {
     const interval = setInterval(
       async () => {
@@ -177,8 +173,8 @@ function UpdateChecker({ children }: { children: React.ReactNode }) {
           await checkForUpdates();
         }
       },
-      24 * 60 * 60 * 1000,
-    ); // 24 hours
+      24 * 60 * 60 * 1000
+    );
 
     return () => clearInterval(interval);
   }, [showForceUpdate]);
@@ -200,7 +196,6 @@ function UpdateChecker({ children }: { children: React.ReactNode }) {
     <>
       {children}
 
-      {/* Force Update Modal */}
       {updateInfo && showForceUpdate && (
         <Modal
           visible={showForceUpdate}
@@ -259,16 +254,44 @@ function RootLayoutNav() {
   const { isAuthenticated, user, isInitialized } = useAuth();
   const router = useRouter();
   const segments = useSegments();
-  const hasRedirected = useRef(false);
+
+  // Track whether the user has seen the intro splash
+  const [introChecked, setIntroChecked] = useState(false);
+  const [hasSeenIntro, setHasSeenIntro] = useState(false);
+
+  // ✅ FIX 1: Re-read the intro flag every time the route changes
+  // (previous version used [] which only ran once — the flag never
+  //  refreshed after splash.tsx wrote "asra_intro_seen" = "1")
+  useEffect(() => {
+    (async () => {
+      try {
+        const seen = await AsyncStorage.getItem("asra_intro_seen");
+        setHasSeenIntro(seen === "1");
+      } catch (e) {
+        console.warn("Failed to read intro flag:", e);
+      } finally {
+        setIntroChecked(true);
+      }
+    })();
+  }, [segments]);
 
   useEffect(() => {
     if (!isInitialized) return;
+    if (!introChecked) return;
     if (!segments?.length) return;
 
     const inAuthGroup = segments[0] === "(auth)";
+    const inSplash = segments[0] === "splash";
 
-    if (!isAuthenticated && !inAuthGroup && !hasRedirected.current) {
-      hasRedirected.current = true;
+    // First launch → force splash
+    if (!hasSeenIntro && !inSplash && !isAuthenticated) {
+      router.replace("/splash" as any);
+      return;
+    }
+
+    // ✅ FIX 2: Removed hasRedirected.current guard so the redirect
+    // to /(auth)/login always fires when not authenticated
+    if (!isAuthenticated && !inAuthGroup && !inSplash) {
       router.replace("/(auth)/login");
       return;
     }
@@ -290,20 +313,29 @@ function RootLayoutNav() {
           router.replace("/(parent)/(tabs)");
           break;
         case "finance":
-          // cast to any to satisfy router.replace typing for nested group path
           router.replace("/(finance)/(tabs)" as unknown as any);
           break;
-        case "hr": // ✅ NEW
+        case "hr":
           router.replace("/(hr)/(tabs)" as unknown as any);
           break;
-        case "principal": // ✅ NEW
+        case "principal":
           router.replace("/(principal)/(tabs)" as unknown as any);
           break;
         default:
           router.replace("/(auth)/login");
       }
     }
-  }, [isAuthenticated, user, isInitialized]);
+  }, [isAuthenticated, user, isInitialized, introChecked, hasSeenIntro, segments]);
+
+  // Keep the loading spinner up until BOTH auth AND intro check are done
+  if (!isInitialized || !introChecked) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#4285F4" />
+        <Text style={styles.loadingText}>در حال بارگذاری...</Text>
+      </View>
+    );
+  }
 
   return <Slot />;
 }

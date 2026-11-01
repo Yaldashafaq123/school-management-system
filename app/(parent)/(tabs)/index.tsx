@@ -1,4 +1,7 @@
+/* eslint-disable react-hooks/set-state-in-effect */
 // app/(parent)/index.tsx
+import { Header } from "@/components/Header";
+import { NotificationBell } from "@/components/NotificationBell";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   Child,
@@ -36,6 +39,7 @@ export default function ParentDashboard() {
   );
   const [activeChild, setActiveChild] = useState<Child | null>(null);
 
+  // eslint-disable-next-line react-hooks/preserve-manual-memoization
   const loadData = useCallback(async () => {
     try {
       setLoading(true);
@@ -101,6 +105,7 @@ export default function ParentDashboard() {
         />
       }
     >
+      <Header title="داشبورد پدر/مادر" rightComponent={<NotificationBell route="/(parent)/notifications" />} />
       {/* Header with Child Selector */}
       <View style={styles.header}>
         <TouchableOpacity

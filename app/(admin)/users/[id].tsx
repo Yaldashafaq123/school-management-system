@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/set-state-in-effect */
 // app/(admin)/users/[id].tsx
 import {
   AdminUser,

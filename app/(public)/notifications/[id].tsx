@@ -40,7 +40,9 @@ interface Announcement {
   targetClasses?: { class: { name: string } }[];
   attachments?: { id: number; url: string; type: string; filename?: string }[];
   readBy?: { user: { fullName: string } }[];
-  confirmedBy?: { user: { fullName: string; notes?: string } }[];
+  confirmedBy?: {
+    notes: { user: { fullName: string; notes?: string; }; }[] | undefined; user: { fullName: string; notes?: string } 
+}[];
 }
 
 const getTypeIcon = (type: string): string => {
@@ -170,6 +172,7 @@ export default function AnnouncementDetailScreen() {
   }, [id, router]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadAnnouncement();
   }, [loadAnnouncement]);
 

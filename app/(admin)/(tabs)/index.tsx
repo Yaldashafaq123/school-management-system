@@ -1,5 +1,6 @@
 // app/(admin)/dashboard.tsx
 import { Header } from "@/components/Header";
+import { NotificationBell } from "@/components/NotificationBell";
 import { Colors } from "@/constants/Colors";
 import { useAuth } from "@/contexts/AuthContext";
 import { adminApi, DashboardStats } from "@/src/config/adminApi";
@@ -96,6 +97,7 @@ export default function AdminDashboard() {
   };
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadDashboardData();
   }, []);
 
@@ -113,18 +115,9 @@ export default function AdminDashboard() {
 
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
-      <Header
-        title="داشبورد مدیریت"
-        rightComponent={
-          <TouchableOpacity onPress={() => router.push("/notifications")}>
-            <Ionicons
-              name="notifications-outline"
-              size={24}
-              color={Colors.text}
-            />
-          </TouchableOpacity>
-        }
-      />
+      <Header title="داشبورد مدیریت" 
+       rightComponent={<NotificationBell />}
+       />
 
       <ScrollView
         style={styles.content}

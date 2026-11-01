@@ -1,7 +1,8 @@
 // app/(hr)/(tabs)/_layout.tsx
+import { NotificationBell } from "@/components/NotificationBell";
 import { Ionicons } from "@expo/vector-icons";
 import { Tabs, useRouter } from "expo-router";
-import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { StyleSheet, TouchableOpacity } from "react-native";
 
 export default function HRTabsLayout() {
   const router = useRouter();
@@ -22,6 +23,12 @@ export default function HRTabsLayout() {
             style={styles.headerBack}
           >
             <Ionicons name="home-outline" size={24} color="#1e293b" />
+          </TouchableOpacity>
+        ),
+        // ✅ Notification bell on the right of every HR tab header
+        headerRight: () => (
+          <TouchableOpacity activeOpacity={1} style={styles.headerRight}>
+            <NotificationBell />
           </TouchableOpacity>
         ),
       }}
@@ -113,5 +120,9 @@ const styles = StyleSheet.create({
   headerBack: {
     paddingHorizontal: 16,
     paddingVertical: 8,
+  },
+  headerRight: {
+    paddingHorizontal: 12,
+    paddingVertical: 4,
   },
 });

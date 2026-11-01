@@ -1,4 +1,7 @@
+/* eslint-disable react-hooks/immutability */
 // app/(finance)/(tabs)/index.tsx
+import { Header } from "@/components/Header";
+import { NotificationBell } from "@/components/NotificationBell";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   DashboardSummary,
@@ -217,6 +220,10 @@ export default function FinanceDashboardScreen() {
 
   return (
     <View style={styles.container}>
+      <Header
+        title="داشبورد مالی"
+        rightComponent={<NotificationBell route="/(finance)/notifications" />}
+      />
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}

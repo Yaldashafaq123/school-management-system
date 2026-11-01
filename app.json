@@ -2,7 +2,7 @@
   "expo": {
     "name": "Hoshmand-Asra",
     "slug": "farsi-elearning",
-    "version": "8.2.2",
+    "version": "9.0.1",
     "orientation": "portrait",
     "icon": "./assets/images/APP.png",
     "scheme": "farsielearning",

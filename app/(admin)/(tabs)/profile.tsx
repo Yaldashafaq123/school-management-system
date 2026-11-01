@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/immutability */
 // app/(admin)/profile.tsx
 import { useAuth } from "@/contexts/AuthContext";
 import { adminApi } from "@/src/config/adminApi";
@@ -332,6 +333,12 @@ export default function AdminProfile() {
       title: "پشتیبان‌گیری",
       icon: "cloud-upload" as const,
       onPress: () => router.push("/(public)/info"),
+    },
+    ,
+    {
+      title: "مدیریت روابط فامیل و فرزندان ",
+      icon: "cloud-upload" as const,
+      onPress: () => router.push("/(admin)/system/link-parents"),
     },
   ];
 

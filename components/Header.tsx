@@ -1,4 +1,6 @@
 // components/Header.tsx
+// Simple header — the bell is now a separate component
+
 import { Ionicons } from "@expo/vector-icons";
 import React from "react";
 import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
@@ -26,7 +28,9 @@ export const Header: React.FC<HeaderProps> = ({
           </TouchableOpacity>
         )}
       </View>
-      <Text style={styles.title}>{title}</Text>
+      <Text style={styles.title} numberOfLines={1}>
+        {title}
+      </Text>
       <View style={styles.right}>{rightComponent}</View>
     </View>
   );
@@ -43,19 +47,18 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: Colors.border,
   },
-  left: {
-    width: 40,
-  },
+  left: { width: 40 },
   right: {
-    width: 40,
+    minWidth: 40,
     alignItems: "flex-end",
+    justifyContent: "center",
   },
   title: {
+    flex: 1,
     fontSize: 18,
     fontWeight: "bold",
     color: Colors.text,
+    textAlign: "center",
   },
-  backButton: {
-    padding: 4,
-  },
+  backButton: { padding: 4 },
 });

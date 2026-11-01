@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/set-state-in-effect */
 // app/(teacher)/assignment/index.tsx
 import React, { useState, useEffect, useCallback } from 'react';
 import {

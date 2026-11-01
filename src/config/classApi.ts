@@ -1,5 +1,5 @@
-// src/config/classApi.ts - COMPLETE MERGED FILE
-import { apiRequest } from './api';
+// src/config/classApi.ts - COMPLETE MERGED FILE (FIXED + DUAL GRADING)
+import { apiRequest } from "./api";
 
 // ============ Core Types ============
 export interface ClassStudent {
@@ -73,19 +73,109 @@ export interface Course {
   created_at?: string;
 }
 
+/**
+ * ✅ FIXED: Only the fields the backend's createAssignment actually reads.
+ * The backend destructures exactly:
+ *   { title, courseId, description, instructions, max_points, dueDate,
+ *     notify_students, is_published }
+ *
+ * `type`, `allow_late_submission`, `allow_resubmission`, and `attachments`
+ * were previously declared here but the backend silently drops them because
+ * the `Assignment` model has no columns for them. They are now optional
+ * and clearly marked so callers know they are UI-only hints.
+ */
 export interface CreateAssignmentData {
   title: string;
   courseId: number;
-  type: string;
   description: string;
   instructions?: string;
   max_points: number;
-  dueDate: string;
-  allow_late_submission: boolean;
-  allow_resubmission: boolean;
-  notify_students: boolean;
+  dueDate: string; // ISO string
   is_published: boolean;
+  notify_students?: boolean;
+
+  // ─── UI-only hints (NOT persisted by the backend today) ───
+  /** UI-only: displayed by prepending to `title` before sending. */
+  type?: string;
+  /** UI-only: ignored by backend — assignment model has no column. */
+  allow_late_submission?: boolean;
+  /** UI-only: ignored by backend — assignment model has no column. */
+  allow_resubmission?: boolean;
+  /** UI-only: ignored by backend — assignment model has no column. */
   attachments?: string[];
+}
+
+// ✅ Response shape returned by the backend
+export interface AssignmentResponse {
+  success: boolean;
+  message: string;
+  data?: {
+    id: number;
+    title: string;
+    dueDate: string;
+    status: string;
+  };
+}
+
+// ============ Grading Types (NEW) ============
+/**
+ * One submission row from the backend's `getAssignmentWithSubmissions`.
+ * `grade` is `null` when ungraded, a number when graded (0 is valid).
+ * `isNotebook` is true when this row was created by the teacher as a
+ * manual "دفتری" entry (no file/content came from the student).
+ */
+export interface Submission {
+  id: number;
+  assignment_id: number;
+  student_id: number;
+  student_name: string;
+  content: string;
+  attachments: any[];
+  submitted_at: string;
+  grade: number | null;
+  feedback: string | null;
+  graded_at: string | null;
+  status: string;
+  isNotebook?: boolean;
+}
+
+/** A student in the assignment's class who has no submission yet. */
+export interface StudentWithoutSubmission {
+  id: number;
+  fullName: string;
+  email: string;
+}
+
+/** Full payload returned by `GET /teacher/assignments/:id/grading`. */
+export interface AssignmentWithSubmissions {
+  id: number;
+  title: string;
+  description: string;
+  instructions: string;
+  course_id: number;
+  course_name: string;
+  due_date: string;
+  max_score: number;
+  status: string;
+  created_at: string;
+  updated_at: string;
+  attachments: any[];
+  submissions: Submission[];
+  studentsWithoutSubmission: StudentWithoutSubmission[];
+}
+
+/** Payload for grading an online submission. */
+export interface GradeSubmissionData {
+  submissionId: number;
+  grade: number;
+  feedback?: string;
+}
+
+/** Payload for creating a manual "دفتری" (notebook) grade entry. */
+export interface ManualSubmissionData {
+  studentId: number;
+  grade: number;
+  feedback?: string;
 }
 
 // ============ Combined API Object ============
@@ -114,11 +204,11 @@ export const classApi = {
   ): Promise<{ success: boolean; data: ClassDetails }> => {
     try {
       const response = await apiRequest(`/teacher/classes/${id}/details`, {
-        method: 'GET',
+        method: "GET",
       });
       return response;
     } catch (error) {
-      console.error('Error in getClassDetails:', error);
+      console.error("Error in getClassDetails:", error);
       throw error;
     }
   },
@@ -181,45 +271,129 @@ export const classApi = {
 
   // ===== Assignment APIs =====
   // Get courses for teacher
-  getTeacherCourses: async (): Promise<{ success: boolean; data: Course[] }> => {
+  getTeacherCourses: async (): Promise<{
+    success: boolean;
+    data: Course[];
+  }> => {
     try {
-      const response = await apiRequest('/teacher/courses', {
-        method: 'GET',
+      const response = await apiRequest("/teacher/courses", {
+        method: "GET",
       });
       return response;
     } catch (error) {
-      console.error('Error fetching courses:', error);
+      console.error("Error fetching courses:", error);
       throw error;
     }
   },
 
   // Create new assignment
-  createAssignment: async (data: CreateAssignmentData): Promise<{ success: boolean; message: string; data?: any }> => {
+  // ✅ Strips UI-only fields before sending, so the payload on the wire
+  // matches exactly what the backend destructures.
+  createAssignment: async (
+    data: CreateAssignmentData,
+  ): Promise<AssignmentResponse> => {
     try {
-      const response = await apiRequest('/teacher/assignments', {
-        method: 'POST',
-        body: JSON.stringify(data),
+      const payload = {
+        title: data.title,
+        courseId: data.courseId,
+        description: data.description,
+        instructions: data.instructions ?? "",
+        max_points: data.max_points,
+        dueDate: data.dueDate,
+        is_published: data.is_published,
+        notify_students: data.notify_students ?? false,
+      };
+
+      const response = await apiRequest("/teacher/assignments", {
+        method: "POST",
+        body: JSON.stringify(payload),
       });
       return response;
     } catch (error) {
-      console.error('Error creating assignment:', error);
+      console.error("Error creating assignment:", error);
       throw error;
     }
   },
 
   // Save as draft
-  saveAssignmentDraft: async (data: CreateAssignmentData): Promise<{ success: boolean; message: string; data?: any }> => {
+  // ✅ Same payload filter as createAssignment; force is_published=false.
+  saveAssignmentDraft: async (
+    data: CreateAssignmentData,
+  ): Promise<AssignmentResponse> => {
     try {
-      const response = await apiRequest('/teacher/assignments/draft', {
-        method: 'POST',
-        body: JSON.stringify({ ...data, is_published: false }),
+      const payload = {
+        title: data.title,
+        courseId: data.courseId,
+        description: data.description,
+        instructions: data.instructions ?? "",
+        max_points: data.max_points,
+        dueDate: data.dueDate,
+        is_published: false,
+        notify_students: data.notify_students ?? false,
+      };
+
+      const response = await apiRequest("/teacher/assignments/draft", {
+        method: "POST",
+        body: JSON.stringify(payload),
       });
       return response;
     } catch (error) {
-      console.error('Error saving draft:', error);
+      console.error("Error saving draft:", error);
       throw error;
     }
-  }
+  },
+
+  // ✅ NEW: Get single assignment with its submissions (for the grading screen)
+  getAssignmentWithSubmissions: async (
+    id: number,
+  ): Promise<{ success: boolean; data: AssignmentWithSubmissions }> => {
+    try {
+      const response = await apiRequest(`/teacher/assignments/${id}/grading`, {
+        method: "GET",
+      });
+      return response;
+    } catch (error) {
+      console.error("Error fetching assignment submissions:", error);
+      throw error;
+    }
+  },
+
+  // ✅ NEW: Grade an online submission
+  gradeSubmission: async (
+    data: GradeSubmissionData,
+  ): Promise<{ success: boolean; message: string; data?: any }> => {
+    try {
+      const response = await apiRequest(`/teacher/submissions/grade`, {
+        method: "POST",
+        body: JSON.stringify(data),
+      });
+      return response;
+    } catch (error) {
+      console.error("Error grading submission:", error);
+      throw error;
+    }
+  },
+
+  // ✅ NEW: Create a manual "دفتری" (notebook) grade entry for a student
+  // who did not submit through the app.
+  createManualSubmission: async (
+    assignmentId: number,
+    data: ManualSubmissionData,
+  ): Promise<{ success: boolean; message: string; data?: any }> => {
+    try {
+      const response = await apiRequest(
+        `/teacher/assignments/${assignmentId}/submissions/manual`,
+        {
+          method: "POST",
+          body: JSON.stringify(data),
+        },
+      );
+      return response;
+    } catch (error) {
+      console.error("Error creating manual submission:", error);
+      throw error;
+    }
+  },
 };
 
 // ============ Helper Functions ============
@@ -244,9 +418,13 @@ export function getSubjectColor(subject: string): string {
 }
 
 // ============ Backward Compatibility ============
-// Keep assignmentApi export for backward compatibility if needed
+// Keep assignmentApi export for backward compatibility if needed.
+// ✅ Now includes all three grading methods so `grading.tsx` works.
 export const assignmentApi = {
   getTeacherCourses: classApi.getTeacherCourses,
   createAssignment: classApi.createAssignment,
-  saveAssignmentDraft: classApi.saveAssignmentDraft
+  saveAssignmentDraft: classApi.saveAssignmentDraft,
+  getAssignmentWithSubmissions: classApi.getAssignmentWithSubmissions,
+  gradeSubmission: classApi.gradeSubmission,
+  createManualSubmission: classApi.createManualSubmission,
 };
